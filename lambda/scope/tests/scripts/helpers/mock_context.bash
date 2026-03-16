@@ -87,7 +87,7 @@ export MOCK_CONTEXT_PRIVATE='{
         "region": "us-east-1"
       },
       "networking": {
-        "hosted_private_zone_id": "Z0987654321XYZ",
+        "hosted_zone_id": "Z0987654321XYZ",
         "alb_listener_arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/my-alb/50dc6c495c0c9188/f2f7dc8efc522ab2"
       }
     },

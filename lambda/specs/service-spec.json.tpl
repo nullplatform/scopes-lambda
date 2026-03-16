@@ -4,22 +4,22 @@
     "schema": {
       "type": "object",
       "required": [
-        "runtime",
         "handler",
         "memory",
         "timeout",
         "architecture",
+        "http_enabled",
         "visibility",
-        "continuous_delivery"
+        "continuous_delivery",
+        "ephemeral_storage",
+        "layers",
+        "vpc_enabled",
+        "reserved_concurrency",
+        "provisioned_concurrency"
       ],
       "uiSchema": {
         "type": "VerticalLayout",
         "elements": [
-          {
-            "type": "Control",
-            "label": "Runtime",
-            "scope": "#/properties/runtime"
-          },
           {
             "type": "Control",
             "label": "Handler",
@@ -31,6 +31,20 @@
             "scope": "#/properties/memory"
           },
           {
+            "type": "Control",
+            "label": "Expose via HTTP",
+            "scope": "#/properties/http_enabled"
+          },
+          {
+            "rule": {
+              "effect": "SHOW",
+              "condition": {
+                "scope": "#/properties/http_enabled",
+                "schema": {
+                  "const": true
+                }
+              }
+            },
             "type": "Control",
             "label": "Visibility",
             "scope": "#/properties/visibility"
@@ -166,77 +180,13 @@
         "asset_type": {
           "type": "string",
           "export": false,
-          "default": "lambda-package"
-        },
-        "runtime": {
-          "type": "string",
-          "title": "Runtime",
-          "description": "Lambda runtime environment for your function",
-          "default": "nodejs20.x",
-          "oneOf": [
-            {
-              "const": "nodejs20.x",
-              "title": "Node.js 20"
-            },
-            {
-              "const": "nodejs18.x",
-              "title": "Node.js 18"
-            },
-            {
-              "const": "python3.12",
-              "title": "Python 3.12"
-            },
-            {
-              "const": "python3.11",
-              "title": "Python 3.11"
-            },
-            {
-              "const": "python3.10",
-              "title": "Python 3.10"
-            },
-            {
-              "const": "java21",
-              "title": "Java 21"
-            },
-            {
-              "const": "java17",
-              "title": "Java 17"
-            },
-            {
-              "const": "java11",
-              "title": "Java 11"
-            },
-            {
-              "const": "dotnet8",
-              "title": ".NET 8"
-            },
-            {
-              "const": "dotnet6",
-              "title": ".NET 6"
-            },
-            {
-              "const": "ruby3.3",
-              "title": "Ruby 3.3"
-            },
-            {
-              "const": "ruby3.2",
-              "title": "Ruby 3.2"
-            },
-            {
-              "const": "provided.al2023",
-              "title": "Custom Runtime (AL2023)"
-            },
-            {
-              "const": "provided.al2",
-              "title": "Custom Runtime (AL2)"
-            }
-          ]
+          "default": "docker-image"
         },
         "handler": {
           "type": "string",
           "title": "Handler",
-          "description": "Function entry point (e.g., index.handler for Node.js, app.lambda_handler for Python)",
-          "default": "index.handler"
+          "default": "index.handler",
+          "description": "Function entry point (e.g., index.handler for Node.js, app.lambda_handler for Python)"
         },
         "memory": {
           "type": "integer",
@@ -296,14 +246,20 @@
             { "const": "x86_64", "title": "x86_64" }
           ]
         },
+        "http_enabled": {
+          "type": "boolean",
+          "title": "Expose via HTTP",
+          "description": "When enabled, your function is accessible via an HTTP endpoint. Disable this for functions triggered exclusively by internal events (queues, streams, schedules, etc.).",
+          "default": true
+        },
         "visibility": {
           "type": "string",
           "title": "Visibility",
-          "description": "How your function is accessed (public via API Gateway, private via internal ALB)",
+          "description": "How your function is accessed",
           "default": "public",
           "oneOf": [
-            { "const": "public", "title": "Public (API Gateway)" },
-            { "const": "private", "title": "Private (ALB)" }
+            { "const": "public", "title": "Public" },
+            { "const": "private", "title": "Private" }
           ]
         },
         "reserved_concurrency": {
@@ -313,7 +269,7 @@
             "type": {
               "type": "string",
               "title": "Reserved Concurrency",
-              "description": "Guarantee execution capacity for this function",
+              "description": "Sets a hard limit on how many concurrent executions your function can have, throttling any requests beyond that number.",
               "default": "unreserved",
               "oneOf": [
                 { "const": "unreserved", "title": "Unreserved (shared pool)" },
@@ -337,7 +293,7 @@
             "type": {
               "type": "string",
               "title": "Provisioned Concurrency",
-              "description": "Keep instances warm to eliminate cold starts",
+              "description": "Pre-warms a fixed number of execution environments so they're always ready to respond instantly, eliminating cold starts — but you're billed for those instances continuously, even when idle.",
               "default": "unprovisioned",
               "oneOf": [
                 { "const": "unprovisioned", "title": "Disabled (cold starts allowed)" },

@@ -1,0 +1,106 @@
+#!/bin/bash
+# Publish the nullplatform Lambda placeholder image to private ECR.
+#
+# IMPORTANT: This is a one-time setup script for publishing the placeholder image used during scope creation.
+# IMPORTANT: ECR repository must be private to ensure the image is only accessible within the same AWS account, as Lambda will pull it during scope creation.
+#
+# This script is meant to be run ONCE (or on each new version of the placeholder)
+# from a machine with Docker Buildx and AWS credentials that have private ECR push
+# permissions (ecr:GetAuthorizationToken, ecr:InitiateLayerUpload, ecr:PutImage, etc).
+#
+# Usage:
+#   cd lambda/scope/placeholder
+#   ./publish [tag]
+#
+# The default tag is "latest".
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -z "${PLACEHOLDER_IMAGE_REPO:-}" ]; then
+  echo "❌ PLACEHOLDER_IMAGE_REPO is not set" >&2
+  echo "" >&2
+  echo "💡 How to fix:" >&2
+  echo "   Export the variable before running this script:" >&2
+  echo "   export PLACEHOLDER_IMAGE_REPO=123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder" >&2
+  exit 1
+fi
+
+IMAGE_REPO="$PLACEHOLDER_IMAGE_REPO"
+IMAGE_TAG="${1:-latest}"
+IMAGE_URI="${IMAGE_REPO}:${IMAGE_TAG}"
+
+echo "📦 Publishing placeholder image"
+echo "   repo: $IMAGE_REPO"
+echo "   tag:  $IMAGE_TAG"
+echo ""
+
+# Check dependencies
+for cmd in docker aws; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "❌ '$cmd' is required but not found in PATH" >&2
+    exit 1
+  fi
+done
+
+if ! docker buildx version &>/dev/null; then
+  echo "❌ Docker Buildx is required for multi-architecture builds" >&2
+  echo "   Install: https://docs.docker.com/buildx/working-with-buildx/" >&2
+  exit 1
+fi
+
+# Extract registry host and region from IMAGE_REPO
+ECR_REGISTRY=$(echo "$IMAGE_REPO" | cut -d/ -f1)       # 688720756067.dkr.ecr.us-east-1.amazonaws.com
+ECR_REGION=$(echo "$ECR_REGISTRY" | cut -d. -f4)        # us-east-1
+ECR_REPO_NAME=$(echo "$IMAGE_REPO" | cut -d/ -f2-)      # aws-lambda/nullplatform-lambda-placeholder
+
+# Create ECR repository if it does not exist
+echo "📋 Ensuring ECR repository exists: $ECR_REPO_NAME"
+if ! aws --profile kwik ecr describe-repositories \
+    --repository-names "$ECR_REPO_NAME" \
+    --region "$ECR_REGION" &>/dev/null 2>&1; then
+  echo "   Creating repository..."
+  aws --profile kwik ecr create-repository \
+    --repository-name "$ECR_REPO_NAME" \
+    --region "$ECR_REGION" \
+    --image-scanning-configuration scanOnPush=false >/dev/null
+  echo "   ✅ Repository created"
+else
+  echo "   ✅ Repository already exists"
+fi
+echo ""
+
+# Authenticate to private ECR
+echo "🔑 Authenticating to private ECR..."
+aws ecr get-login-password --region "$ECR_REGION" | \
+  docker login --username AWS --password-stdin "$ECR_REGISTRY"
+echo "   ✅ Authenticated"
+echo ""
+
+# Lambda does not support OCI image index (multi-arch manifest lists).
+# Push separate single-arch images tagged with the architecture suffix.
+echo "🔨 Building and pushing single-arch images..."
+echo "   This may take a few minutes on first run..."
+echo ""
+
+echo "   📦 Building linux/arm64 → ${IMAGE_URI}-arm64"
+docker buildx build \
+  --platform linux/arm64 \
+  --provenance=false \
+  --tag "${IMAGE_URI}-arm64" \
+  --push \
+  "$SCRIPT_DIR"
+
+echo "   📦 Building linux/amd64 → ${IMAGE_URI}-amd64"
+docker buildx build \
+  --platform linux/amd64 \
+  --provenance=false \
+  --tag "${IMAGE_URI}-amd64" \
+  --push \
+  "$SCRIPT_DIR"
+
+echo ""
+echo "✅ Images published:"
+echo "   ${IMAGE_URI}-arm64"
+echo "   ${IMAGE_URI}-amd64"

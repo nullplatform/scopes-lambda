@@ -4,14 +4,14 @@
 
 echo "🔍 Generating scope domain..."
 
-# Get hosted zone ID from context
-hosted_zone_id=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].networking.hosted_public_zone_id // empty')
+# Get hosted zone ID exported by fetch_scope_configuration
+hosted_zone_id="${HOSTED_PUBLIC_ZONE_ID:-}"
 
 if [ -z "$hosted_zone_id" ] || [ "$hosted_zone_id" = "null" ]; then
   echo "   ✅ No hosted_public_zone_id configured - skipping domain generation"
   SCOPE_DOMAIN=""
   export SCOPE_DOMAIN
-  exit 0
+  return 0
 fi
 
 echo "   📋 hosted_zone_id=$hosted_zone_id"
@@ -35,7 +35,7 @@ if [ $aws_exit_code -ne 0 ]; then
   echo "   - AWS error: $aws_output" >&2
   SCOPE_DOMAIN=""
   export SCOPE_DOMAIN
-  exit 0
+  return 0
 fi
 
 domain=$(echo "$aws_output" | jq -r '.HostedZone.Name' | sed 's/\.$//')
@@ -49,7 +49,7 @@ if [ -z "$domain" ] || [ "$domain" = "null" ]; then
   echo "   - Verify hosted zone '$hosted_zone_id' is correctly configured in AWS" >&2
   SCOPE_DOMAIN=""
   export SCOPE_DOMAIN
-  exit 0
+  return 0
 fi
 
 echo "   📋 base_domain=$domain"

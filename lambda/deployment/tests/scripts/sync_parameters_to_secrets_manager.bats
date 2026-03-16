@@ -18,6 +18,7 @@ setup() {
 
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
   export SCOPE_ID="scope-123"
+  export DEPLOYMENT_ID="deploy-abc"
   export OUTPUT_DIR="$BATS_TEST_TMPDIR"
   export RESOURCE_TAGS_JSON='{"Environment":"test","Team":"platform"}'
 
@@ -116,7 +117,7 @@ MOCK_SCRIPT
 
   create_aws_mock \
     '1:ResourceNotFoundException: Secret not found' \
-    '0:{"ARN":"arn:aws:secretsmanager:us-east-1:123456789012:secret:nullplatform/scope-123/parameters"}'
+    '0:{"ARN":"arn:aws:secretsmanager:us-east-1:123456789012:secret:nullplatform/scope-123/deploy-abc/parameters"}'
 
   run bash "$LAMBDA_DIR/deployment/scripts/sync_parameters_to_secrets_manager"
 
@@ -130,7 +131,7 @@ MOCK_SCRIPT
   set_context secretsmanager
 
   create_aws_mock \
-    '0:{"ARN":"arn:aws:secretsmanager:us-east-1:123456789012:secret:nullplatform/scope-123/parameters"}'
+    '0:{"ARN":"arn:aws:secretsmanager:us-east-1:123456789012:secret:nullplatform/scope-123/deploy-abc/parameters"}'
 
   run bash "$LAMBDA_DIR/deployment/scripts/sync_parameters_to_secrets_manager"
 
@@ -154,7 +155,7 @@ MOCK_SCRIPT
   export CONTEXT='{"parameters":{"results":[]}}'
 
   create_aws_mock \
-    '0:{"ARN":"arn:aws:secretsmanager:us-east-1:123456789012:secret:nullplatform/scope-123/parameters"}'
+    '0:{"ARN":"arn:aws:secretsmanager:us-east-1:123456789012:secret:nullplatform/scope-123/deploy-abc/parameters"}'
 
   run bash "$LAMBDA_DIR/deployment/scripts/sync_parameters_to_secrets_manager"
 

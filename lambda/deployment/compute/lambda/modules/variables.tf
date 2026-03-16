@@ -39,11 +39,6 @@ variable "lambda_architecture" {
   default     = "arm64"
 }
 
-variable "lambda_role_arn" {
-  description = "ARN of the IAM role for Lambda execution"
-  type        = string
-}
-
 variable "lambda_package_type" {
   description = "Lambda deployment package type (Zip or Image)"
   type        = string
@@ -141,4 +136,10 @@ variable "lambda_publish" {
   description = "Whether to publish a new Lambda version"
   type        = bool
   default     = true
+}
+
+variable "lambda_description" {
+  description = "Description embedded in each published version; used to look up the version by deployment ID"
+  type        = string
+  default     = ""
 }

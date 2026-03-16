@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Fetch Scope Configuration: Retrieves cloud provider settings from the scope-configurations provider.
+# Queries provider data based on service dimensions and exports AWS, DNS, networking, and state
+# variables for downstream scripts.
+
+log info "🔑 Fetching scope configuration..."
+
+NRN=$(echo "$CONTEXT" | jq -r '.scope.nrn')
+log debug "   ✅ nrn=$NRN"
+
+DIMENSION_FILTER=$(echo "$CONTEXT" | jq -r '
+  (.scope.dimensions // {}) | to_entries | map("\(.key):\(.value)") | join(",")
+')
+
+if [ -z "$DIMENSION_FILTER" ] || [ "$DIMENSION_FILTER" = "" ]; then
+  log debug "   ✅ dimensions=none"
+  PROVIDER_RESPONSE=$(np provider list --categories scope-configurations --nrn "$NRN" --format json)
+else
+  log debug "   ✅ dimensions=$DIMENSION_FILTER"
+  PROVIDER_RESPONSE=$(np provider list --categories scope-configurations --nrn "$NRN" --dimensions "$DIMENSION_FILTER" --format json)
+fi
+
+SCOPE_CONFIG=$(echo "$PROVIDER_RESPONSE" | jq -r ".results[0].attributes // empty")
+
+if [ -z "$SCOPE_CONFIG" ]; then
+  echo "❌ No scope-configurations provider found for NRN '$NRN'${DIMENSION_FILTER:+ with dimensions '$DIMENSION_FILTER'}." >&2
+  echo "" >&2
+  echo "To fix this, create a provider of category 'scope-configurations' with the following structure:" >&2
+  echo "" >&2
+  echo "  np provider create \\" >&2
+  echo "    --nrn \"$NRN\" \\" >&2
+  echo "    --category scope-configurations \\" >&2
+  echo "    ${DIMENSION_FILTER:+--dimensions \"$DIMENSION_FILTER\" \\}" >&2
+  echo "    --attributes '{" >&2
+  echo "      \"agent\": {" >&2
+  echo "        \"null_agent_layer_arn\": \"<your-null-agent-layer-arn>\"" >&2
+  echo "      }," >&2
+  echo "      \"aws\": {" >&2
+  echo "        \"aws_account_id\": \"<your-aws-account-id>\"," >&2
+  echo "        \"aws_region\": \"<your-aws-region>\"" >&2
+  echo "      }," >&2
+  echo "      \"dns\": {" >&2
+  echo "        \"hosted_public_zone_id\": \"<your-public-zone-id>\"," >&2
+  echo "        \"hosted_private_zone_id\": \"<your-private-zone-id>\"" >&2
+  echo "      }," >&2
+  echo "      \"networking\": {" >&2
+  echo "        \"alb_public_listener_arn\": \"<your-alb-public-listener-arn>\"," >&2
+  echo "        \"alb_private_listener_arn\": \"<your-alb-private-listener-arn>\"," >&2
+  echo "        \"aws_subnet_ids\": \"<comma-separated-subnet-ids>\"" >&2
+  echo "      }," >&2
+  echo "      \"state\": {" >&2
+  echo "        \"tofu_state_bucket\": \"<your-terraform-state-bucket>\"," >&2
+  echo "        \"tofu_lock_table\": \"<your-terraform-lock-table>\"" >&2
+  echo "      }" >&2
+  echo "    }'" >&2
+  exit 1
+fi
+
+AWS_ACCOUNT_ID=$(echo "$SCOPE_CONFIG" | jq -r '.aws.aws_account_id // empty')
+log debug "   ✅ aws_account_id=$AWS_ACCOUNT_ID"
+
+AWS_REGION=$(echo "$SCOPE_CONFIG" | jq -r '.aws.aws_region // empty')
+log debug "   ✅ aws_region=$AWS_REGION"
+
+HOSTED_PUBLIC_ZONE_ID=$(echo "$SCOPE_CONFIG" | jq -r '.dns.hosted_public_zone_id // empty')
+log debug "   ✅ hosted_public_zone_id=$HOSTED_PUBLIC_ZONE_ID"
+
+HOSTED_PRIVATE_ZONE_ID=$(echo "$SCOPE_CONFIG" | jq -r '.dns.hosted_private_zone_id // empty')
+log debug "   ✅ hosted_private_zone_id=$HOSTED_PRIVATE_ZONE_ID"
+
+ALB_PUBLIC_LISTENER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.networking.alb_public_listener_arn // empty')
+log debug "   ✅ alb_public_listener_arn=$ALB_PUBLIC_LISTENER_ARN"
+
+ALB_PRIVATE_LISTENER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.networking.alb_private_listener_arn // empty')
+log debug "   ✅ alb_private_listener_arn=$ALB_PRIVATE_LISTENER_ARN"
+
+AWS_SUBNET_IDS=$(echo "$SCOPE_CONFIG" | jq -r '.networking.aws_subnet_ids // empty')
+log debug "   ✅ aws_subnet_ids=$AWS_SUBNET_IDS"
+
+TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // empty')
+log debug "   ✅ tofu_state_bucket=$TOFU_STATE_BUCKET"
+
+TOFU_LOCK_TABLE=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_lock_table // empty')
+log debug "   ✅ tofu_lock_table=$TOFU_LOCK_TABLE"
+
+NULL_AGENT_LAYER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.agent.null_agent_layer_arn // empty')
+log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
+
+export AWS_ACCOUNT_ID
+export AWS_REGION
+export HOSTED_PUBLIC_ZONE_ID
+export HOSTED_PRIVATE_ZONE_ID
+export ALB_PUBLIC_LISTENER_ARN
+export ALB_PRIVATE_LISTENER_ARN
+export AWS_SUBNET_IDS
+export TOFU_STATE_BUCKET
+export TOFU_LOCK_TABLE
+export NULL_AGENT_LAYER_ARN
+
+log info "✨ Scope configuration fetched successfully"

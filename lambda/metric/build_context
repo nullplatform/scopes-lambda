@@ -14,34 +14,17 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
    exit 1
 fi
 
-if [ -z "$SCOPE_NRN" ] || [ "$SCOPE_NRN" = "null" ]; then
-   echo "❌ Failed to extract scope NRN from CONTEXT" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - CONTEXT variable is missing scope.nrn field" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Verify the scope has a valid NRN assigned" >&2
-   exit 1
-fi
+source "$SERVICE_PATH/utils/lambda_function_name"
 
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-LAMBDA_FUNCTION_NAME=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_NAME // ""')
-
-if [ -z "$LAMBDA_FUNCTION_NAME" ]; then
-   echo "❌ Failed to read LAMBDA_FUNCTION_NAME from NRN" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - NRN namespace 'aws' does not contain LAMBDA_FUNCTION_NAME" >&2
-   echo "   - The scope has not been fully provisioned yet" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Verify the scope was created successfully" >&2
-   echo "   - Check that the Lambda function was provisioned via Terraform" >&2
-   exit 1
-fi
+METRIC_NAME=$(echo "$CONTEXT" | jq -r '.arguments.metric // "Invocations"')
+METRIC_PERIOD=$(echo "$CONTEXT" | jq -r '.arguments.period // 300')
+METRIC_START_TIME=$(echo "$CONTEXT" | jq -r '.arguments.start_time // ""')
+METRIC_END_TIME=$(echo "$CONTEXT" | jq -r '.arguments.end_time // ""')
 
 export SCOPE_ID
 export SCOPE_NRN
 export LAMBDA_FUNCTION_NAME
-
-echo "Metric build_context completed"
-echo "   SCOPE_ID=$SCOPE_ID"
-echo "   SCOPE_NRN=$SCOPE_NRN"
-echo "   LAMBDA_FUNCTION_NAME=$LAMBDA_FUNCTION_NAME"
+export METRIC_NAME
+export METRIC_PERIOD
+export METRIC_START_TIME
+export METRIC_END_TIME

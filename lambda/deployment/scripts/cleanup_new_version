@@ -2,7 +2,9 @@
 # Cleanup new Lambda version after rollback
 # This removes the failed version that was being deployed
 
-echo "🧹 Cleaning up failed deployment version..."
+source "$SERVICE_PATH/utils/log"
+
+log info "🧹 Cleaning up failed deployment version..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
@@ -12,32 +14,58 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  exit 1
+  return 1
 fi
 
-new_version="${LAMBDA_NEW_VERSION:-}"
+new_version="${LAMBDA_GREEN_VERSION:-${LAMBDA_NEW_VERSION:-${LAMBDA_CURRENT_VERSION:-}}}"
 
 if [ -z "$new_version" ] || [ "$new_version" = "null" ]; then
-  echo "   ⏭️  No new version specified to cleanup"
-  exit 0
+  log info "   ⏭️  No new version specified to cleanup"
+  return 0
 fi
 
 if [ "$new_version" = "\$LATEST" ]; then
-  echo "   ⏭️  Cannot delete \$LATEST"
-  exit 0
+  log info "   ⏭️  Cannot delete \$LATEST"
+  return 0
 fi
 
-echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
-echo "   ✅ new_version=$new_version"
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ new_version=$new_version"
 
 echo ""
-echo "   📝 Deleting failed version $new_version from function $LAMBDA_FUNCTION_NAME..."
+log info "   📝 Deleting failed version $new_version from function $LAMBDA_FUNCTION_NAME..."
 
 aws lambda delete-function \
   --function-name "$LAMBDA_FUNCTION_NAME" \
   --qualifier "$new_version" \
   2>/dev/null || true
 
-echo "   ✅ Failed version $new_version cleanup complete"
+log debug "   ✅ Failed version $new_version cleanup complete"
+
+# Delete the failed deployment's Secrets Manager secret (if secretsmanager strategy was used)
+failed_secret_name=""
+if [ -n "${SCOPE_ID:-}" ] && [ -n "${DEPLOYMENT_ID:-}" ] && [ "${DEPLOYMENT_ID}" != "null" ]; then
+  failed_secret_name="nullplatform/${SCOPE_ID}/${DEPLOYMENT_ID}/parameters"
+fi
+
+if [ -n "$failed_secret_name" ]; then
+  echo ""
+  log info "   🗑️  Deleting failed deployment secret: $failed_secret_name..."
+  delete_output=$(aws secretsmanager delete-secret \
+    --secret-id "$failed_secret_name" \
+    --force-delete-without-recovery \
+    2>&1)
+  delete_exit=$?
+  if [ $delete_exit -ne 0 ]; then
+    if echo "$delete_output" | grep -q "ResourceNotFoundException"; then
+      log debug "   ✅ Secret '$failed_secret_name' not found - skipping"
+    else
+      log warn "   ⚠️  Failed to delete secret '$failed_secret_name': $delete_output"
+    fi
+  else
+    log debug "   ✅ Secret deleted: $failed_secret_name"
+  fi
+fi
+
 echo ""
-echo "✨ Cleanup finished for function=$LAMBDA_FUNCTION_NAME version=$new_version"
+log info "✨ Cleanup finished for function=$LAMBDA_FUNCTION_NAME version=$new_version"

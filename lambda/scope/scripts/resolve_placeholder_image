@@ -1,0 +1,105 @@
+#!/bin/bash
+# Resolve the placeholder container image URI for scope provisioning.
+# The placeholder Lambda is always a container image regardless of the scope's
+# eventual package type (Zip or Image). This sets IMAGE_URI so that the
+# deployment build_context uses the correct package type and image for the
+# initial Tofu apply.
+#
+# Image tags follow the Docker convention for architecture:
+#   arm64  → suffix "-arm64"
+#   x86_64 → suffix "-amd64"
+
+source "$SERVICE_PATH/utils/log"
+
+log info "🔍 Resolving placeholder image URI..."
+
+placeholder_image_base="${PLACEHOLDER_IMAGE_URI:-public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest}"
+architecture="${ARCHITECTURE:-arm64}"
+
+# Lambda uses "x86_64" but images are tagged with Docker convention "amd64"
+arch_tag="${architecture}"
+[ "$architecture" = "x86_64" ] && arch_tag="amd64"
+
+if [[ "$placeholder_image_base" == *":"* ]]; then
+  placeholder_image_uri="${placeholder_image_base}-${arch_tag}"
+else
+  placeholder_image_uri="${placeholder_image_base}:latest-${arch_tag}"
+fi
+
+log debug "   📋 architecture=$architecture"
+log debug "   📋 placeholder_image_uri=$placeholder_image_uri"
+
+# Validate image exists before committing to a Tofu run
+log info "   📡 Validating placeholder image..."
+
+image_found=false
+
+if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
+  image_ref="${placeholder_image_uri#public.ecr.aws/}"
+  image_tag="${image_ref##*:}"
+  image_path="${image_ref%:*}"
+  [[ "$image_ref" != *":"* ]] && { image_tag="latest"; image_path="$image_ref"; }
+
+  token_response=$(curl -sfL \
+    "https://public.ecr.aws/token/?scope=repository:${image_path}:pull&service=public.ecr.aws" \
+    2>/dev/null || echo "")
+
+  token=""
+  [ -n "$token_response" ] && token=$(echo "$token_response" | jq -r '.token // empty' 2>/dev/null || echo "")
+
+  if [ -z "$token" ]; then
+    echo "" >&2
+    echo "❌ Cannot reach public ECR to validate placeholder image" >&2
+    echo "" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   • The agent has no outbound internet access" >&2
+    echo "   • public.ecr.aws is temporarily unavailable" >&2
+    echo "" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   • Verify outbound connectivity: curl -s https://public.ecr.aws" >&2
+    return 1
+  fi
+
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer $token" \
+    -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+    "https://public.ecr.aws/v2/${image_path}/manifests/${image_tag}")
+
+  [ "$http_code" = "200" ] && image_found=true
+else
+  # Private ECR
+  ecr_registry="${placeholder_image_uri%%/*}"
+  ecr_region=$(echo "$ecr_registry" | cut -d. -f4)
+  ecr_rest="${placeholder_image_uri#*/}"
+  ecr_repo="${ecr_rest%:*}"
+  ecr_tag="${ecr_rest##*:}"
+  [[ "$ecr_rest" != *":"* ]] && ecr_tag="latest"
+
+  if aws ecr describe-images \
+      --repository-name "$ecr_repo" \
+      --image-ids "imageTag=$ecr_tag" \
+      --region "$ecr_region" &>/dev/null 2>&1; then
+    image_found=true
+  fi
+fi
+
+if [ "$image_found" = "false" ]; then
+  echo "" >&2
+  echo "❌ Placeholder image not found: $placeholder_image_uri" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   • The image has not been published yet" >&2
+  echo "   • PLACEHOLDER_IMAGE_URI in values.yaml points to a wrong tag or path" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Publish the image once by running: lambda/scope/placeholder/publish" >&2
+  echo "   • Verify PLACEHOLDER_IMAGE_URI=$placeholder_image_uri is correct" >&2
+  return 1
+fi
+
+log debug "   ✅ image found"
+
+export IMAGE_URI="$placeholder_image_uri"
+
+echo ""
+log info "✨ Placeholder image resolved: $IMAGE_URI"

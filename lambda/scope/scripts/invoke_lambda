@@ -16,13 +16,7 @@ if [ -z "$LAMBDA_FUNCTION_NAME" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
   exit 1
 fi
 
-# Read main alias from NRN
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-LAMBDA_FUNCTION_MAIN_ALIAS=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_MAIN_ALIAS // "main"')
-
-if [ -z "$LAMBDA_FUNCTION_MAIN_ALIAS" ] || [ "$LAMBDA_FUNCTION_MAIN_ALIAS" = "null" ]; then
-  LAMBDA_FUNCTION_MAIN_ALIAS="main"
-fi
+LAMBDA_FUNCTION_MAIN_ALIAS="main"
 
 alias="$LAMBDA_FUNCTION_MAIN_ALIAS"
 

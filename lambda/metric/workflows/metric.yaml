@@ -9,6 +9,14 @@ steps:
         type: environment
       - name: LAMBDA_FUNCTION_NAME
         type: environment
+      - name: METRIC_NAME
+        type: environment
+      - name: METRIC_PERIOD
+        type: environment
+      - name: METRIC_START_TIME
+        type: environment
+      - name: METRIC_END_TIME
+        type: environment
   - name: fetch_metric
     type: script
     file: "$SERVICE_PATH/metric/fetch_metric"

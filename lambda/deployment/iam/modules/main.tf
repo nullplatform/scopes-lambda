@@ -37,9 +37,38 @@ resource "aws_iam_role_policy" "custom" {
   policy = var.iam_role_policies[count.index].policy
 }
 
-# Secrets Manager read access (for parameters strategy = secretsmanager)
-resource "aws_iam_role_policy" "secrets_manager" {
-  count = var.iam_create_role && var.iam_secrets_manager_secret_arn != "" ? 1 : 0
+# ECR pull permissions — always added when creating the role.
+# The placeholder Lambda always uses a container image regardless of scope package type,
+# so ECR access is required from the first deployment onward.
+resource "aws_iam_role_policy" "ecr" {
+  count = var.iam_create_role ? 1 : 0
+
+  name = "ecr-image-pull"
+  role = aws_iam_role.lambda[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Secrets Manager read access — scoped to all secrets for this scope (wildcard covers all deployments).
+# Uses a wildcard ARN so the role is valid for every deployment without requiring policy updates.
+resource "aws_iam_role_policy" "secrets_manager_scope" {
+  count = var.iam_create_role && var.iam_scope_id != "" ? 1 : 0
 
   name = "secrets-manager-parameters-read"
   role = aws_iam_role.lambda[0].id
@@ -48,10 +77,8 @@ resource "aws_iam_role_policy" "secrets_manager" {
     Statement = [
       {
         Effect = "Allow"
-        Action = [
-          "secretsmanager:GetSecretValue"
-        ]
-        Resource = var.iam_secrets_manager_secret_arn
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = "arn:aws:secretsmanager:*:*:secret:nullplatform/${var.iam_scope_id}/*"
       }
     ]
   })

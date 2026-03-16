@@ -149,3 +149,6 @@ testing/docker/certs/
 
 # Claude Code
 .claude/
+
+# Docs
+docs/

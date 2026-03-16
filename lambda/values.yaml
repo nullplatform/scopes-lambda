@@ -1,78 +1,46 @@
 # AWS Lambda Scope Configuration
 #
-# Required environment variables (set in Helm values):
+# The following values are fetched automatically from the scope-configurations provider:
 #   AWS_REGION               - AWS region for Lambda deployment
-#   TOFU_STATE_BUCKET        - S3 bucket for Terraform state
-#   TOFU_STATE_REGION        - Region for Terraform state bucket
+#   TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state
+#   TOFU_LOCK_TABLE          - DynamoDB table for Terraform state locking
+#   ALB_PUBLIC_LISTENER_ARN  - ALB listener ARN for public (internet-facing) scopes
+#   ALB_PRIVATE_LISTENER_ARN - ALB listener ARN for private (internal) scopes
+#   NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer (if USE_NULL_AGENT=true)
 #
-# Optional environment variables:
-#   DOMAIN                   - Base domain for scope URLs (e.g., nullapps.io)
-#   USE_ACCOUNT_SLUG         - Include account slug in domain (default: true)
-#   USE_NULL_AGENT           - Enable nullplatform agent layer (default: true)
-#   NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer
-#   RESOURCE_TAGS_JSON       - JSON object with resource tags
+# Conditional environment variables (can override scope-configurations values if needed):
+#   SECURITY_GROUP_IDS       - Comma-separated security group IDs (required when vpc_enabled=true)
 
 provider_categories:
-  - cloud-providers
+  - scope-configurations
   - assets-repository
 
 configuration:
-  # Terraform Configuration
+  # ── Terraform ──────────────────────────────────────────────────────────────
   TOFU_PATH: "$SERVICE_PATH/deployment"
 
-  # Domain Configuration
-  DOMAIN: "nullapps.io"
-  USE_ACCOUNT_SLUG: true
+  # ── Domain / DNS ───────────────────────────────────────────────────────────
+  USE_ACCOUNT_SLUG: false
 
-  # Lambda Agent Layer (for observability)
-  USE_NULL_AGENT: true
-  # NULL_AGENT_LAYER_ARN: "arn:aws:lambda:us-east-1:123456789012:layer:nullplatform-agent:1"
-
-  # Default Lambda Settings
-  DEFAULT_RUNTIME: "nodejs20.x"
-  DEFAULT_HANDLER: "index.handler"
-  DEFAULT_MEMORY: 256
-  DEFAULT_TIMEOUT: 30
-  DEFAULT_ARCHITECTURE: "arm64"
-  DEFAULT_EPHEMERAL_STORAGE: 512
-
-  # Concurrency Defaults
-  DEFAULT_RESERVED_CONCURRENCY_TYPE: "unreserved"
-  DEFAULT_PROVISIONED_CONCURRENCY_TYPE: "unprovisioned"
-
-  # Warm Alias (for blue-green + provisioned concurrency)
-  # LAMBDA_WARMUP_ALIAS_NAME: "warmup"
-
-  # Deployment Settings
-  DEPLOYMENT_MAX_WAIT_IN_SECONDS: 600
-  PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS: 600
-  PROVISIONED_CONCURRENCY_POLL_INTERVAL: 5
-
-  # API Gateway Settings (for public visibility)
-  API_GATEWAY_STAGE_NAME: "main"
-  API_GATEWAY_THROTTLING_BURST_LIMIT: 5000
-  API_GATEWAY_THROTTLING_RATE_LIMIT: 10000
-
-  # ALB Settings (for private visibility)
-  # ALB_LISTENER_ARN: ""
-  # ALB_LISTENER_RULE_PRIORITY_START: 100
+  # ── ALB ────────────────────────────────────────────────────────────────────
+  ALB_LISTENER_RULE_PRIORITY_START: 100
   ALB_LISTENER_RULE_CAPACITY: 100
   ALB_LISTENER_RULE_ALERT_THRESHOLD: 80
 
-  # CloudWatch Logs
+  # ── Null Agent ─────────────────────────────────────────────────────────────
+  USE_NULL_AGENT: true
+
+  # ── IAM ────────────────────────────────────────────────────────────────────
+  IAM_PROPAGATION_WAIT_SECONDS: 20
+
+  # ── Parameters ─────────────────────────────────────────────────────────────
+  PARAMETERS_STRATEGY: "secretsmanager"
+
+  # ── Deployment ─────────────────────────────────────────────────────────────
+  DEPLOYMENT_MAX_WAIT_IN_SECONDS: 600
+
+  # ── CloudWatch Logs ────────────────────────────────────────────────────────
   LOG_RETENTION_DAYS: 30
 
-  # IAM Configuration
-  # IAM role can be managed per-scope or per-deployment via NRN configuration
-  # See aws_role_controller documentation for NRN keys:
-  #   AWS_LAMBDA_USE_DEDICATED_ROLE: true/false
-  #   AWS_LAMBDA_DEDICATED_ROLE_NAME_TEMPLATE: "lambda-{scope_slug}-{namespace_slug}"
-  #   AWS_LAMBDA_DEDICATED_ROLE_POLICIES: JSON array of policy definitions
-  #   AWS_LAMBDA_DEDICATED_ROLE_ENTITY: "scope" or "deployment"
-
-  # Parameters Strategy: "env" (Lambda env vars) or "secretsmanager" (AWS Secrets Manager)
-  PARAMETERS_STRATEGY: "env"
-
-  # Placeholder Lambda (created during scope creation)
-  PLACEHOLDER_LAMBDA_RUNTIME: "nodejs20.x"
-  PLACEHOLDER_LAMBDA_HANDLER: "index.handler"
+  # ── Placeholder Image ──────────────────────────────────────────────────────
+  PLACEHOLDER_IMAGE_URI: "688720756067.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"

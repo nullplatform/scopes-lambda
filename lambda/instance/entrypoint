@@ -1,16 +1,3 @@
 #!/bin/bash
 
-WORKFLOW_PATH="$SERVICE_PATH/instance/workflows/list.yaml"
-
-CMD="np service workflow exec --no-output --workflow $WORKFLOW_PATH"
-
-IFS=',' read -ra OVERRIDE_PATHS <<< "$OVERRIDES_PATH"
-for path in "${OVERRIDE_PATHS[@]}"; do
-  path=$(echo "$path" | xargs)
-  OVERRIDE_WORKFLOW_PATH="$path/instance/workflows/list.yaml"
-  if [[ -f "$OVERRIDE_WORKFLOW_PATH" ]]; then
-    CMD="$CMD --overrides $OVERRIDE_WORKFLOW_PATH"
-  fi
-done
-
-eval "$CMD"
+echo '{ "results": [] }'

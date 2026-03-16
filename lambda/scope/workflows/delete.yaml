@@ -1,5 +1,7 @@
 include:
   - "$SERVICE_PATH/values.yaml"
+configuration:
+  TOFU_ACTION: "destroy"
 steps:
   - name: build_context
     type: script
@@ -11,12 +13,66 @@ steps:
         type: environment
       - name: LAMBDA_FUNCTION_NAME
         type: environment
-  - name: delete_lambda
+      - name: OUTPUT_DIR
+        type: environment
+      - name: RESOURCE_TAGS_JSON
+        type: environment
+  - name: build_destroy_context
     type: script
-    file: "$SERVICE_PATH/scope/scripts/delete_lambda"
-  - name: delete_iam_role
+    file: "$SERVICE_PATH/scope/scripts/build_destroy_context"
+    output:
+      - name: TF_WORKING_DIR
+        type: environment
+      - name: TOFU_MODULE_DIR
+        type: environment
+      - name: TOFU_INIT_VARIABLES
+        type: environment
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+      - name: CONTEXT
+        type: environment
+      - name: PACKAGE_TYPE
+        type: environment
+      - name: IMAGE_URI
+        type: environment
+      - name: S3_BUCKET
+        type: environment
+      - name: S3_KEY
+        type: environment
+  - name: setup_provider
     type: script
-    file: "$SERVICE_PATH/scope/scripts/delete_iam_role"
-  - name: cleanup_nrn
+    file: "$SERVICE_PATH/deployment/provider/aws/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: TOFU_INIT_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+  - name: setup_iam
     type: script
-    file: "$SERVICE_PATH/scope/scripts/cleanup_nrn"
+    file: "$SERVICE_PATH/deployment/iam/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+  - name: setup_compute
+    type: script
+    file: "$SERVICE_PATH/deployment/compute/lambda/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+  - name: compose_modules
+    type: script
+    file: "$SERVICE_PATH/deployment/compose_modules"
+  - name: tofu
+    type: script
+    file: "$SERVICE_PATH/deployment/do_tofu"
+  - name: delete_sm_secrets
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/delete_sm_secret"

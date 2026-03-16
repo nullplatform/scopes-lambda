@@ -14,31 +14,12 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
    exit 1
 fi
 
-if [ -z "$SCOPE_NRN" ] || [ "$SCOPE_NRN" = "null" ]; then
-   echo "❌ Failed to extract scope NRN from CONTEXT" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - CONTEXT variable is missing scope.nrn field" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Verify the scope has a valid NRN assigned" >&2
-   exit 1
-fi
+source "$SERVICE_PATH/utils/lambda_function_name"
 
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-LAMBDA_FUNCTION_NAME=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_NAME // ""')
-LAMBDA_FUNCTION_ARN=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_ARN // ""')
-LAMBDA_ROLE_ARN=$(echo "$nrn_output" | jq -r '.LAMBDA_ROLE_ARN // ""')
-SCOPE_DOMAIN=$(echo "$nrn_output" | jq -r '.SCOPE_DOMAIN // ""')
-
-if [ -z "$LAMBDA_FUNCTION_NAME" ]; then
-   echo "❌ Failed to read LAMBDA_FUNCTION_NAME from NRN" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - NRN namespace 'aws' does not contain LAMBDA_FUNCTION_NAME" >&2
-   echo "   - The scope has not been fully provisioned yet" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Verify the scope was created successfully" >&2
-   echo "   - Check that the Lambda function was provisioned via Terraform" >&2
-   exit 1
-fi
+lambda_info=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --output json 2>/dev/null || echo "{}")
+LAMBDA_FUNCTION_ARN=$(echo "$lambda_info" | jq -r '.Configuration.FunctionArn // ""')
+LAMBDA_ROLE_ARN=$(echo "$lambda_info" | jq -r '.Configuration.Role // ""')
+SCOPE_DOMAIN=""
 
 export SCOPE_ID
 export SCOPE_NRN

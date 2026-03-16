@@ -39,18 +39,10 @@ if ! [[ "$value" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# Read current provisioned concurrency and alias from NRN
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-current_value=$(echo "$nrn_output" | jq -r '.LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE // "not set"')
-alias=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_MAIN_ALIAS // "main"')
-
-if [ -z "$alias" ] || [ "$alias" = "null" ]; then
-  alias="main"
-fi
+alias="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
 echo "   📋 function_name=$LAMBDA_FUNCTION_NAME"
 echo "   📋 alias=$alias"
-echo "   📋 current_provisioned_concurrency=$current_value"
 echo "   📋 new_provisioned_concurrency=$value"
 echo ""
 
@@ -76,10 +68,6 @@ if [ "$value" -eq 0 ]; then
     echo "   - AWS error: $aws_output" >&2
     exit 1
   fi
-
-  # Update NRN metadata
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE --value "0"
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE --value "unprovisioned"
 
   echo ""
   echo "✅ Provisioned concurrency configuration removed successfully"
@@ -109,10 +97,6 @@ else
     echo "   - AWS error: $aws_output" >&2
     exit 1
   fi
-
-  # Update NRN metadata
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE --value "$value"
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE --value "provisioned"
 
   echo ""
   echo "✅ Provisioned concurrency set to $value on alias '$alias' successfully"

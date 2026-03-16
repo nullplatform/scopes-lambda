@@ -1,66 +1,65 @@
 #!/bin/bash
 
-echo "🔍 Validating Lambda compute configuration..."
+source "$SERVICE_PATH/utils/log"
+
+log info "🔍 Validating Lambda compute configuration..."
 
 # Extract values from CONTEXT
 lambda_function_name=$(echo "$CONTEXT" | jq -r '.lambda.function_name // empty')
 lambda_role_arn=$(echo "$CONTEXT" | jq -r '.lambda.role_arn // empty')
 
-# Get asset information
-asset_url=$(echo "$CONTEXT" | jq -r '.asset.url // empty')
+# PACKAGE_TYPE, IMAGE_URI, S3_BUCKET, and S3_KEY are parsed by build_context and exported.
+# Use them directly to avoid re-parsing the asset URL.
+package_type="${PACKAGE_TYPE:-Zip}"
+lambda_image_uri="${IMAGE_URI:-}"
+lambda_s3_bucket="${S3_BUCKET:-}"
+lambda_s3_key="${S3_KEY:-}"
 
-if [ -z "$asset_url" ] || [ "$asset_url" = "null" ]; then
-  echo ""
-  echo "   ❌ Asset URL not found in context"
-  echo ""
-  echo "  💡 Possible causes:"
-  echo "    • The deployment does not have an associated asset"
-  echo "    • The asset was not built or uploaded correctly"
-  echo ""
-  echo "  🔧 How to fix:"
-  echo "    • Ensure the application has a valid build that produces a Lambda deployment package"
-  echo ""
-  exit 1
-fi
-
-echo "   ✅ asset_url=$asset_url"
-
-# Parse S3 URL to extract bucket and key
-# Supports both s3:// and https:// formats
-if [[ "$asset_url" == s3://* ]]; then
-  # s3://bucket-name/path/to/file.zip
-  lambda_s3_bucket=$(echo "$asset_url" | sed 's|s3://||' | cut -d'/' -f1)
-  lambda_s3_key=$(echo "$asset_url" | sed 's|s3://[^/]*/||')
-elif [[ "$asset_url" == https://*.s3.*.amazonaws.com/* ]]; then
-  # https://bucket-name.s3.region.amazonaws.com/path/to/file.zip
-  lambda_s3_bucket=$(echo "$asset_url" | sed 's|https://||' | cut -d'.' -f1)
-  lambda_s3_key=$(echo "$asset_url" | sed 's|https://[^/]*/||')
+if [ "$package_type" = "Image" ]; then
+  if [ -z "$lambda_image_uri" ] || [ "$lambda_image_uri" = "null" ]; then
+    echo ""
+    echo "   ❌ Image URI not found (ASSET_TYPE=docker-image but IMAGE_URI is empty)" >&2
+    echo "" >&2
+    echo "  💡 Possible causes:" >&2
+    echo "    • The build did not produce a container image URL" >&2
+    echo "    • The asset object is missing the url field" >&2
+    echo "" >&2
+    echo "  🔧 How to fix:" >&2
+    echo "    • Verify the build pipeline pushes the image to ECR and sets asset.url" >&2
+    echo "    • Expected format: {account}.dkr.ecr.{region}.amazonaws.com/{repo}:{tag}" >&2
+    echo "" >&2
+    return 1
+  fi
+  log debug "   ✅ package_type=Image"
+  log debug "   ✅ image_uri=$lambda_image_uri"
 else
-  echo ""
-  echo "   ❌ Unsupported asset URL format: $asset_url"
-  echo ""
-  echo "  🔧 How to fix:"
-  echo "    • Asset URL must be in S3 format (s3://bucket/key or https://bucket.s3.region.amazonaws.com/key)"
-  echo ""
-  exit 1
+  if [ -z "$lambda_s3_bucket" ] || [ -z "$lambda_s3_key" ]; then
+    echo ""
+    echo "   ❌ Asset not found (S3_BUCKET or S3_KEY is empty)" >&2
+    echo "" >&2
+    echo "  💡 Possible causes:" >&2
+    echo "    • The deployment does not have an associated asset" >&2
+    echo "    • The asset was not built or uploaded correctly" >&2
+    echo "" >&2
+    echo "  🔧 How to fix:" >&2
+    echo "    • Ensure the application has a valid build that produces a Lambda deployment package" >&2
+    echo "" >&2
+    return 1
+  fi
+  log debug "   ✅ package_type=Zip"
+  log debug "   ✅ s3_bucket=$lambda_s3_bucket"
+  log debug "   ✅ s3_key=$lambda_s3_key"
 fi
-
-echo "   ✅ s3_bucket=$lambda_s3_bucket"
-echo "   ✅ s3_key=$lambda_s3_key"
 
 # Extract capabilities from scope
-runtime=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs20.x"')
-handler=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler"')
 memory=$(echo "$CONTEXT" | jq -r '.scope.capabilities.memory // 256')
 timeout=$(echo "$CONTEXT" | jq -r '.scope.capabilities.timeout // 30')
 ephemeral_storage=$(echo "$CONTEXT" | jq -r '.scope.capabilities.ephemeral_storage // 512')
 architecture=$(echo "$CONTEXT" | jq -r '.scope.capabilities.architecture // "arm64"')
 
-echo "   ✅ runtime=$runtime"
-echo "   ✅ handler=$handler"
-echo "   ✅ memory=${memory}MB"
-echo "   ✅ timeout=${timeout}s"
-echo "   ✅ architecture=$architecture"
+log debug "   ✅ memory=${memory}MB"
+log debug "   ✅ timeout=${timeout}s"
+log debug "   ✅ architecture=$architecture"
 
 # Reserved concurrency
 reserved_type=$(echo "$CONTEXT" | jq -r '.scope.capabilities.reserved_concurrency.type // "unreserved"')
@@ -71,11 +70,11 @@ provisioned_type=$(echo "$CONTEXT" | jq -r '.scope.capabilities.provisioned_conc
 provisioned_value=$(echo "$CONTEXT" | jq -r '.scope.capabilities.provisioned_concurrency.value // 0')
 warmup_alias=$(echo "$CONTEXT" | jq -r '.scope.capabilities.provisioned_concurrency.warmup_alias // ""')
 
-echo "   ✅ reserved_concurrency=$reserved_type ($reserved_value)"
-echo "   ✅ provisioned_concurrency=$provisioned_type ($provisioned_value)"
+log debug "   ✅ reserved_concurrency=$reserved_type ($reserved_value)"
+log debug "   ✅ provisioned_concurrency=$provisioned_type ($provisioned_value)"
 
 if [ -n "$warmup_alias" ] && [ "$warmup_alias" != "null" ] && [ "$warmup_alias" != "" ]; then
-  echo "   ✅ warmup_alias=$warmup_alias"
+  log debug "   ✅ warmup_alias=$warmup_alias"
 fi
 
 # VPC configuration
@@ -83,23 +82,24 @@ vpc_enabled=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false'
 vpc_config="null"
 
 if [ "$vpc_enabled" = "true" ]; then
-  subnet_ids=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].networking.subnet_ids // empty')
-  security_group_ids=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].networking.security_group_ids // empty')
+  subnet_ids=$(echo "$TOFU_VARIABLES" | jq -c '.subnet_ids // []')
+  security_group_ids=$(echo "$TOFU_VARIABLES" | jq -c '.security_group_ids // []')
 
-  if [ -n "$subnet_ids" ] && [ -n "$security_group_ids" ]; then
+  if [ "$(echo "$subnet_ids" | jq 'length')" -gt 0 ] && [ "$(echo "$security_group_ids" | jq 'length')" -gt 0 ]; then
     vpc_config=$(jq -n \
       --argjson subnet_ids "$subnet_ids" \
       --argjson security_group_ids "$security_group_ids" \
       '{subnet_ids: $subnet_ids, security_group_ids: $security_group_ids}')
-    echo "   ✅ vpc_enabled=true"
+    log debug "   ✅ vpc_enabled=true"
   else
     echo ""
-    echo "   ❌ VPC enabled but subnet_ids or security_group_ids not configured"
-    echo ""
-    echo "  🔧 How to fix:"
-    echo "    • Configure networking.subnet_ids and networking.security_group_ids in the cloud-provider"
-    echo ""
-    exit 1
+    echo "   ❌ VPC enabled but subnet_ids or security_group_ids not configured" >&2
+    echo "" >&2
+    echo "  🔧 How to fix:" >&2
+    echo "    • Set networking.aws_subnet_ids (comma-separated) in the scope-configurations provider" >&2
+    echo "    • Set SECURITY_GROUP_IDS (comma-separated) in the scope values configuration" >&2
+    echo "" >&2
+    return 1
   fi
 fi
 
@@ -109,7 +109,7 @@ custom_layers=$(echo "$CONTEXT" | jq -c '.scope.capabilities.layers // []')
 # Add nullplatform agent layer if enabled
 if [ "${USE_NULL_AGENT:-true}" = "true" ] && [ -n "${NULL_AGENT_LAYER_ARN:-}" ]; then
   custom_layers=$(echo "$custom_layers" | jq --arg layer "$NULL_AGENT_LAYER_ARN" '. + [$layer]')
-  echo "   ✅ nullplatform_agent_layer=$NULL_AGENT_LAYER_ARN"
+  log debug "   ✅ nullplatform_agent_layer=$NULL_AGENT_LAYER_ARN"
 fi
 
 # Build environment variables from parameters
@@ -122,9 +122,17 @@ env_vars=$(echo "$CONTEXT" | jq -c '
 
 # Add deployment metadata to environment
 deployment_id=$(echo "$CONTEXT" | jq -r '.deployment.id')
+scope_id=$(echo "$CONTEXT" | jq -r '.scope.id')
 env_vars=$(echo "$env_vars" | jq \
   --arg deployment_id "$deployment_id" \
-  '. + {NP_DEPLOYMENT_ID: $deployment_id}')
+  --arg scope_id "$scope_id" \
+  '. + {NP_DEPLOYMENT_ID: $deployment_id, NP_SCOPE_ID: $scope_id}')
+
+if [ -n "${SECRETS_MANAGER_SECRET_NAME:-}" ]; then
+  env_vars=$(echo "$env_vars" | jq \
+    --arg secret_name "$SECRETS_MANAGER_SECRET_NAME" \
+    '. + {NP_PARAMETERS_NAME: $secret_name}')
+fi
 
 # Add agent wrapper if using nullplatform layer
 if [ "${USE_NULL_AGENT:-true}" = "true" ] && [ -n "${NULL_AGENT_LAYER_ARN:-}" ]; then
@@ -132,7 +140,7 @@ if [ "${USE_NULL_AGENT:-true}" = "true" ] && [ -n "${NULL_AGENT_LAYER_ARN:-}" ];
 fi
 
 echo ""
-echo "   📡 Building Lambda configuration..."
+log info "   📡 Building Lambda configuration..."
 
 # Main alias name
 main_alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
@@ -140,27 +148,26 @@ main_alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 # Validate function name
 if [ -z "$lambda_function_name" ] || [ "$lambda_function_name" = "null" ]; then
   echo ""
-  echo "   ❌ Lambda function name not found in context"
-  echo ""
-  echo "  💡 Possible causes:"
-  echo "    • Scope was not created properly"
-  echo "    • Lambda placeholder was not created during scope creation"
-  echo ""
-  exit 1
+  echo "   ❌ Lambda function name not found in context" >&2
+  echo "" >&2
+  echo "  💡 Possible causes:" >&2
+  echo "    • Scope was not created properly" >&2
+  echo "    • Lambda placeholder was not created during scope creation" >&2
+  echo "" >&2
+  return 1
 fi
 
-echo "   ✅ function_name=$lambda_function_name"
+log debug "   ✅ function_name=$lambda_function_name"
 
 # Build TOFU_VARIABLES
 TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --arg function_name "$lambda_function_name" \
-  --arg runtime "$runtime" \
-  --arg handler "$handler" \
   --argjson memory "$memory" \
   --argjson timeout "$timeout" \
   --argjson ephemeral_storage "$ephemeral_storage" \
   --arg architecture "$architecture" \
-  --arg role_arn "$lambda_role_arn" \
+  --arg package_type "$package_type" \
+  --arg image_uri "$lambda_image_uri" \
   --arg s3_bucket "$lambda_s3_bucket" \
   --arg s3_key "$lambda_s3_key" \
   --argjson environment_variables "$env_vars" \
@@ -172,15 +179,15 @@ TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --argjson provisioned_value "$provisioned_value" \
   --arg main_alias_name "$main_alias_name" \
   --arg warmup_alias_name "$warmup_alias" \
+  --arg lambda_description "$deployment_id" \
   '. + {
     lambda_function_name: $function_name,
-    lambda_runtime: $runtime,
-    lambda_handler: $handler,
     lambda_memory_size: $memory,
     lambda_timeout: $timeout,
     lambda_ephemeral_storage: $ephemeral_storage,
     lambda_architecture: $architecture,
-    lambda_role_arn: $role_arn,
+    lambda_package_type: $package_type,
+    lambda_image_uri: $image_uri,
     lambda_s3_bucket: $s3_bucket,
     lambda_s3_key: $s3_key,
     lambda_environment_variables: $environment_variables,
@@ -191,11 +198,12 @@ TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
     lambda_provisioned_concurrency_type: $provisioned_type,
     lambda_provisioned_concurrency_value: $provisioned_value,
     lambda_main_alias_name: $main_alias_name,
-    lambda_warmup_alias_name: $warmup_alias_name
+    lambda_warmup_alias_name: $warmup_alias_name,
+    lambda_description: $lambda_description
   }')
 
 echo ""
-echo "✨ Lambda compute configured successfully"
+log info "✨ Lambda compute configured successfully"
 echo ""
 
 # Add module to composition list
