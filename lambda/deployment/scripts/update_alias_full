@@ -2,7 +2,9 @@
 # Update Lambda alias to point to a single version (100% traffic)
 # Used during finalization to complete a deployment
 
-echo "📝 Finalizing traffic to new version..."
+source "$SERVICE_PATH/utils/log"
+
+log info "📝 Finalizing traffic to new version..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
@@ -12,29 +14,29 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  exit 1
+  return 1
 fi
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
-new_version="${LAMBDA_NEW_VERSION:-$LAMBDA_CURRENT_VERSION}"
+new_version="${LAMBDA_GREEN_VERSION:-${LAMBDA_NEW_VERSION:-$LAMBDA_CURRENT_VERSION}}"
 
 if [ -z "$new_version" ]; then
-  echo "❌ No version specified - both LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are empty" >&2
+  echo "❌ No green version found - LAMBDA_GREEN_VERSION, LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are all empty" >&2
   echo "💡 Possible causes:" >&2
   echo "   - Deployment did not publish a new Lambda version" >&2
-  echo "   - NRN metadata is missing version information" >&2
+  echo "   - NRN metadata is missing version information for deployment $DEPLOYMENT_ID" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the build step publishes a new Lambda version" >&2
-  echo "   - Check that LAMBDA_NEW_VERSION or LAMBDA_CURRENT_VERSION is set" >&2
-  exit 1
+  echo "   - Check that LAMBDA_GREEN_VERSION is set and NRN has the deployment version" >&2
+  return 1
 fi
 
-echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
-echo "   ✅ alias=$alias_name"
-echo "   ✅ new_version=$new_version"
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ alias=$alias_name"
+log debug "   ✅ new_version=$new_version"
 
 echo ""
-echo "   📝 Updating alias $alias_name to point to version $new_version on function $LAMBDA_FUNCTION_NAME..."
+log info "   📝 Updating alias $alias_name to point to version $new_version on function $LAMBDA_FUNCTION_NAME..."
 
 update_output=$(aws lambda update-alias \
   --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -53,9 +55,9 @@ if [ $update_exit_code -ne 0 ]; then
   echo "   - Check if the version exists: aws lambda get-function --function-name $LAMBDA_FUNCTION_NAME --qualifier $new_version" >&2
   echo "   - Verify alias exists: aws lambda get-alias --function-name $LAMBDA_FUNCTION_NAME --name $alias_name" >&2
   echo "   📋 Error: $update_output" >&2
-  exit 1
+  return 1
 fi
 
-echo "   ✅ Alias $alias_name updated successfully to version $new_version"
+log debug "   ✅ Alias $alias_name updated successfully to version $new_version"
 echo ""
-echo "✨ Traffic finalized to version $new_version on function=$LAMBDA_FUNCTION_NAME alias=$alias_name"
+log info "✨ Traffic finalized to version $new_version on function=$LAMBDA_FUNCTION_NAME alias=$alias_name"

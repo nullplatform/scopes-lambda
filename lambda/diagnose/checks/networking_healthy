@@ -15,7 +15,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
 fi
 
 # Get visibility from context
-visibility=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
+visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
 if [ "$visibility" = "public" ]; then
    # Check API Gateway

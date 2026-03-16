@@ -1,6 +1,8 @@
 #!/bin/bash
 
-echo "🔍 Validating AWS provider configuration..."
+source "$SERVICE_PATH/utils/log"
+
+log info "🔍 Validating AWS provider configuration..."
 
 missing_vars=()
 
@@ -12,7 +14,7 @@ function validate_env_var() {
     echo "   ❌ $variable_name is missing"
     missing_vars+=("$variable_name")
   else
-    echo "   ✅ $variable_name=$variable_value"
+    log debug "   ✅ $variable_name=$variable_value"
   fi
 }
 
@@ -28,10 +30,10 @@ if [ ${#missing_vars[@]} -gt 0 ]; then
     echo "      • $var"
   done
   echo ""
-  exit 1
+  return 1
 fi
 
-echo "✨ AWS provider configured successfully"
+log info "✨ AWS provider configured successfully"
 echo ""
 
 RESOURCE_TAGS_JSON=${RESOURCE_TAGS_JSON:-"{}"}

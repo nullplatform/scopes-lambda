@@ -1,5 +1,7 @@
 include:
   - "$SERVICE_PATH/values.yaml"
+configuration:
+  TOFU_ACTION: "apply"
 steps:
   - name: build_context
     type: script
@@ -23,36 +25,101 @@ steps:
         type: environment
       - name: PACKAGE_TYPE
         type: environment
-      - name: RUNTIME
-        type: environment
-      - name: HANDLER
-        type: environment
       - name: ARCHITECTURE
         type: environment
       - name: OUTPUT_DIR
         type: environment
       - name: RESOURCE_TAGS_JSON
         type: environment
-  - name: create_iam_role
+  - name: resolve_placeholder_image
     type: script
-    file: "$SERVICE_PATH/scope/scripts/create_iam_role"
+    file: "$SERVICE_PATH/scope/scripts/resolve_placeholder_image"
     output:
-      - name: LAMBDA_ROLE_ARN
+      - name: IMAGE_URI
         type: environment
-      - name: LAMBDA_ROLE_NAME
-        type: environment
-  - name: create_placeholder_lambda
+  - name: build_deployment_context
     type: script
-    file: "$SERVICE_PATH/scope/scripts/create_placeholder_lambda"
+    file: "$SERVICE_PATH/deployment/build_context"
+    output:
+      - name: SCOPE_ID
+        type: environment
+      - name: DEPLOYMENT_ID
+        type: environment
+      - name: SCOPE_NRN
+        type: environment
+      - name: LAMBDA_FUNCTION_NAME
+        type: environment
+      - name: LAMBDA_FUNCTION_ARN
+        type: environment
+      - name: LAMBDA_CURRENT_VERSION
+        type: environment
+      - name: LAMBDA_GREEN_VERSION
+        type: environment
+      - name: LAMBDA_BLUE_VERSION
+        type: environment
+      - name: VISIBILITY
+        type: environment
+      - name: OUTPUT_DIR
+        type: environment
+      - name: TF_WORKING_DIR
+        type: environment
+      - name: TOFU_MODULE_DIR
+        type: environment
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: TOFU_INIT_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+      - name: CONTEXT
+        type: environment
+      - name: RESOURCE_TAGS_JSON
+        type: environment
+      - name: IMAGE_URI
+        type: environment
+      - name: PACKAGE_TYPE
+        type: environment
+  - name: setup_provider
+    type: script
+    file: "$SERVICE_PATH/deployment/provider/aws/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: TOFU_INIT_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+  - name: setup_iam
+    type: script
+    file: "$SERVICE_PATH/deployment/iam/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+      - name: CONTEXT
+        type: environment
+  - name: setup_compute
+    type: script
+    file: "$SERVICE_PATH/deployment/compute/lambda/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+  - name: compose_modules
+    type: script
+    file: "$SERVICE_PATH/deployment/compose_modules"
+  - name: tofu
+    type: script
+    file: "$SERVICE_PATH/deployment/do_tofu"
     output:
       - name: LAMBDA_FUNCTION_ARN
         type: environment
-  - name: generate_domain
-    type: script
-    file: "$SERVICE_PATH/scope/scripts/generate_domain"
-    output:
-      - name: SCOPE_DOMAIN
+      - name: LAMBDA_CURRENT_VERSION
         type: environment
-  - name: store_scope_metadata
+      - name: ALB_RULE_ARN
+        type: environment
+  - name: store_metadata
     type: script
-    file: "$SERVICE_PATH/scope/scripts/store_scope_metadata"
+    file: "$SERVICE_PATH/deployment/scripts/store_nrn_metadata"

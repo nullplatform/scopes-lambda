@@ -15,6 +15,12 @@ steps:
         type: environment
       - name: LAMBDA_FUNCTION_NAME
         type: environment
+      - name: LAMBDA_CURRENT_VERSION
+        type: environment
+      - name: LAMBDA_GREEN_VERSION
+        type: environment
+      - name: LAMBDA_BLUE_VERSION
+        type: environment
       - name: VISIBILITY
         type: environment
       - name: OUTPUT_DIR
@@ -32,6 +38,8 @@ steps:
       - name: CONTEXT
         type: environment
       - name: RESOURCE_TAGS_JSON
+        type: environment
+      - name: SECRETS_MANAGER_SECRET_NAME
         type: environment
   - name: sync_parameters_to_secrets_manager
     type: script
@@ -64,33 +72,6 @@ steps:
         type: environment
       - name: MODULES_TO_USE
         type: environment
-  - name: setup_networking
-    type: workflow
-    steps:
-      - name: setup_api_gateway
-        type: script
-        file: "$SERVICE_PATH/deployment/networking/api_gateway/setup"
-        output:
-          - name: TOFU_VARIABLES
-            type: environment
-          - name: MODULES_TO_USE
-            type: environment
-      - name: setup_alb
-        type: script
-        file: "$SERVICE_PATH/deployment/networking/alb/setup"
-        output:
-          - name: TOFU_VARIABLES
-            type: environment
-          - name: MODULES_TO_USE
-            type: environment
-  - name: setup_dns
-    type: script
-    file: "$SERVICE_PATH/deployment/dns/route53/setup"
-    output:
-      - name: TOFU_VARIABLES
-        type: environment
-      - name: MODULES_TO_USE
-        type: environment
   - name: compose_modules
     type: script
     file: "$SERVICE_PATH/deployment/compose_modules"
@@ -101,6 +82,8 @@ steps:
       - name: LAMBDA_FUNCTION_ARN
         type: environment
       - name: LAMBDA_CURRENT_VERSION
+        type: environment
+      - name: ALB_RULE_ARN
         type: environment
   - name: wait_provisioned_concurrency
     type: script

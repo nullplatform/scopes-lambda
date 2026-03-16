@@ -1,0 +1,35 @@
+#!/bin/bash
+# Derives Lambda resource names from CONTEXT or AWS.
+# Usage: source "$SERVICE_PATH/utils/lambda_function_name"
+# Requires: SCOPE_ID set
+# Exports:  LAMBDA_FUNCTION_NAME, LAMBDA_LOG_GROUP_NAME
+
+_application_slug=$(echo "$CONTEXT" | jq -r '.application.slug // ""')
+_scope_slug=$(echo "$CONTEXT" | jq -r '.scope.slug // ""')
+
+if [ -n "$_application_slug" ] && [ -n "$_scope_slug" ]; then
+  # Lifecycle contexts (create/update/delete) include full application info.
+  LAMBDA_FUNCTION_NAME="${SCOPE_ID}-${_application_slug}-${_scope_slug}"
+  LAMBDA_FUNCTION_NAME="${LAMBDA_FUNCTION_NAME:0:64}"
+else
+  # Action contexts (log/metric/instance/diagnose) may omit application info.
+  # Look up the function by the scope-id tag set by Terraform.
+  _lambda_arn=$(aws resourcegroupstaggingapi get-resources \
+    --tag-filters "Key=nullplatform:scope-id,Values=${SCOPE_ID}" \
+    --resource-type-filters lambda:function \
+    --query "ResourceTagMappingList[0].ResourceARN" \
+    --output text 2>/dev/null || echo "")
+
+  if [ -n "$_lambda_arn" ] && [ "$_lambda_arn" != "None" ]; then
+    LAMBDA_FUNCTION_NAME="${_lambda_arn##*:function:}"
+  fi
+fi
+
+# Log group name follows the AWS Lambda convention, matching the Terraform
+# resource in deployment/compute/lambda/modules/locals.tf
+LAMBDA_LOG_GROUP_NAME="/aws/lambda/${LAMBDA_FUNCTION_NAME}"
+
+export LAMBDA_FUNCTION_NAME
+export LAMBDA_LOG_GROUP_NAME
+
+unset _application_slug _scope_slug _lambda_arn

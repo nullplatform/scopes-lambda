@@ -15,7 +15,7 @@ if [ -z "${CONTEXT:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Ensure the scope event includes a valid CONTEXT JSON" >&2
   echo "   • Verify the agent trigger is passing CONTEXT correctly" >&2
-  exit 1
+  return 1
 fi
 
 #Extract scope information from context
@@ -32,7 +32,7 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Inspect the CONTEXT payload: echo \"\$CONTEXT\" | jq '.scope'" >&2
   echo "   • Ensure the scope was created correctly in nullplatform" >&2
-  exit 1
+  return 1
 fi
 
 echo "   ✅ scope_id=$SCOPE_ID"
@@ -47,27 +47,23 @@ echo "   ✅ application=$APPLICATION_SLUG"
 echo "   ✅ scope=$SCOPE_SLUG"
 
 #Generate Lambda function name (max 64 chars)
-LAMBDA_FUNCTION_NAME="${NAMESPACE_SLUG}-${APPLICATION_SLUG}-${SCOPE_SLUG}-${SCOPE_ID}"
+LAMBDA_FUNCTION_NAME="${SCOPE_ID}-${APPLICATION_SLUG}-${SCOPE_SLUG}"
 LAMBDA_FUNCTION_NAME="${LAMBDA_FUNCTION_NAME:0:64}"
 echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
 
 #Visibility
-VISIBILITY=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
+# The service spec has two fields: http_enabled (boolean) and visibility (public/private).
+# Downstream scripts expect VISIBILITY to be "public", "private", or "event-driven".
+# Note: jq's // operator returns the fallback for both null AND false, so we use
+# an explicit comparison to correctly handle http_enabled=false.
+if echo "$CONTEXT" | jq -e '.scope.capabilities.http_enabled == false' > /dev/null 2>&1; then
+  VISIBILITY="event-driven"
+else
+  VISIBILITY=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
+fi
 echo "   ✅ visibility=$VISIBILITY"
 
-#Lambda capabilities (runtime, handler, architecture)
-RUNTIME=$(get_config_value \
-  --provider '.scope.capabilities.runtime' \
-  --env LAMBDA_RUNTIME \
-  --default "nodejs20.x"
-)
-
-HANDLER=$(get_config_value \
-  --provider '.scope.capabilities.handler' \
-  --env LAMBDA_HANDLER \
-  --default "index.handler"
-)
-
+#Lambda capabilities (architecture)
 ARCHITECTURE=$(get_config_value \
   --provider '.scope.capabilities.architecture' \
   --env LAMBDA_ARCHITECTURE \
@@ -80,8 +76,6 @@ ARCHITECTURE=$(get_config_value \
 PACKAGE_TYPE=$(echo "$CONTEXT" | jq -r '.scope.capabilities.package_type // "Zip"')
 
 echo "   ✅ package_type=$PACKAGE_TYPE"
-echo "   ✅ runtime=$RUNTIME"
-echo "   ✅ handler=$HANDLER"
 echo "   ✅ architecture=$ARCHITECTURE"
 
 #ALB listener rule capacity validation (private scopes use internal ALB)
@@ -112,7 +106,7 @@ if [ "$VISIBILITY" = "private" ]; then
     echo "   • Increase ALB_LISTENER_RULE_CAPACITY if the ALB supports more rules" >&2
     echo "   • Remove unused scopes to free up listener rule slots" >&2
     echo "   • Provision an additional internal ALB for this account" >&2
-    exit 1
+    return 1
   fi
 
   export ALB_LISTENER_RULE_CAPACITY
@@ -134,7 +128,7 @@ if ! mkdir -p "$OUTPUT_DIR"; then
   echo "🔧 How to fix:" >&2
   echo "   • Check permissions on the parent directory" >&2
   echo "   • Verify available disk space with: df -h" >&2
-  exit 1
+  return 1
 fi
 
 echo "   ✅ output_dir=$OUTPUT_DIR"
@@ -162,12 +156,10 @@ export ACCOUNT_SLUG
 export LAMBDA_FUNCTION_NAME
 export VISIBILITY
 export PACKAGE_TYPE
-export RUNTIME
-export HANDLER
 export ARCHITECTURE
 export OUTPUT_DIR
 export RESOURCE_TAGS_JSON
 
 echo ""
-echo "📋 Function: $LAMBDA_FUNCTION_NAME | Visibility: $VISIBILITY | Runtime: $RUNTIME"
+echo "📋 Function: $LAMBDA_FUNCTION_NAME | Visibility: $VISIBILITY"
 echo "✨ Scope context built successfully"

@@ -2,8 +2,10 @@
 
 # Source utility functions
 source "$SERVICE_PATH/utils/get_config_value"
+source "$SERVICE_PATH/utils/log"
+source "$SERVICE_PATH/utils/fetch_scope_configuration"
 
-echo "🔍 Building deployment context..."
+log info "🔍 Building deployment context..."
 
 # Extract scope information from context
 SCOPE_ID=$(echo "$CONTEXT" | jq -r '.scope.id')
@@ -17,20 +19,15 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
   echo "   - The scope object is missing from the context payload" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Verify the CONTEXT environment variable contains valid JSON with .scope.id" >&2
-  exit 1
+  return 1
 fi
 
 if [ -z "$DEPLOYMENT_ID" ] || [ "$DEPLOYMENT_ID" = "null" ]; then
-  echo "❌ Failed to extract deployment ID from context" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - CONTEXT variable is missing the deployment object" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Verify the CONTEXT environment variable contains valid JSON with .deployment.id" >&2
-  exit 1
+  DEPLOYMENT_ID=""
 fi
 
-echo "   ✅ scope_id=$SCOPE_ID"
-echo "   ✅ deployment_id=$DEPLOYMENT_ID"
+log debug "   ✅ scope_id=$SCOPE_ID"
+log debug "   ✅ deployment_id=$DEPLOYMENT_ID"
 
 # Extract slugs for naming
 NAMESPACE_SLUG=$(echo "$CONTEXT" | jq -r '.namespace.slug')
@@ -38,101 +35,104 @@ APPLICATION_SLUG=$(echo "$CONTEXT" | jq -r '.application.slug')
 SCOPE_SLUG=$(echo "$CONTEXT" | jq -r '.scope.slug')
 ACCOUNT_SLUG=$(echo "$CONTEXT" | jq -r '.account.slug')
 
-echo "   ✅ namespace=$NAMESPACE_SLUG"
-echo "   ✅ application=$APPLICATION_SLUG"
-echo "   ✅ scope=$SCOPE_SLUG"
+log debug "   ✅ namespace=$NAMESPACE_SLUG"
+log debug "   ✅ application=$APPLICATION_SLUG"
+log debug "   ✅ scope=$SCOPE_SLUG"
 
 # Generate Lambda function name (max 64 chars)
-# Format: {namespace}-{application}-{scope}-{scope_id}
-LAMBDA_FUNCTION_NAME="${NAMESPACE_SLUG}-${APPLICATION_SLUG}-${SCOPE_SLUG}-${SCOPE_ID}"
+# Format: {scope_id}-{application}-{scope}
+LAMBDA_FUNCTION_NAME="${SCOPE_ID}-${APPLICATION_SLUG}-${SCOPE_SLUG}"
 LAMBDA_FUNCTION_NAME="${LAMBDA_FUNCTION_NAME:0:64}"
-echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
 
 # Get deployment strategy
 DEPLOYMENT_STRATEGY=$(echo "$CONTEXT" | jq -r '.deployment.strategy // "initial"')
 DESIRED_TRAFFIC=$(echo "$CONTEXT" | jq -r '.deployment.strategy_data.desired_switched_traffic // 100')
 
 echo ""
-echo "📋 Scope: $SCOPE_ID | Deployment: $DEPLOYMENT_ID | Strategy: $DEPLOYMENT_STRATEGY"
+log info "📋 Scope: $SCOPE_ID | Deployment: $DEPLOYMENT_ID | Strategy: $DEPLOYMENT_STRATEGY"
 
-# Read existing Lambda metadata from NRN (if exists)
-echo ""
-echo "   📡 Reading Lambda metadata from NRN..."
+# Preserve function ARN that may already be set by upstream steps (e.g. scope create)
+_env_function_arn="${LAMBDA_FUNCTION_ARN:-}"
 
 LAMBDA_FUNCTION_ARN=""
-LAMBDA_ROLE_ARN=""
 LAMBDA_CURRENT_VERSION=""
+LAMBDA_GREEN_VERSION=""
+LAMBDA_BLUE_VERSION=""
 LAMBDA_MAIN_ALIAS_NAME="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
+# Determine deployment IDs before version lookup
+BLUE_DEPLOYMENT_ID=$(echo "$CONTEXT" | jq -r '.scope.current_active_deployment // ""')
 
-if [ "$nrn_output" != "{}" ]; then
-  LAMBDA_FUNCTION_ARN=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_ARN // ""')
-  LAMBDA_ROLE_ARN=$(echo "$nrn_output" | jq -r '.LAMBDA_ROLE_ARN // ""')
-  LAMBDA_CURRENT_VERSION=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_CURRENT_VERSION // ""')
-  stored_alias=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_MAIN_ALIAS // ""')
-  if [ -n "$stored_alias" ] && [ "$stored_alias" != "null" ]; then
-    LAMBDA_MAIN_ALIAS_NAME="$stored_alias"
-  fi
-
-  # Read current concurrency state for rollback tracking
-  LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE=$(echo "$nrn_output" | jq -r '.LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE // ""')
-  LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE=$(echo "$nrn_output" | jq -r '.LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE // ""')
-  LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE=$(echo "$nrn_output" | jq -r '.LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE // ""')
-  LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE=$(echo "$nrn_output" | jq -r '.LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE // ""')
+# Look up function ARN directly from AWS (deterministic, no NRN needed)
+log info "   📡 Looking up existing Lambda function..."
+if lambda_info=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --output json 2>/dev/null); then
+  LAMBDA_FUNCTION_ARN=$(echo "$lambda_info" | jq -r '.Configuration.FunctionArn // ""')
+  log debug "   ✅ Found existing Lambda: $LAMBDA_FUNCTION_ARN"
 else
-  LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE=""
-  LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE=""
-  LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE=""
-  LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE=""
+  # Function does not exist yet — initial deployment
+  LAMBDA_FUNCTION_ARN="${_env_function_arn}"
+  log debug "   ✅ No existing Lambda found (initial deployment)"
 fi
 
-if [ -n "$LAMBDA_FUNCTION_ARN" ] && [ "$LAMBDA_FUNCTION_ARN" != "null" ]; then
-  echo "   ✅ Found existing Lambda: $LAMBDA_FUNCTION_ARN"
-else
-  echo "   ✅ No existing Lambda found (initial deployment)"
+# Look up Lambda versions by deployment ID (each published version embeds the deployment ID as description)
+log info "   📡 Looking up Lambda versions by deployment ID..."
+_versions_raw=$(aws lambda list-versions-by-function \
+  --function-name "$LAMBDA_FUNCTION_NAME" \
+  --output json 2>/dev/null || echo '{"Versions":[]}')
+
+LAMBDA_GREEN_VERSION=$(echo "$_versions_raw" | jq -r \
+  --arg id "$DEPLOYMENT_ID" \
+  '[.Versions // [] | .[] | select(.Description == $id) | .Version | select(test("^[0-9]+$"))] | last // ""')
+
+if [ -n "$BLUE_DEPLOYMENT_ID" ]; then
+  LAMBDA_BLUE_VERSION=$(echo "$_versions_raw" | jq -r \
+    --arg id "$BLUE_DEPLOYMENT_ID" \
+    '[.Versions // [] | .[] | select(.Description == $id) | .Version | select(test("^[0-9]+$"))] | last // ""')
 fi
 
-# Get visibility to determine networking layer
-VISIBILITY=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
-echo "   ✅ visibility=$VISIBILITY"
+# LAMBDA_CURRENT_VERSION: set from green version or will be overwritten by do_tofu output
+LAMBDA_CURRENT_VERSION="$LAMBDA_GREEN_VERSION"
 
-echo "   ✅ strategy=$DEPLOYMENT_STRATEGY"
-echo "   ✅ desired_traffic=$DESIRED_TRAFFIC"
+if [ -n "$LAMBDA_GREEN_VERSION" ]; then
+  log debug "   ✅ green_version[$DEPLOYMENT_ID]=$LAMBDA_GREEN_VERSION"
+fi
+if [ -n "$LAMBDA_BLUE_VERSION" ]; then
+  log debug "   ✅ blue_version[$BLUE_DEPLOYMENT_ID]=$LAMBDA_BLUE_VERSION"
+fi
+
+# Get visibility to determine networking layer.
+# The service spec has two fields: http_enabled (boolean) and visibility (public/private).
+# Downstream scripts expect VISIBILITY to be "public", "private", or "event-driven".
+# Note: jq's // operator returns the fallback for both null AND false, so we use
+# an explicit comparison to correctly handle http_enabled=false.
+if echo "$CONTEXT" | jq -e '.scope.capabilities.http_enabled == false' > /dev/null 2>&1; then
+  VISIBILITY="event-driven"
+else
+  VISIBILITY=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
+fi
+log debug "   ✅ visibility=$VISIBILITY"
+
+log debug "   ✅ strategy=$DEPLOYMENT_STRATEGY"
+log debug "   ✅ desired_traffic=$DESIRED_TRAFFIC"
 
 # Check if this is blue-green deployment
 IS_BLUE_GREEN="false"
-BLUE_DEPLOYMENT_ID=""
 if [ "$DEPLOYMENT_STRATEGY" = "blue_green" ] || [ "$DEPLOYMENT_STRATEGY" = "BLUE_GREEN" ]; then
   IS_BLUE_GREEN="true"
-  BLUE_DEPLOYMENT_ID=$(echo "$CONTEXT" | jq -r '.scope.current_active_deployment // ""')
-  echo "   ✅ blue_deployment_id=$BLUE_DEPLOYMENT_ID"
+  log debug "   ✅ blue_deployment_id=$BLUE_DEPLOYMENT_ID"
 fi
 
 # Extract provider credentials
 echo ""
-echo "   🔑 Extracting provider credentials..."
+log info "   🔑 Extracting provider credentials..."
 
 AWS_REGION=$(get_config_value \
-  --provider '.providers["cloud-providers"].credentials.region' \
   --env AWS_REGION \
   --default "us-east-1"
 )
-echo "   ✅ aws_region=$AWS_REGION"
-
-AWS_ACCESS_KEY_ID=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].credentials.access_key_id // ""')
-AWS_SECRET_ACCESS_KEY=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].credentials.secret_access_key // ""')
-
-if [ -z "$AWS_ACCESS_KEY_ID" ] || [ "$AWS_ACCESS_KEY_ID" = "null" ]; then
-  echo "❌ Missing AWS access key from cloud-providers" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - The cloud-providers provider is not configured for this scope" >&2
-  echo "   - Credentials are missing from the provider configuration" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Ensure the cloud-providers provider is linked to the scope with valid AWS credentials" >&2
-  exit 1
-fi
-echo "   ✅ aws_credentials=configured"
+log debug "   ✅ aws_region=$AWS_REGION"
+log debug "   ✅ aws_credentials=service_account"
 
 # Extract assets-repository credentials for S3 access
 ASSETS_ACCESS_KEY_ID=$(echo "$CONTEXT" | jq -r '.providers["assets-repository"].credentials.access_key_id // ""')
@@ -140,178 +140,167 @@ ASSETS_SECRET_ACCESS_KEY=$(echo "$CONTEXT" | jq -r '.providers["assets-repositor
 ASSETS_REGION=$(echo "$CONTEXT" | jq -r '.providers["assets-repository"].credentials.region // ""')
 
 if [ -n "$ASSETS_ACCESS_KEY_ID" ] && [ "$ASSETS_ACCESS_KEY_ID" != "null" ]; then
-  echo "   ✅ assets_credentials=configured"
+  log debug "   ✅ assets_credentials=configured"
 else
-  echo "   ✅ assets_credentials=using cloud-provider credentials"
+  log debug "   ✅ assets_credentials=using cloud-provider credentials"
 fi
 
 # Extract Lambda configuration from capabilities
 echo ""
-echo "   ⚙️ Extracting Lambda configuration..."
-
-LAMBDA_RUNTIME=$(get_config_value \
-  --provider '.scope.capabilities.runtime' \
-  --env DEFAULT_RUNTIME \
-  --default "nodejs20.x"
-)
-echo "   ✅ runtime=$LAMBDA_RUNTIME"
-
-LAMBDA_HANDLER=$(get_config_value \
-  --provider '.scope.capabilities.handler' \
-  --env DEFAULT_HANDLER \
-  --default "index.handler"
-)
-echo "   ✅ handler=$LAMBDA_HANDLER"
+log info "   ⚙️ Extracting Lambda configuration..."
 
 LAMBDA_MEMORY=$(get_config_value \
   --provider '.scope.capabilities.memory' \
-  --env DEFAULT_MEMORY \
   --default "256"
 )
-echo "   ✅ memory=$LAMBDA_MEMORY"
+log debug "   ✅ memory=$LAMBDA_MEMORY"
 
 LAMBDA_TIMEOUT=$(get_config_value \
   --provider '.scope.capabilities.timeout' \
-  --env DEFAULT_TIMEOUT \
   --default "30"
 )
-echo "   ✅ timeout=$LAMBDA_TIMEOUT"
+log debug "   ✅ timeout=$LAMBDA_TIMEOUT"
 
 LAMBDA_ARCHITECTURE=$(get_config_value \
   --provider '.scope.capabilities.architecture' \
-  --env DEFAULT_ARCHITECTURE \
   --default "arm64"
 )
-echo "   ✅ architecture=$LAMBDA_ARCHITECTURE"
+log debug "   ✅ architecture=$LAMBDA_ARCHITECTURE"
 
 LAMBDA_EPHEMERAL_STORAGE=$(get_config_value \
   --provider '.scope.capabilities.ephemeral_storage' \
-  --env DEFAULT_EPHEMERAL_STORAGE \
   --default "512"
 )
-echo "   ✅ ephemeral_storage=$LAMBDA_EPHEMERAL_STORAGE"
+log debug "   ✅ ephemeral_storage=$LAMBDA_EPHEMERAL_STORAGE"
 
 LAMBDA_LAYERS=$(echo "$CONTEXT" | jq -c '.scope.capabilities.layers // []')
-echo "   ✅ layers=$LAMBDA_LAYERS"
+log debug "   ✅ layers=$LAMBDA_LAYERS"
 
 # Extract concurrency settings from capabilities
 echo ""
-echo "   🔄 Extracting concurrency settings..."
+log info "   🔄 Extracting concurrency settings..."
 
 RESERVED_CONCURRENCY_TYPE=$(get_config_value \
   --provider '.scope.capabilities.reserved_concurrency.type' \
-  --env DEFAULT_RESERVED_CONCURRENCY_TYPE \
   --default "unreserved"
 )
-echo "   ✅ reserved_concurrency_type=$RESERVED_CONCURRENCY_TYPE"
+log debug "   ✅ reserved_concurrency_type=$RESERVED_CONCURRENCY_TYPE"
 
 RESERVED_CONCURRENCY_VALUE=$(echo "$CONTEXT" | jq -r '.scope.capabilities.reserved_concurrency.value // 0')
-echo "   ✅ reserved_concurrency_value=$RESERVED_CONCURRENCY_VALUE"
+log debug "   ✅ reserved_concurrency_value=$RESERVED_CONCURRENCY_VALUE"
 
 PROVISIONED_CONCURRENCY_TYPE=$(get_config_value \
   --provider '.scope.capabilities.provisioned_concurrency.type' \
-  --env DEFAULT_PROVISIONED_CONCURRENCY_TYPE \
   --default "unprovisioned"
 )
-echo "   ✅ provisioned_concurrency_type=$PROVISIONED_CONCURRENCY_TYPE"
+log debug "   ✅ provisioned_concurrency_type=$PROVISIONED_CONCURRENCY_TYPE"
 
 PROVISIONED_CONCURRENCY_VALUE=$(echo "$CONTEXT" | jq -r '.scope.capabilities.provisioned_concurrency.value // 0')
-echo "   ✅ provisioned_concurrency_value=$PROVISIONED_CONCURRENCY_VALUE"
+log debug "   ✅ provisioned_concurrency_value=$PROVISIONED_CONCURRENCY_VALUE"
 
 WARMUP_ALIAS_NAME=$(get_config_value \
   --provider '.scope.capabilities.provisioned_concurrency.warmup_alias' \
   --env LAMBDA_WARMUP_ALIAS_NAME \
   --default ""
 )
-echo "   ✅ warmup_alias_name=$WARMUP_ALIAS_NAME"
+log debug "   ✅ warmup_alias_name=$WARMUP_ALIAS_NAME"
 
 # Extract VPC configuration
 echo ""
-echo "   🌐 Extracting VPC configuration..."
+log info "   🌐 Extracting VPC configuration..."
 
 VPC_ENABLED=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false')
-echo "   ✅ vpc_enabled=$VPC_ENABLED"
+log debug "   ✅ vpc_enabled=$VPC_ENABLED"
 
-SUBNET_IDS=$(echo "$CONTEXT" | jq -c '.providers["cloud-providers"].networking.subnet_ids // []')
-echo "   ✅ subnet_ids=$SUBNET_IDS"
+SUBNET_IDS=$(echo "${AWS_SUBNET_IDS:-}" | jq -Rc 'split(",") | map(select(length > 0))')
+log debug "   ✅ subnet_ids=$SUBNET_IDS"
 
-SECURITY_GROUP_IDS=$(echo "$CONTEXT" | jq -c '.providers["cloud-providers"].networking.security_group_ids // []')
-echo "   ✅ security_group_ids=$SECURITY_GROUP_IDS"
+SECURITY_GROUP_IDS=$(echo "${SECURITY_GROUP_IDS:-}" | jq -Rc 'split(",") | map(select(length > 0))')
+log debug "   ✅ security_group_ids=$SECURITY_GROUP_IDS"
 
 # Extract asset info (S3 zip or ECR container image)
 echo ""
-echo "   📦 Extracting asset information..."
+log info "   📦 Extracting asset information..."
 
-ASSET_URL=$(echo "$CONTEXT" | jq -r '.asset.url // ""')
-ASSET_TYPE=$(echo "$CONTEXT" | jq -r '.asset.type // "lambda-asset"')
-PACKAGE_TYPE="Zip"
-IMAGE_URI=""
-S3_BUCKET=""
-S3_KEY=""
-
-echo "   ✅ asset_type=$ASSET_TYPE"
-
-if [ "$ASSET_TYPE" = "docker-image" ]; then
-  # Container image deployment (ECR)
+if [ -n "${IMAGE_URI:-}" ]; then
+  # IMAGE_URI already set by caller (e.g. scope create with placeholder image) — skip asset resolution
   PACKAGE_TYPE="Image"
-
-  if [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != "null" ]; then
-    IMAGE_URI="$ASSET_URL"
-    echo "   ✅ package_type=$PACKAGE_TYPE"
-    echo "   ✅ image_uri=$IMAGE_URI"
-  else
-    echo "❌ Asset URL is required for docker-image asset type" >&2
-    echo "💡 Possible causes:" >&2
-    echo "   - The build did not produce a container image URL" >&2
-    echo "   - The asset object is missing the url field" >&2
-    echo "🔧 How to fix:" >&2
-    echo "   - Verify the build pipeline pushes the image to ECR and sets asset.url" >&2
-    echo "   - Expected format: {account}.dkr.ecr.{region}.amazonaws.com/{repo}:{tag}" >&2
-    exit 1
-  fi
+  ASSET_TYPE="docker-image"
+  ASSET_URL="$IMAGE_URI"
+  S3_BUCKET=""
+  S3_KEY=""
+  log debug "   ✅ image_uri=$IMAGE_URI (provided by caller)"
 else
-  # Zip deployment (S3)
+  ASSET_URL=$(echo "$CONTEXT" | jq -r '.asset.url // ""')
+  ASSET_TYPE=$(echo "$CONTEXT" | jq -r '.asset.type // "lambda-asset"')
   PACKAGE_TYPE="Zip"
+  IMAGE_URI=""
+  S3_BUCKET=""
+  S3_KEY=""
 
-  if [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != "null" ]; then
-    # Parse s3://bucket/key format
-    if [[ "$ASSET_URL" =~ ^s3://([^/]+)/(.+)$ ]]; then
-      S3_BUCKET="${BASH_REMATCH[1]}"
-      S3_KEY="${BASH_REMATCH[2]}"
-      echo "   ✅ package_type=$PACKAGE_TYPE"
-      echo "   ✅ s3_bucket=$S3_BUCKET"
-      echo "   ✅ s3_key=$S3_KEY"
+  log debug "   ✅ asset_type=$ASSET_TYPE"
+
+  if [ "$ASSET_TYPE" = "docker-image" ]; then
+    # Container image deployment (ECR)
+    PACKAGE_TYPE="Image"
+
+    if [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != "null" ]; then
+      IMAGE_URI="$ASSET_URL"
+      log debug "   ✅ package_type=$PACKAGE_TYPE"
+      log debug "   ✅ image_uri=$IMAGE_URI"
     else
-      echo "❌ Invalid asset URL format: $ASSET_URL" >&2
+      echo "❌ Asset URL is required for docker-image asset type" >&2
       echo "💡 Possible causes:" >&2
-      echo "   - Asset URL does not match expected s3://bucket/key format" >&2
+      echo "   - The build did not produce a container image URL" >&2
+      echo "   - The asset object is missing the url field" >&2
       echo "🔧 How to fix:" >&2
-      echo "   - Verify the asset was uploaded correctly to S3" >&2
-      echo "   - Expected format: s3://bucket-name/path/to/asset.zip" >&2
-      exit 1
+      echo "   - Verify the build pipeline pushes the image to ECR and sets asset.url" >&2
+      echo "   - Expected format: {account}.dkr.ecr.{region}.amazonaws.com/{repo}:{tag}" >&2
+      return 1
     fi
   else
-    echo "   ✅ asset_url=not provided (may be set later)"
+    # Zip deployment (S3)
+    PACKAGE_TYPE="Zip"
+
+    if [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != "null" ]; then
+      # Parse s3://bucket/key format
+      if [[ "$ASSET_URL" =~ ^s3://([^/]+)/(.+)$ ]]; then
+        S3_BUCKET="${BASH_REMATCH[1]}"
+        S3_KEY="${BASH_REMATCH[2]}"
+        log debug "   ✅ package_type=$PACKAGE_TYPE"
+        log debug "   ✅ s3_bucket=$S3_BUCKET"
+        log debug "   ✅ s3_key=$S3_KEY"
+      else
+        echo "❌ Invalid asset URL format: $ASSET_URL" >&2
+        echo "💡 Possible causes:" >&2
+        echo "   - Asset URL does not match expected s3://bucket/key format" >&2
+        echo "🔧 How to fix:" >&2
+        echo "   - Verify the asset was uploaded correctly to S3" >&2
+        echo "   - Expected format: s3://bucket-name/path/to/asset.zip" >&2
+        return 1
+      fi
+    else
+      log debug "   ✅ asset_url=not provided (may be set later)"
+    fi
   fi
 fi
 
 # Parameters strategy
 echo ""
-echo "   📝 Extracting parameters..."
+log info "   📝 Extracting parameters..."
 
 PARAMETERS_STRATEGY=$(get_config_value \
   --env PARAMETERS_STRATEGY \
   --default "env"
 )
-echo "   ✅ parameters_strategy=$PARAMETERS_STRATEGY"
+log debug "   ✅ parameters_strategy=$PARAMETERS_STRATEGY"
 
 SECRETS_MANAGER_SECRET_ARN=""
 
-if [ "$PARAMETERS_STRATEGY" = "secretsmanager" ]; then
-  # Secrets Manager strategy: parameters go to SM, Lambda gets secret ARN
-  SECRETS_MANAGER_SECRET_NAME="nullplatform/${SCOPE_ID}/parameters"
-  AWS_ACCOUNT_ID=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].credentials.account_id // ""')
-
+if [ "$PARAMETERS_STRATEGY" = "secretsmanager" ] && [ -n "$DEPLOYMENT_ID" ]; then
+  # Secrets Manager strategy: parameters go to SM, Lambda gets secret name
+  # One secret per deployment for immutability (requires a deployment ID)
+  SECRETS_MANAGER_SECRET_NAME="nullplatform/${SCOPE_ID}/${DEPLOYMENT_ID}/parameters"
   if [ -n "$AWS_ACCOUNT_ID" ] && [ "$AWS_ACCOUNT_ID" != "null" ]; then
     SECRETS_MANAGER_SECRET_ARN="arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:${SECRETS_MANAGER_SECRET_NAME}"
   else
@@ -319,51 +308,46 @@ if [ "$PARAMETERS_STRATEGY" = "secretsmanager" ]; then
     SECRETS_MANAGER_SECRET_ARN=""
   fi
 
-  echo "   ✅ secrets_manager_secret_name=$SECRETS_MANAGER_SECRET_NAME"
+  log debug "   ✅ secrets_manager_secret_name=$SECRETS_MANAGER_SECRET_NAME"
 
   # Don't put parameters into env vars, just inject the secret name
   LAMBDA_ENVIRONMENT_VARIABLES=$(jq -n \
     --arg secret_name "$SECRETS_MANAGER_SECRET_NAME" \
     '{NULLPLATFORM_PARAMETERS_SECRET: $secret_name}')
 
-  echo "   ✅ environment_variables=NULLPLATFORM_PARAMETERS_SECRET injected"
+  log debug "   ✅ environment_variables=NULLPLATFORM_PARAMETERS_SECRET injected"
 else
   # Env vars strategy: parameters go directly as Lambda env vars
   LAMBDA_ENVIRONMENT_VARIABLES=$(echo "$CONTEXT" | jq -c '
-    [.parameters.results // [] | .[] | {(.name): .value}] | add // {}
+    [.parameters.results // [] | .[] | {(.variable): (.values[0].value // empty)}] | add // {}
   ')
-  echo "   ✅ environment_variables_count=$(echo "$LAMBDA_ENVIRONMENT_VARIABLES" | jq 'length')"
+  log debug "   ✅ environment_variables_count=$(echo "$LAMBDA_ENVIRONMENT_VARIABLES" | jq 'length')"
 fi
 
-# Inject special environment variables
-LAMBDA_ENVIRONMENT_VARIABLES=$(echo "$LAMBDA_ENVIRONMENT_VARIABLES" | jq \
-  --arg np_deployment_id "$DEPLOYMENT_ID" \
-  '. + {NP_DEPLOYMENT_ID: $np_deployment_id}')
+log debug "   ✅ environment_variables_count=$(echo "$LAMBDA_ENVIRONMENT_VARIABLES" | jq 'length')"
+
 
 # null agent configuration
 echo ""
-echo "   🤖 Configuring null agent..."
+log info "   🤖 Configuring null agent..."
 
 USE_NULL_AGENT=$(get_config_value \
   --env USE_NULL_AGENT \
   --default "true"
 )
-echo "   ✅ use_null_agent=$USE_NULL_AGENT"
+log debug "   ✅ use_null_agent=$USE_NULL_AGENT"
 
 NULL_AGENT_LAYER_ARN=$(get_config_value \
   --env NULL_AGENT_LAYER_ARN \
   --default ""
 )
-echo "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
+log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
 
 if [ "$USE_NULL_AGENT" = "true" ]; then
-  NP_APIKEY=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].credentials.np_apikey // ""')
-  if [ -z "$NP_APIKEY" ] || [ "$NP_APIKEY" = "null" ]; then
-    NP_APIKEY=$(get_config_value \
-      --env NULLPLATFORM_APIKEY \
-      --default ""
-    )
-  fi
+  NP_APIKEY=$(get_config_value \
+    --env NULLPLATFORM_APIKEY \
+    --default ""
+  )
 
   AWS_LAMBDA_EXEC_WRAPPER="/opt/nullplatform/launcher.sh"
 
@@ -372,18 +356,18 @@ if [ "$USE_NULL_AGENT" = "true" ]; then
       --arg apikey "$NP_APIKEY" \
       --arg wrapper "$AWS_LAMBDA_EXEC_WRAPPER" \
       '. + {NULLPLATFORM_APIKEY: $apikey, AWS_LAMBDA_EXEC_WRAPPER: $wrapper}')
-    echo "   ✅ null_agent=enabled (NULLPLATFORM_APIKEY and AWS_LAMBDA_EXEC_WRAPPER injected)"
+    log debug "   ✅ null_agent=enabled (NULLPLATFORM_APIKEY and AWS_LAMBDA_EXEC_WRAPPER injected)"
 
     # Add null agent layer to layers if configured
     if [ -n "$NULL_AGENT_LAYER_ARN" ]; then
       LAMBDA_LAYERS=$(echo "$LAMBDA_LAYERS" | jq --arg arn "$NULL_AGENT_LAYER_ARN" '. + [$arn]')
-      echo "   ✅ null_agent_layer=added ($NULL_AGENT_LAYER_ARN)"
+      log debug "   ✅ null_agent_layer=added ($NULL_AGENT_LAYER_ARN)"
     fi
   else
-    echo "   ✅ null_agent=skipped (no API key available)"
+    log debug "   ✅ null_agent=skipped (no API key available)"
   fi
 else
-  echo "   ✅ null_agent=disabled"
+  log debug "   ✅ null_agent=disabled"
 fi
 
 # Set output directory
@@ -409,7 +393,7 @@ MODULES_TO_USE=""
 TOFU_INIT_VARIABLES="$TOFU_INIT_VARIABLES -backend-config=key=$STATE_KEY"
 
 # Resource tags
-RESOURCE_TAGS_JSON=$(jq -n \
+RESOURCE_TAGS_JSON=$(jq -cn \
   --arg scope_id "$SCOPE_ID" \
   --arg deployment_id "$DEPLOYMENT_ID" \
   --arg namespace "$NAMESPACE_SLUG" \
@@ -425,17 +409,14 @@ RESOURCE_TAGS_JSON=$(jq -n \
 
 # Build comprehensive TOFU_VARIABLES JSON
 echo ""
-echo "   🏗️ Building Tofu variables..."
+log info "   🏗️ Building Tofu variables..."
 
 TOFU_VARIABLES=$(jq -n \
   --arg state_key "$STATE_KEY" \
   --arg function_name "$LAMBDA_FUNCTION_NAME" \
   --arg function_arn "$LAMBDA_FUNCTION_ARN" \
-  --arg role_arn "$LAMBDA_ROLE_ARN" \
   --arg current_version "$LAMBDA_CURRENT_VERSION" \
   --arg main_alias_name "$LAMBDA_MAIN_ALIAS_NAME" \
-  --arg runtime "$LAMBDA_RUNTIME" \
-  --arg handler "$LAMBDA_HANDLER" \
   --arg memory "$LAMBDA_MEMORY" \
   --arg timeout "$LAMBDA_TIMEOUT" \
   --arg architecture "$LAMBDA_ARCHITECTURE" \
@@ -446,10 +427,6 @@ TOFU_VARIABLES=$(jq -n \
   --arg provisioned_concurrency_type "$PROVISIONED_CONCURRENCY_TYPE" \
   --arg provisioned_concurrency_value "$PROVISIONED_CONCURRENCY_VALUE" \
   --arg warmup_alias_name "$WARMUP_ALIAS_NAME" \
-  --arg current_reserved_concurrency_type "$LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE" \
-  --arg current_reserved_concurrency_value "$LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE" \
-  --arg current_provisioned_concurrency_type "$LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE" \
-  --arg current_provisioned_concurrency_value "$LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE" \
   --arg vpc_enabled "$VPC_ENABLED" \
   --argjson subnet_ids "$SUBNET_IDS" \
   --argjson security_group_ids "$SECURITY_GROUP_IDS" \
@@ -478,11 +455,8 @@ TOFU_VARIABLES=$(jq -n \
     state_key: $state_key,
     function_name: $function_name,
     function_arn: $function_arn,
-    role_arn: $role_arn,
     current_version: $current_version,
     main_alias_name: $main_alias_name,
-    runtime: $runtime,
-    handler: $handler,
     memory: ($memory | tonumber),
     timeout: ($timeout | tonumber),
     architecture: $architecture,
@@ -493,10 +467,6 @@ TOFU_VARIABLES=$(jq -n \
     provisioned_concurrency_type: $provisioned_concurrency_type,
     provisioned_concurrency_value: ($provisioned_concurrency_value | tonumber),
     warmup_alias_name: $warmup_alias_name,
-    current_reserved_concurrency_type: $current_reserved_concurrency_type,
-    current_reserved_concurrency_value: $current_reserved_concurrency_value,
-    current_provisioned_concurrency_type: $current_provisioned_concurrency_type,
-    current_provisioned_concurrency_value: $current_provisioned_concurrency_value,
     vpc_enabled: ($vpc_enabled == "true"),
     subnet_ids: $subnet_ids,
     security_group_ids: $security_group_ids,
@@ -523,15 +493,14 @@ TOFU_VARIABLES=$(jq -n \
     null_agent_layer_arn: $null_agent_layer_arn
   }')
 
-echo "   ✅ tofu_variables=built ($(echo "$TOFU_VARIABLES" | jq 'keys | length') keys)"
+log debug "   ✅ tofu_variables=built ($(echo "$TOFU_VARIABLES" | jq 'keys | length') keys)"
 
 # Add Lambda context to CONTEXT for layer setup scripts
 CONTEXT=$(echo "$CONTEXT" | jq \
   --arg fn "$LAMBDA_FUNCTION_NAME" \
-  --arg role "$LAMBDA_ROLE_ARN" \
   --arg version "$LAMBDA_CURRENT_VERSION" \
   --arg alias "$LAMBDA_MAIN_ALIAS_NAME" \
-  '. + {lambda: {function_name: $fn, role_arn: $role, current_version: $version, main_alias: $alias}}')
+  '. + {lambda: {function_name: $fn, current_version: $version, main_alias: $alias}}')
 
 # Export all variables
 export SCOPE_ID
@@ -543,8 +512,9 @@ export SCOPE_SLUG
 export ACCOUNT_SLUG
 export LAMBDA_FUNCTION_NAME
 export LAMBDA_FUNCTION_ARN
-export LAMBDA_ROLE_ARN
 export LAMBDA_CURRENT_VERSION
+export LAMBDA_GREEN_VERSION
+export LAMBDA_BLUE_VERSION
 export LAMBDA_MAIN_ALIAS_NAME
 export VISIBILITY
 export DEPLOYMENT_STRATEGY
@@ -552,13 +522,9 @@ export DESIRED_TRAFFIC
 export IS_BLUE_GREEN
 export BLUE_DEPLOYMENT_ID
 export AWS_REGION
-export AWS_ACCESS_KEY_ID
-export AWS_SECRET_ACCESS_KEY
 export ASSETS_ACCESS_KEY_ID
 export ASSETS_SECRET_ACCESS_KEY
 export ASSETS_REGION
-export LAMBDA_RUNTIME
-export LAMBDA_HANDLER
 export LAMBDA_MEMORY
 export LAMBDA_TIMEOUT
 export LAMBDA_ARCHITECTURE
@@ -569,10 +535,6 @@ export RESERVED_CONCURRENCY_VALUE
 export PROVISIONED_CONCURRENCY_TYPE
 export PROVISIONED_CONCURRENCY_VALUE
 export WARMUP_ALIAS_NAME
-export LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE
-export LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE
-export LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE
-export LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE
 export VPC_ENABLED
 export SUBNET_IDS
 export SECURITY_GROUP_IDS
@@ -583,6 +545,7 @@ export S3_BUCKET
 export S3_KEY
 export LAMBDA_ENVIRONMENT_VARIABLES
 export PARAMETERS_STRATEGY
+export SECRETS_MANAGER_SECRET_NAME
 export SECRETS_MANAGER_SECRET_ARN
 export USE_NULL_AGENT
 export NULL_AGENT_LAYER_ARN
@@ -596,5 +559,9 @@ export MODULES_TO_USE
 export CONTEXT
 export RESOURCE_TAGS_JSON
 
+# Dump context to file for debugging
+echo "$CONTEXT" | jq '.' > "$OUTPUT_DIR/context.json"
+log debug "   📄 Context dumped to $OUTPUT_DIR/context.json"
+
 echo ""
-echo "✨ Deployment context built successfully"
+log info "✨ Deployment context built successfully"

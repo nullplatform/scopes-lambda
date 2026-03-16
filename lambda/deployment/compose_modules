@@ -11,37 +11,39 @@
 #   - *.tf files: Copied to TOFU_MODULE_DIR (Terraform auto-merges all .tf files)
 #   - setup script: Sourced to configure TOFU_VARIABLES and TOFU_INIT_VARIABLES
 
+source "$SERVICE_PATH/utils/log"
+
 script_dir="$(dirname "${BASH_SOURCE[0]}")"
 modules_dir="$script_dir"
 
-echo "🔍 Validating module composition configuration..."
+log info "🔍 Validating module composition configuration..."
 
 if [ -z "${MODULES_TO_USE:-}" ]; then
   echo ""
-  echo "   ❌ MODULES_TO_USE is not set"
-  echo ""
-  echo "  🔧 How to fix:"
-  echo "    • Ensure MODULES_TO_USE is set before calling compose_modules"
-  echo "    • This is typically done by the setup scripts (provider, compute, networking)"
-  echo ""
-  exit 1
+  echo "   ❌ MODULES_TO_USE is not set" >&2
+  echo "" >&2
+  echo "  🔧 How to fix:" >&2
+  echo "    • Ensure MODULES_TO_USE is set before calling compose_modules" >&2
+  echo "    • This is typically done by the setup scripts (provider, compute, networking)" >&2
+  echo "" >&2
+  return 1
 fi
 
 if [ -z "${TOFU_MODULE_DIR:-}" ]; then
   echo ""
-  echo "   ❌ TOFU_MODULE_DIR is not set"
-  echo ""
-  echo "  🔧 How to fix:"
-  echo "    • Ensure TOFU_MODULE_DIR is set before calling compose_modules"
-  echo "    • This is typically done by the build_context script"
-  echo ""
-  exit 1
+  echo "   ❌ TOFU_MODULE_DIR is not set" >&2
+  echo "" >&2
+  echo "  🔧 How to fix:" >&2
+  echo "    • Ensure TOFU_MODULE_DIR is set before calling compose_modules" >&2
+  echo "    • This is typically done by the build_context script" >&2
+  echo "" >&2
+  return 1
 fi
 
 mkdir -p "$TOFU_MODULE_DIR"
 
-echo "   ✅ modules=$MODULES_TO_USE"
-echo "   ✅ target=$TOFU_MODULE_DIR"
+log debug "   ✅ modules=$MODULES_TO_USE"
+log debug "   ✅ target=$TOFU_MODULE_DIR"
 echo ""
 
 IFS=',' read -ra modules <<< "$MODULES_TO_USE"
@@ -49,15 +51,15 @@ for module in "${modules[@]}"; do
   module=$(echo "$module" | xargs) # trim whitespace
 
   if [ ! -d "$module" ]; then
-    echo "   ❌ Module directory not found: $module"
-    echo ""
-    echo "  🔧 How to fix:"
-    echo "    • Verify the module path is correct and the directory exists"
-    echo ""
-    exit 1
+    echo "   ❌ Module directory not found: $module" >&2
+    echo "" >&2
+    echo "  🔧 How to fix:" >&2
+    echo "    • Verify the module path is correct and the directory exists" >&2
+    echo "" >&2
+    return 1
   fi
 
-  echo "📦 $module"
+  log info "📦 $module"
 
   # Copy .tf files if they exist (with module prefix to avoid conflicts)
   if ls "$module"/*.tf 1> /dev/null 2>&1; then
@@ -78,25 +80,25 @@ for module in "${modules[@]}"; do
     done
 
     for file in "${copied_files[@]}"; do
-      echo "   $file"
+      log debug "   $file"
     done
-    echo "   ✅ Copied ${#copied_files[@]} file(s) with prefix: $prefix"
+    log debug "   ✅ Copied ${#copied_files[@]} file(s) with prefix: $prefix"
   fi
 
   # Source setup script if it exists
   if [ -f "$module/setup" ]; then
-    echo "   📡 Running setup script..."
+    log info "   📡 Running setup script..."
     source "$module/setup"
     if [ $? -ne 0 ]; then
       echo ""
-      echo "   ❌ Setup script failed for module: $module"
-      echo ""
-      exit 1
+      echo "   ❌ Setup script failed for module: $module" >&2
+      echo "" >&2
+      return 1
     fi
-    echo "   ✅ Setup completed"
+    log debug "   ✅ Setup completed"
   fi
 
   echo ""
 done
 
-echo "✨ All modules composed successfully"
+log info "✨ All modules composed successfully"

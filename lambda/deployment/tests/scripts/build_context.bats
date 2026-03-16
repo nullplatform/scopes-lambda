@@ -40,7 +40,7 @@ teardown() {
   set_context "minimal"
 
   local visibility
-  visibility=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
+  visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
   assert_equal "$visibility" "public"
 }
@@ -49,17 +49,17 @@ teardown() {
   set_context "private"
 
   local visibility
-  visibility=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
+  visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
   assert_equal "$visibility" "private"
 }
 
 # Layer selection
-@test "deployment/build_context: selects api_gateway layer when visibility is public" {
+@test "deployment/build_context: resolves public visibility correctly" {
   set_context "public"
 
   local visibility
-  visibility=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
+  visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
   assert_equal "$visibility" "public"
 }
@@ -68,7 +68,7 @@ teardown() {
   set_context "private"
 
   local visibility
-  visibility=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
+  visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
   assert_equal "$visibility" "private"
 }

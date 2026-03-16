@@ -9,7 +9,7 @@ steps:
         type: environment
       - name: LAMBDA_FUNCTION_NAME
         type: environment
-      - name: LOG_GROUP_NAME
+      - name: LAMBDA_LOG_GROUP_NAME
         type: environment
   - name: fetch_logs
     type: script

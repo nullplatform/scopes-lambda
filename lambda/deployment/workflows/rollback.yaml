@@ -15,16 +15,17 @@ steps:
         type: environment
       - name: LAMBDA_MAIN_ALIAS_NAME
         type: environment
-      - name: BLUE_DEPLOYMENT_ID
+      - name: LAMBDA_CURRENT_VERSION
         type: environment
-      - name: LAMBDA_ROLE_ARN
+      - name: LAMBDA_GREEN_VERSION
+        type: environment
+      - name: LAMBDA_BLUE_VERSION
+        type: environment
+      - name: BLUE_DEPLOYMENT_ID
         type: environment
   - name: restore_alias
     type: script
     file: "$SERVICE_PATH/deployment/scripts/rollback_alias"
-  - name: rollback_iam
-    type: script
-    file: "$SERVICE_PATH/deployment/scripts/rollback_iam_policies"
   - name: cleanup_new_version
     type: script
     file: "$SERVICE_PATH/deployment/scripts/cleanup_new_version"

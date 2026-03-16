@@ -87,7 +87,7 @@ export MOCK_CONTEXT_PRIVATE='{
         "region": "us-east-1"
       },
       "networking": {
-        "hosted_private_zone_id": "Z0987654321XYZ",
+        "hosted_zone_id": "Z0987654321XYZ",
         "alb_listener_arn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/my-alb/50dc6c495c0c9188/f2f7dc8efc522ab2"
       }
     },
@@ -324,9 +324,9 @@ export MOCK_CONTEXT_SECRETSMANAGER='{
   },
   "parameters": {
     "results": [
-      {"name": "DB_HOST", "value": "db.example.com"},
-      {"name": "DB_PASSWORD", "value": "secret123", "secret": true},
-      {"name": "API_KEY", "value": "key-abc-123", "secret": true}
+      {"variable": "DB_HOST", "name": "DB_HOST", "values": [{"value": "db.example.com"}]},
+      {"variable": "DB_PASSWORD", "name": "DB_PASSWORD", "secret": true, "values": [{"value": "secret123"}]},
+      {"variable": "API_KEY", "name": "API_KEY", "secret": true, "values": [{"value": "key-abc-123"}]}
     ]
   },
   "providers": {

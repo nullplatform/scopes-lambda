@@ -1,26 +1,41 @@
 #!/bin/bash
-# List available Lambda metrics
 
-cat << 'EOF'
-Available Lambda Metrics:
-
-Invocation Metrics:
-   - Invocations: Number of function invocations
-   - Errors: Number of invocations that resulted in errors
-   - Throttles: Number of throttled invocations
-
-Performance Metrics:
-   - Duration: Execution time in milliseconds
-   - IteratorAge: Age of the last record processed (for stream-based invocations)
-
-Concurrency Metrics:
-   - ConcurrentExecutions: Number of concurrent executions
-   - ProvisionedConcurrencyInvocations: Invocations using provisioned concurrency
-   - ProvisionedConcurrencySpilloverInvocations: Invocations that exceeded provisioned concurrency
-
-Async Metrics:
-   - AsyncEventsReceived: Events received for async invocation
-   - AsyncEventAge: Age of async events
-
-Use the metric workflow to fetch specific metrics with time ranges.
-EOF
+echo '{
+  "results": [
+    {
+      "name": "Invocations",
+      "title": "Invocations",
+      "unit": "count",
+      "available_filters": ["scope_id"],
+      "available_group_by": []
+    },
+    {
+      "name": "Duration",
+      "title": "Duration",
+      "unit": "ms",
+      "available_filters": ["scope_id"],
+      "available_group_by": []
+    },
+    {
+      "name": "Errors",
+      "title": "Errors",
+      "unit": "count",
+      "available_filters": ["scope_id"],
+      "available_group_by": []
+    },
+    {
+      "name": "Throttles",
+      "title": "Throttles",
+      "unit": "count",
+      "available_filters": ["scope_id"],
+      "available_group_by": []
+    },
+    {
+      "name": "ConcurrentExecutions",
+      "title": "Concurrent executions",
+      "unit": "count",
+      "available_filters": ["scope_id"],
+      "available_group_by": []
+    }
+  ]
+}'

@@ -1,27 +1,46 @@
 #!/bin/bash
 set -euo pipefail
 
+source "$SERVICE_PATH/utils/log"
+
 TOFU_ACTION="${TOFU_ACTION:-apply}"
 
-echo "📝 Running tofu $TOFU_ACTION for deployment: $DEPLOYMENT_ID"
-echo "📋 Lambda function: $LAMBDA_FUNCTION_NAME"
+log info "📝 Running tofu $TOFU_ACTION for deployment: $DEPLOYMENT_ID"
+log debug "📋 Lambda function: $LAMBDA_FUNCTION_NAME"
+log debug "📋 Working directory: $TF_WORKING_DIR"
 
-echo "📋 Working directory: $TF_WORKING_DIR"
+# Verify tofu is available — either directly or via mise
+if command -v mise &> /dev/null; then
+  log debug "   🔧 mise detected — ensuring tofu is installed..."
+  mise install opentofu@latest -y 2>&1 | while IFS= read -r line; do log debug "   [mise] $line"; done || true
+  tofu() { mise x opentofu@latest -- tofu "$@"; }
+elif ! command -v tofu &> /dev/null; then
+  echo "" >&2
+  echo "❌ Neither mise nor OpenTofu (tofu) found in PATH" >&2
+  echo "" >&2
+  echo "💡 Install mise (recommended): https://mise.jdx.dev" >&2
+  echo "   Or install tofu directly:   https://opentofu.org/docs/intro/install/" >&2
+  echo "" >&2
+  return 1
+fi
+
+tofu_version=$(tofu version 2>&1 | head -1)
+log debug "   ✅ tofu=$tofu_version"
 
 # Verify working directory has terraform files
 if [ ! -d "$TF_WORKING_DIR" ]; then
-  echo "❌ Working directory does not exist: $TF_WORKING_DIR"
-  exit 1
+  echo "❌ Working directory does not exist: $TF_WORKING_DIR" >&2
+  return 1
 fi
 
 tf_file_count=$(ls "$TF_WORKING_DIR"/*.tf 2>/dev/null | wc -l | tr -d ' ')
 if [ "$tf_file_count" -eq 0 ]; then
-  echo "❌ No .tf files found in $TF_WORKING_DIR"
-  echo "   Did you run compose_modules first?"
-  exit 1
+  echo "❌ No .tf files found in $TF_WORKING_DIR" >&2
+  echo "   Did you run compose_modules first?" >&2
+  return 1
 fi
 
-echo "📋 Found $tf_file_count .tf files"
+log debug "📋 Found $tf_file_count .tf files"
 
 # Generate tfvars from TOFU_VARIABLES
 TOFU_VAR_FILE="$OUTPUT_DIR/tofu.tfvars.json"
@@ -33,19 +52,67 @@ if [ -d "$SERVICE_PATH/deployment/scripts" ]; then
 fi
 
 # Initialize tofu
-echo "📝 Initializing tofu..."
+log info "📝 Initializing tofu..."
 tofu -chdir="$TF_WORKING_DIR" init -input=false $TOFU_INIT_VARIABLES
 
-# Run tofu action
-echo "📝 Running tofu $TOFU_ACTION..."
-tofu -chdir="$TF_WORKING_DIR" "$TOFU_ACTION" -auto-approve -var-file="$TOFU_VAR_FILE"
+# Import placeholder resources that exist in AWS but not in Tofu state
+# Scope creation creates a placeholder Lambda function + alias via AWS CLI outside of Tofu state.
+# On initial deployment, we need to import them to avoid 409 ResourceConflictException.
+if [ "$TOFU_ACTION" = "apply" ]; then
+  echo ""
+  log info "📝 Checking for resources to import..."
 
-echo "✅ Tofu $TOFU_ACTION completed successfully"
+  main_alias_name=$(echo "$TOFU_VARIABLES" | jq -r '.lambda_main_alias_name // "main"')
+
+  # Import Lambda function
+  if ! tofu -chdir="$TF_WORKING_DIR" state show aws_lambda_function.main &>/dev/null; then
+    if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" &>/dev/null 2>&1; then
+      log info "   📡 Importing existing Lambda function: $LAMBDA_FUNCTION_NAME"
+      tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_lambda_function.main "$LAMBDA_FUNCTION_NAME"
+      log debug "   ✅ Lambda function imported"
+    fi
+  fi
+
+  # Import main alias
+  if ! tofu -chdir="$TF_WORKING_DIR" state show aws_lambda_alias.main &>/dev/null; then
+    if aws lambda get-alias --function-name "$LAMBDA_FUNCTION_NAME" --name "$main_alias_name" &>/dev/null 2>&1; then
+      log info "   📡 Importing existing Lambda alias: $LAMBDA_FUNCTION_NAME/$main_alias_name"
+      tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_lambda_alias.main "$LAMBDA_FUNCTION_NAME/$main_alias_name"
+      log debug "   ✅ Lambda alias imported"
+    fi
+  fi
+
+  # Import CloudWatch log group (auto-created on first Lambda invocation)
+  log_group_name="/aws/lambda/$LAMBDA_FUNCTION_NAME"
+  if ! tofu -chdir="$TF_WORKING_DIR" state show aws_cloudwatch_log_group.lambda &>/dev/null; then
+    if aws logs describe-log-groups --log-group-name-prefix "$log_group_name" \
+        --query "logGroups[?logGroupName=='$log_group_name'] | [0].logGroupName" \
+        --output text 2>/dev/null | grep -q "$log_group_name"; then
+      log info "   📡 Importing existing CloudWatch log group: $log_group_name"
+      tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_cloudwatch_log_group.lambda "$log_group_name"
+      log debug "   ✅ CloudWatch log group imported"
+    fi
+  fi
+
+fi
+
+# Run tofu action
+log info "📝 Running tofu $TOFU_ACTION..."
+tofu_exit_code=0
+tofu -chdir="$TF_WORKING_DIR" "$TOFU_ACTION" -auto-approve -var-file="$TOFU_VAR_FILE" || tofu_exit_code=$?
+if [ $tofu_exit_code -ne 0 ]; then
+  echo ""
+  echo "❌ Tofu $TOFU_ACTION failed with exit code $tofu_exit_code" >&2
+  echo "" >&2
+  return 1
+fi
+
+log info "✅ Tofu $TOFU_ACTION completed successfully"
 
 # Extract outputs if apply
 if [ "$TOFU_ACTION" = "apply" ]; then
   echo ""
-  echo "📋 Extracting terraform outputs..."
+  log info "📋 Extracting terraform outputs..."
 
   # Get outputs as JSON
   outputs=$(tofu -chdir="$TF_WORKING_DIR" output -json 2>/dev/null || echo "{}")
@@ -54,27 +121,46 @@ if [ "$TOFU_ACTION" = "apply" ]; then
   if [ "$outputs" != "{}" ]; then
     LAMBDA_FUNCTION_ARN=$(echo "$outputs" | jq -r '.lambda_function_arn.value // empty')
     LAMBDA_CURRENT_VERSION=$(echo "$outputs" | jq -r '.lambda_current_version.value // empty')
-    API_GATEWAY_ID=$(echo "$outputs" | jq -r '.api_gateway_id.value // empty')
-    API_GATEWAY_ENDPOINT=$(echo "$outputs" | jq -r '.api_gateway_endpoint.value // empty')
 
     if [ -n "$LAMBDA_FUNCTION_ARN" ]; then
-      echo "   ✅ function_arn=$LAMBDA_FUNCTION_ARN"
+      log debug "   ✅ function_arn=$LAMBDA_FUNCTION_ARN"
       export LAMBDA_FUNCTION_ARN
     fi
 
     if [ -n "$LAMBDA_CURRENT_VERSION" ]; then
-      echo "   ✅ version=$LAMBDA_CURRENT_VERSION"
+      log debug "   ✅ version=$LAMBDA_CURRENT_VERSION"
       export LAMBDA_CURRENT_VERSION
     fi
 
-    if [ -n "$API_GATEWAY_ID" ]; then
-      echo "   ✅ api_gateway_id=$API_GATEWAY_ID"
-      export API_GATEWAY_ID
+    ALB_RULE_ARN=$(echo "$outputs" | jq -r '.alb_listener_rule_arn.value // empty')
+    if [ -n "$ALB_RULE_ARN" ]; then
+      log debug "   ✅ alb_listener_rule_arn=$ALB_RULE_ARN"
+      export ALB_RULE_ARN
     fi
+  fi
 
-    if [ -n "$API_GATEWAY_ENDPOINT" ]; then
-      echo "   ✅ api_gateway_endpoint=$API_GATEWAY_ENDPOINT"
-      export API_GATEWAY_ENDPOINT
+  # Tofu manages the alias with lifecycle.ignore_changes on function_version, so it
+  # never updates the alias version directly. We do it explicitly here for non-blue-green
+  # deployments whenever the alias lags behind the newly published version — this covers:
+  #   • First deploy after scope create (alias at placeholder version, e.g. "1")
+  #   • First deploy on a fresh scope where alias still points to $LATEST
+  if [ -n "$LAMBDA_CURRENT_VERSION" ] && [ "$LAMBDA_CURRENT_VERSION" != "" ] && \
+     [ "${IS_BLUE_GREEN:-false}" != "true" ]; then
+    current_alias_version=$(aws lambda get-alias \
+      --function-name "$LAMBDA_FUNCTION_NAME" \
+      --name "$main_alias_name" \
+      --query 'FunctionVersion' \
+      --output text 2>/dev/null || echo "")
+
+    if [ -n "$current_alias_version" ] && [ "$current_alias_version" != "$LAMBDA_CURRENT_VERSION" ]; then
+      echo ""
+      log info "   📡 Alias points to $current_alias_version - updating to published version $LAMBDA_CURRENT_VERSION..."
+      aws lambda update-alias \
+        --function-name "$LAMBDA_FUNCTION_NAME" \
+        --name "$main_alias_name" \
+        --function-version "$LAMBDA_CURRENT_VERSION" \
+        --routing-config '{}' >/dev/null 2>&1 || true
+      log debug "   ✅ Alias updated from $current_alias_version to version $LAMBDA_CURRENT_VERSION"
     fi
   fi
 fi

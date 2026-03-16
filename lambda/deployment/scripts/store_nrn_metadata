@@ -1,8 +1,12 @@
 #!/bin/bash
-# Store Lambda deployment metadata in NRN
-# This script persists Lambda function details for future deployments
+# Store ALB rule priority in NRN for idempotent re-deployments.
+# This is the only value that must be persisted: it is assigned once
+# (dynamically via listener query or from config) and reused on every
+# re-deployment so the listener rule priority remains stable.
 
-echo "📝 Storing deployment metadata in NRN..."
+source "$SERVICE_PATH/utils/log"
+
+log info "📝 Storing ALB rule priority in NRN..."
 
 if [ -z "${SCOPE_NRN:-}" ]; then
   echo "❌ SCOPE_NRN is required" >&2
@@ -12,140 +16,29 @@ if [ -z "${SCOPE_NRN:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Verify SCOPE_NRN is exported before this script runs" >&2
   echo "   - Check the deployment agent configuration" >&2
-  exit 1
+  return 1
 fi
 
-if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - Environment variable not set by the deployment pipeline" >&2
-  echo "   - Scope context missing Lambda function configuration" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Ensure the scope has a valid Lambda function configured" >&2
-  echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  exit 1
+# Non-HTTP (event-driven) scopes skip ALB setup entirely and won't have this set.
+if [ -z "${ALB_RULE_PRIORITY:-}" ]; then
+  log debug "   ⏭️  ALB_RULE_PRIORITY not set — nothing to store (non-HTTP scope)"
+  return 0
 fi
 
-echo "   ✅ scope_nrn=$SCOPE_NRN"
-echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ scope_nrn=$SCOPE_NRN"
+log debug "   ✅ alb_rule_priority=$ALB_RULE_PRIORITY"
 
-metadata="{}"
+metadata=$(jq -n --argjson priority "$ALB_RULE_PRIORITY" '{"alb_rule_priority": $priority}')
 
-metadata=$(echo "$metadata" | jq \
-  --arg fn "$LAMBDA_FUNCTION_NAME" \
-  '. + {LAMBDA_FUNCTION_NAME: $fn}')
-
-if [ -n "${LAMBDA_FUNCTION_ARN:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg arn "$LAMBDA_FUNCTION_ARN" \
-    '. + {LAMBDA_FUNCTION_ARN: $arn}')
-  echo "   ✅ function_arn=$LAMBDA_FUNCTION_ARN"
-fi
-
-if [ -n "${LAMBDA_FUNCTION_VERSION:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg ver "$LAMBDA_FUNCTION_VERSION" \
-    '. + {LAMBDA_FUNCTION_CURRENT_VERSION: $ver}')
-  echo "   ✅ current_version=$LAMBDA_FUNCTION_VERSION"
-fi
-
-if [ -n "${LAMBDA_NEW_VERSION:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg ver "$LAMBDA_NEW_VERSION" \
-    '. + {LAMBDA_FUNCTION_NEW_VERSION: $ver}')
-  echo "   ✅ new_version=$LAMBDA_NEW_VERSION"
-fi
-
-if [ -n "${LAMBDA_ALIAS_NAME:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg alias "$LAMBDA_ALIAS_NAME" \
-    '. + {LAMBDA_FUNCTION_MAIN_ALIAS: $alias}')
-  echo "   ✅ main_alias=$LAMBDA_ALIAS_NAME"
-fi
-
-if [ -n "${LAMBDA_ROLE_ARN:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg role "$LAMBDA_ROLE_ARN" \
-    '. + {LAMBDA_ROLE_ARN: $role}')
-  echo "   ✅ role_arn=$LAMBDA_ROLE_ARN"
-fi
-
-if [ -n "${API_GATEWAY_ID:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg api "$API_GATEWAY_ID" \
-    '. + {APIGATEWAY_HTTP_API_ID: $api}')
-  echo "   ✅ api_gateway_id=$API_GATEWAY_ID"
-fi
-
-if [ -n "${SCOPE_DOMAIN:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg domain "$SCOPE_DOMAIN" \
-    '. + {SCOPE_DOMAIN: $domain}')
-  echo "   ✅ scope_domain=$SCOPE_DOMAIN"
-fi
-
-if [ -n "${LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE" \
-    '. + {LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE: $val}')
-  echo "   ✅ reserved_concurrency_type=$LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE"
-fi
-
-if [ -n "${LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE" \
-    '. + {LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE: $val}')
-  echo "   ✅ reserved_concurrency_value=$LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE"
-fi
-
-if [ -n "${LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE" \
-    '. + {LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE: $val}')
-  echo "   ✅ provisioned_concurrency_type=$LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_TYPE"
-fi
-
-if [ -n "${LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE" \
-    '. + {LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE: $val}')
-  echo "   ✅ provisioned_concurrency_value=$LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE"
-fi
-
-if [ -n "${APIGATEWAY_HTTP_API_SCOPE_MAPPING_ID:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$APIGATEWAY_HTTP_API_SCOPE_MAPPING_ID" \
-    '. + {APIGATEWAY_HTTP_API_SCOPE_MAPPING_ID: $val}')
-  echo "   ✅ api_scope_mapping_id=$APIGATEWAY_HTTP_API_SCOPE_MAPPING_ID"
-fi
-
-if [ -n "${CURRENT_TARGET_GROUP_ARN:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$CURRENT_TARGET_GROUP_ARN" \
-    '. + {CURRENT_TARGET_GROUP_ARN: $val}')
-  echo "   ✅ target_group_arn=$CURRENT_TARGET_GROUP_ARN"
-fi
-
-if [ -n "${ALB_RULE_ARN:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$ALB_RULE_ARN" \
-    '. + {ALB_RULE_ARN: $val}')
-  echo "   ✅ alb_rule_arn=$ALB_RULE_ARN"
-fi
-
-if [ -n "${WARMUP_ALIAS_NAME:-}" ]; then
-  metadata=$(echo "$metadata" | jq \
-    --arg val "$WARMUP_ALIAS_NAME" \
-    '. + {LAMBDA_FUNCTION_WARM_ALIAS: $val}')
-  echo "   ✅ warm_alias=$WARMUP_ALIAS_NAME"
-fi
+# Prefix with "lambda." namespace
+metadata=$(echo "$metadata" | jq 'with_entries(.key = "lambda." + .key)')
+log debug "   ✅ Final metadata payload: $metadata"
 
 echo ""
-echo "   📡 Writing metadata to NRN=$SCOPE_NRN..."
+log info "   📡 Writing metadata to NRN=$SCOPE_NRN..."
 
-np_output=$(np nrn write \
+np_output=$(np nrn patch \
   --nrn "$SCOPE_NRN" \
-  --namespace aws \
   --body "$metadata" \
   --format json 2>&1)
 np_exit_code=$?
@@ -161,9 +54,9 @@ if [ $np_exit_code -ne 0 ]; then
   echo "   - Verify the metadata JSON is valid" >&2
   echo "   - Ensure the agent has write permissions to the NRN namespace" >&2
   echo "   📋 Error: $np_output" >&2
-  exit 1
+  return 1
 fi
 
-echo "   ✅ Metadata stored successfully"
+log debug "   ✅ Metadata stored successfully"
 echo ""
-echo "✨ NRN metadata saved for scope=$SCOPE_NRN function=$LAMBDA_FUNCTION_NAME"
+log info "✨ ALB rule priority stored for scope=$SCOPE_NRN"

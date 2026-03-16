@@ -1,6 +1,7 @@
 variable "iam_role_name" {
   description = "Name of the IAM role"
   type        = string
+  default     = ""
 }
 
 variable "iam_create_role" {
@@ -44,6 +45,24 @@ variable "iam_secrets_manager_secret_arn" {
 
 variable "lambda_role_arn" {
   description = "Existing Lambda role ARN (when not creating)"
+  type        = string
+  default     = ""
+}
+
+variable "iam_package_type" {
+  description = "Lambda deployment package type (Zip or Image) - used to add ECR pull permissions for image deployments"
+  type        = string
+  default     = "Zip"
+}
+
+variable "iam_propagation_duration" {
+  description = "How long to wait after IAM role creation for global propagation (e.g. '20s'). Only fires on initial role creation."
+  type        = string
+  default     = "0s"
+}
+
+variable "iam_scope_id" {
+  description = "Scope ID used to scope the Secrets Manager wildcard policy when creating the role"
   type        = string
   default     = ""
 }

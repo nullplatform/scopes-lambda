@@ -17,6 +17,10 @@ steps:
         type: environment
       - name: LAMBDA_CURRENT_VERSION
         type: environment
+      - name: LAMBDA_GREEN_VERSION
+        type: environment
+      - name: LAMBDA_BLUE_VERSION
+        type: environment
       - name: BLUE_DEPLOYMENT_ID
         type: environment
   - name: finalize_traffic

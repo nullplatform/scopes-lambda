@@ -2,7 +2,9 @@
 # Update Lambda alias with weighted routing for traffic switching
 # Supports gradual traffic shift between versions
 
-echo "📝 Switching traffic for Lambda alias..."
+source "$SERVICE_PATH/utils/log"
+
+log info "📝 Switching traffic for Lambda alias..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
@@ -12,7 +14,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  exit 1
+  return 1
 fi
 
 if [ -z "${DESIRED_TRAFFIC:-}" ]; then
@@ -23,28 +25,28 @@ if [ -z "${DESIRED_TRAFFIC:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure DESIRED_TRAFFIC is set (integer 0-100)" >&2
   echo "   - Check the deployment strategy configuration" >&2
-  exit 1
+  return 1
 fi
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
-new_version="${LAMBDA_NEW_VERSION:-$LAMBDA_CURRENT_VERSION}"
+new_version="${LAMBDA_GREEN_VERSION:-${LAMBDA_NEW_VERSION:-$LAMBDA_CURRENT_VERSION}}"
 traffic_percentage="$DESIRED_TRAFFIC"
 
 if [ -z "$new_version" ]; then
-  echo "❌ No version specified - both LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are empty" >&2
+  echo "❌ No green version found - LAMBDA_GREEN_VERSION, LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are all empty" >&2
   echo "💡 Possible causes:" >&2
   echo "   - Deployment did not publish a new Lambda version" >&2
-  echo "   - NRN metadata is missing version information" >&2
+  echo "   - NRN metadata is missing version information for deployment $DEPLOYMENT_ID" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the build step publishes a new Lambda version" >&2
   echo "   - Check that LAMBDA_NEW_VERSION or LAMBDA_CURRENT_VERSION is set" >&2
-  exit 1
+  return 1
 fi
 
-echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
-echo "   ✅ alias=$alias_name"
-echo "   ✅ new_version=$new_version"
-echo "   ✅ traffic_percentage=$traffic_percentage%"
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ alias=$alias_name"
+log debug "   ✅ new_version=$new_version"
+log debug "   ✅ traffic_percentage=$traffic_percentage%"
 
 if [ "$traffic_percentage" -lt 0 ] || [ "$traffic_percentage" -gt 100 ]; then
   echo "❌ Traffic percentage must be between 0 and 100, got $traffic_percentage" >&2
@@ -52,11 +54,11 @@ if [ "$traffic_percentage" -lt 0 ] || [ "$traffic_percentage" -gt 100 ]; then
   echo "   - Invalid DESIRED_TRAFFIC value: $traffic_percentage" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Set DESIRED_TRAFFIC to an integer between 0 and 100" >&2
-  exit 1
+  return 1
 fi
 
 echo ""
-echo "   📡 Getting current alias configuration for $alias_name on function $LAMBDA_FUNCTION_NAME..."
+log info "   📡 Getting current alias configuration for $alias_name on function $LAMBDA_FUNCTION_NAME..."
 
 alias_config=$(aws lambda get-alias \
   --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -73,15 +75,52 @@ if [ $alias_exit_code -ne 0 ]; then
   echo "   - Verify alias exists: aws lambda get-alias --function-name $LAMBDA_FUNCTION_NAME --name $alias_name" >&2
   echo "   - Check the agent's IAM permissions include lambda:GetAlias" >&2
   echo "   📋 Error: $alias_config" >&2
-  exit 1
+  return 1
 fi
 
 current_version=$(echo "$alias_config" | jq -r '.FunctionVersion')
-echo "   ✅ current_version=$current_version"
+log debug "   ✅ current_version=$current_version"
+
+# If the alias already points to the new version at 100%, nothing to do.
+# This can happen if finalize was already run, or the alias was updated externally.
+if [ "$current_version" = "$new_version" ]; then
+  echo ""
+  log debug "   ✅ Alias already pointing to version $new_version at 100% - no traffic switch needed"
+  echo ""
+  log info "✨ Traffic switch skipped (already on target version $new_version)"
+  return 0
+fi
+
+# $LATEST cannot be used as a base for weighted routing (AWS limitation).
+# This happens on the first real deployment when the placeholder alias targets $LATEST.
+# In this case, skip gradual rollout and switch 100% directly to the new version.
+if [ "$current_version" = '$LATEST' ]; then
+  echo ""
+  log warn "   ⚠️  Alias points to \$LATEST - weighted routing not supported by AWS"
+  log info "   📝 Switching 100% to version $new_version (first blue-green deployment)"
+
+  update_output=$(aws lambda update-alias \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --name "$alias_name" \
+    --function-version "$new_version" \
+    --routing-config '{}' 2>&1)
+  update_exit_code=$?
+
+  if [ $update_exit_code -ne 0 ]; then
+    echo "❌ Failed to switch alias from \$LATEST to version $new_version" >&2
+    echo "   📋 Error: $update_output" >&2
+    return 1
+  fi
+
+  log debug "   ✅ Alias updated from \$LATEST to 100% on version $new_version"
+  echo ""
+  log info "✨ Traffic switch completed (forced 100% - was on \$LATEST)"
+  return 0
+fi
 
 if [ "$traffic_percentage" -eq 100 ]; then
   echo ""
-  echo "   📝 Switching 100% traffic to version $new_version on alias $alias_name..."
+  log info "   📝 Switching 100% traffic to version $new_version on alias $alias_name..."
 
   update_output=$(aws lambda update-alias \
     --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -98,17 +137,17 @@ if [ "$traffic_percentage" -eq 100 ]; then
     echo "🔧 How to fix:" >&2
     echo "   - Check if version exists: aws lambda get-function --function-name $LAMBDA_FUNCTION_NAME --qualifier $new_version" >&2
     echo "   📋 Error: $update_output" >&2
-    exit 1
+    return 1
   fi
 
-  echo "   ✅ Traffic switched to 100% on version $new_version"
+  log debug "   ✅ Traffic switched to 100% on version $new_version"
 else
   weight=$(echo "scale=2; $traffic_percentage / 100" | bc)
 
   echo ""
-  echo "   📝 Configuring weighted routing on alias $alias_name..."
-  echo "   📋 Version $current_version: $((100 - traffic_percentage))%"
-  echo "   📋 Version $new_version: $traffic_percentage%"
+  log info "   📝 Configuring weighted routing on alias $alias_name..."
+  log debug "   📋 Version $current_version: $((100 - traffic_percentage))%"
+  log debug "   📋 Version $new_version: $traffic_percentage%"
 
   routing_config=$(jq -n \
     --arg version "$new_version" \
@@ -132,15 +171,15 @@ else
     echo "   - Verify both versions exist on function $LAMBDA_FUNCTION_NAME" >&2
     echo "   - Check the agent's IAM permissions include lambda:UpdateAlias" >&2
     echo "   📋 Error: $update_output" >&2
-    exit 1
+    return 1
   fi
 
-  echo "   ✅ Weighted routing configured: $current_version=$((100 - traffic_percentage))%, $new_version=$traffic_percentage%"
+  log debug "   ✅ Weighted routing configured: $current_version=$((100 - traffic_percentage))%, $new_version=$traffic_percentage%"
 fi
 
 if [ -n "${WARMUP_ALIAS_NAME:-}" ]; then
   echo ""
-  echo "   📝 Updating warm alias $WARMUP_ALIAS_NAME to point to version $new_version..."
+  log info "   📝 Updating warm alias $WARMUP_ALIAS_NAME to point to version $new_version..."
 
   warm_output=$(aws lambda update-alias \
     --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -157,11 +196,11 @@ if [ -n "${WARMUP_ALIAS_NAME:-}" ]; then
     echo "🔧 How to fix:" >&2
     echo "   - Verify warm alias exists: aws lambda get-alias --function-name $LAMBDA_FUNCTION_NAME --name $WARMUP_ALIAS_NAME" >&2
     echo "   📋 Error: $warm_output" >&2
-    exit 1
+    return 1
   fi
 
-  echo "   ✅ Warm alias $WARMUP_ALIAS_NAME updated to version $new_version"
+  log debug "   ✅ Warm alias $WARMUP_ALIAS_NAME updated to version $new_version"
 fi
 
 echo ""
-echo "✨ Traffic switch completed successfully for function=$LAMBDA_FUNCTION_NAME alias=$alias_name traffic=$traffic_percentage%"
+log info "✨ Traffic switch completed successfully for function=$LAMBDA_FUNCTION_NAME alias=$alias_name traffic=$traffic_percentage%"

@@ -1,0 +1,69 @@
+#!/bin/bash
+# Prepares the minimal Tofu context for scope deletion (tofu destroy).
+# Assumes scope/build_context has already run: SCOPE_ID, LAMBDA_FUNCTION_NAME,
+# PACKAGE_TYPE, OUTPUT_DIR, CONTEXT, and RESOURCE_TAGS_JSON are already set.
+
+source "$SERVICE_PATH/utils/log"
+
+log info "🔍 Building Tofu destroy context..."
+
+# Set up Terraform working directory
+TF_WORKING_DIR="$OUTPUT_DIR/terraform"
+TOFU_MODULE_DIR="$TF_WORKING_DIR"
+mkdir -p "$TF_WORKING_DIR"
+
+# State key — must match what was used during scope creation
+STATE_KEY="lambda/${SCOPE_ID}/terraform.tfstate"
+log debug "   ✅ state_key=$STATE_KEY"
+
+# Initialize base variables consumed and augmented by setup scripts
+TOFU_INIT_VARIABLES="-backend-config=key=$STATE_KEY"
+TOFU_VARIABLES="{}"
+MODULES_TO_USE=""
+
+# Look up the current Lambda function to determine package type and asset values.
+# For tofu destroy the actual asset values are not used — Tofu reads resources
+# from state — but compute/lambda/setup validates that they are non-empty.
+log info "   📡 Looking up Lambda function..."
+lambda_info=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --output json 2>/dev/null || echo "")
+
+if [ -n "$lambda_info" ]; then
+  PACKAGE_TYPE=$(echo "$lambda_info" | jq -r '.Configuration.PackageType // "Zip"')
+  log debug "   ✅ package_type=$PACKAGE_TYPE"
+
+  if [ "$PACKAGE_TYPE" = "Image" ]; then
+    IMAGE_URI=$(echo "$lambda_info" | jq -r '.Code.ImageUri // ""')
+    S3_BUCKET=""
+    S3_KEY=""
+    log debug "   ✅ image_uri=$IMAGE_URI"
+  else
+    IMAGE_URI=""
+    S3_BUCKET="destroy-placeholder"
+    S3_KEY="destroy-placeholder"
+  fi
+else
+  log warn "   ⚠️  Lambda function not found in AWS — Tofu will destroy resources from state"
+  IMAGE_URI=""
+  S3_BUCKET="destroy-placeholder"
+  S3_KEY="destroy-placeholder"
+fi
+
+# Augment CONTEXT with lambda info (required by deployment/compute/lambda/setup)
+CONTEXT=$(echo "${CONTEXT:-{\}}" | jq \
+  --arg fn "$LAMBDA_FUNCTION_NAME" \
+  '. + {lambda: {function_name: $fn}}')
+
+export TF_WORKING_DIR
+export TOFU_MODULE_DIR
+export STATE_KEY
+export TOFU_INIT_VARIABLES
+export TOFU_VARIABLES
+export MODULES_TO_USE
+export PACKAGE_TYPE
+export IMAGE_URI
+export S3_BUCKET
+export S3_KEY
+export CONTEXT
+
+echo ""
+log info "✨ Destroy context built: function=$LAMBDA_FUNCTION_NAME, package_type=$PACKAGE_TYPE"

@@ -39,12 +39,7 @@ if ! [[ "$value" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# Read current reserved concurrency from NRN
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-current_value=$(echo "$nrn_output" | jq -r '.LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE // "not set"')
-
 echo "   📋 function_name=$LAMBDA_FUNCTION_NAME"
-echo "   📋 current_reserved_concurrency=$current_value"
 echo "   📋 new_reserved_concurrency=$value"
 echo ""
 
@@ -68,10 +63,6 @@ if [ "$value" -eq 0 ]; then
     echo "   - AWS error: $aws_output" >&2
     exit 1
   fi
-
-  # Update NRN metadata
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE --value "0"
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE --value "unreserved"
 
   echo ""
   echo "✅ Reserved concurrency reservation removed successfully"
@@ -98,10 +89,6 @@ else
     echo "   - AWS error: $aws_output" >&2
     exit 1
   fi
-
-  # Update NRN metadata
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE --value "$value"
-  np nrn write --nrn "$SCOPE_NRN" --namespace aws --key LAMBDA_CURRENT_RESERVED_CONCURRENCY_TYPE --value "reserved"
 
   echo ""
   echo "✅ Reserved concurrency set to $value successfully"

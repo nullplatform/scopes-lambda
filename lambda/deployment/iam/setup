@@ -1,153 +1,36 @@
 #!/bin/bash
 
-echo "🔍 Validating IAM configuration..."
+source "$SERVICE_PATH/utils/log"
 
-# Check if dedicated role is enabled via NRN
-scope_nrn=$(echo "$CONTEXT" | jq -r '.scope.nrn')
+log info "🔍 Configuring IAM role for deployment..."
 
-echo "   📡 Checking IAM role configuration from NRN..."
-
-# Try to get IAM configuration from NRN
-use_dedicated_role="false"
-role_name_template=""
-role_policies="[]"
-role_entity="scope"
-existing_role_arn=""
-existing_role_name=""
-
-# Read NRN configuration for IAM
-nrn_output=$(np nrn read --nrn "$scope_nrn" --namespace aws --format json 2>&1)
-nrn_exit_code=$?
-
-if [ $nrn_exit_code -eq 0 ]; then
-  use_dedicated_role=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_USE_DEDICATED_ROLE // "false"')
-  role_name_template=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_DEDICATED_ROLE_NAME_TEMPLATE // ""')
-  role_policies=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_DEDICATED_ROLE_POLICIES // "[]"')
-  role_entity=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_DEDICATED_ROLE_ENTITY // "scope"')
-  existing_role_arn=$(echo "$nrn_output" | jq -r '.AWS_DEDICATED_ROLE_ARN // ""')
-  existing_role_name=$(echo "$nrn_output" | jq -r '.AWS_DEDICATED_ROLE_NAME // ""')
-fi
-
-echo "   ✅ use_dedicated_role=$use_dedicated_role"
-echo "   ✅ role_entity=$role_entity"
-
-# If not using dedicated role, check for existing role ARN in context
-if [ "$use_dedicated_role" != "true" ]; then
-  lambda_role_arn=$(echo "$CONTEXT" | jq -r '.lambda.role_arn // empty')
-
-  if [ -z "$lambda_role_arn" ] || [ "$lambda_role_arn" = "null" ]; then
-    lambda_role_arn=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].lambda.execution_role_arn // empty')
-  fi
-
-  if [ -z "$lambda_role_arn" ] || [ "$lambda_role_arn" = "null" ]; then
-    echo ""
-    echo "   ❌ No Lambda execution role configured"
-    echo ""
-    echo "  💡 Possible causes:"
-    echo "    • Dedicated role is not enabled and no default role is configured"
-    echo ""
-    echo "  🔧 How to fix:"
-    echo "    • Enable dedicated roles via NRN configuration"
-    echo "    • Or configure lambda.execution_role_arn in the cloud-provider"
-    echo ""
-    exit 1
-  fi
-
-  echo "   ✅ Using existing role: $lambda_role_arn"
-
-  # Add role ARN to TOFU_VARIABLES without creating IAM resources
-  TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
-    --arg role_arn "$lambda_role_arn" \
-    '. + {lambda_role_arn: $role_arn, iam_create_role: false}')
-
-  echo ""
-  echo "✨ IAM configured (using existing role)"
-  echo ""
-  return 0 2>/dev/null || exit 0
-fi
-
-# Using dedicated role - validate required fields
-if [ -z "$role_name_template" ] || [ "$role_name_template" = "null" ] || [ "$role_name_template" = "" ]; then
-  echo ""
-  echo "   ❌ Role name template not configured"
-  echo ""
-  echo "  🔧 How to fix:"
-  echo "    Set AWS_LAMBDA_DEDICATED_ROLE_NAME_TEMPLATE in NRN configuration"
-  echo ""
-  exit 1
-fi
-
-if [ "$role_policies" = "[]" ] || [ "$role_policies" = "null" ]; then
-  echo ""
-  echo "   ❌ Role policies not configured"
-  echo ""
-  echo "  🔧 How to fix:"
-  echo "    Set AWS_LAMBDA_DEDICATED_ROLE_POLICIES in NRN configuration"
-  echo ""
-  exit 1
-fi
-
-echo "   ✅ role_name_template=$role_name_template"
-
-# Generate role name from template
-scope_id=$(echo "$CONTEXT" | jq -r '.scope.id')
-scope_slug=$(echo "$CONTEXT" | jq -r '.scope.slug')
-namespace_slug=$(echo "$CONTEXT" | jq -r '.namespace.slug')
-application_slug=$(echo "$CONTEXT" | jq -r '.application.slug')
-account_slug=$(echo "$CONTEXT" | jq -r '.account.slug')
-deployment_id=$(echo "$CONTEXT" | jq -r '.deployment.id // ""')
-
-# Replace template variables
-iam_role_name="$role_name_template"
-iam_role_name="${iam_role_name//\{scope_id\}/$scope_id}"
-iam_role_name="${iam_role_name//\{scope_slug\}/$scope_slug}"
-iam_role_name="${iam_role_name//\{namespace_slug\}/$namespace_slug}"
-iam_role_name="${iam_role_name//\{application_slug\}/$application_slug}"
-iam_role_name="${iam_role_name//\{account_slug\}/$account_slug}"
-iam_role_name="${iam_role_name//\{deployment_id\}/$deployment_id}"
-
-# Truncate to 64 chars (AWS IAM role name limit)
+iam_role_name="${LAMBDA_FUNCTION_NAME}-role"
 iam_role_name="${iam_role_name:0:64}"
 
-echo "   ✅ iam_role_name=$iam_role_name"
+log debug "   📋 role_name=$iam_role_name"
 
-# Check if role already exists
-if [ -n "$existing_role_arn" ] && [ "$existing_role_arn" != "null" ] && [ "$existing_role_arn" != "" ]; then
-  echo "   ✅ Using existing dedicated role: $existing_role_arn"
+role_output=$(aws iam get-role --role-name "$iam_role_name" 2>&1)
 
-  TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
-    --arg role_arn "$existing_role_arn" \
-    --arg role_name "$existing_role_name" \
-    '. + {
-      lambda_role_arn: $role_arn,
-      iam_role_name: $role_name,
-      iam_create_role: false
-    }')
+if [ $? -eq 0 ]; then
+  # Role already exists — Tofu will manage it (no changes expected) but skip propagation wait.
+  # iam_create_role must stay true so count=1 is preserved in the Terraform state;
+  # setting it to false would flip count to 0 and cause Terraform to destroy the role.
+  log debug "   ✅ role exists (no propagation wait needed)"
+  propagation_duration="0s"
 else
-  echo "   📝 Will create new IAM role"
-
-  # Parse policies JSON
-  policies_json="$role_policies"
-
-  # Determine if VPC access is needed
-  vpc_enabled=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false')
-
-  TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
-    --arg role_name "$iam_role_name" \
-    --argjson policies "$policies_json" \
-    --argjson vpc_enabled "$vpc_enabled" \
-    --arg role_entity "$role_entity" \
-    '. + {
-      iam_role_name: $role_name,
-      iam_create_role: true,
-      iam_role_policies: $policies,
-      iam_vpc_enabled: $vpc_enabled,
-      iam_role_entity: $role_entity
-    }')
+  # Role does not exist — Tofu will create it and wait for IAM propagation.
+  propagation_wait="${IAM_PROPAGATION_WAIT_SECONDS:-20}"
+  propagation_duration="${propagation_wait}s"
+  log debug "   📋 role will be created by Tofu (propagation_wait=${propagation_duration})"
 fi
 
-echo ""
-echo "✨ IAM configured successfully"
+TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
+  --arg role_name "$iam_role_name" \
+  --arg scope_id "$SCOPE_ID" \
+  --arg duration "$propagation_duration" \
+  '. + {iam_create_role: true, iam_role_name: $role_name, iam_scope_id: $scope_id, iam_propagation_duration: $duration}')
+
+log info "✨ IAM configured"
 echo ""
 
 # Add module to composition list

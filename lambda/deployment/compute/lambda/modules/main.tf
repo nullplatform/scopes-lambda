@@ -1,7 +1,8 @@
 # Main Lambda Function
 resource "aws_lambda_function" "main" {
   function_name = var.lambda_function_name
-  role          = var.lambda_role_arn
+  description   = var.lambda_description
+  role          = local.lambda_role_arn
   package_type  = var.lambda_package_type
 
   # Deployment package from S3 (Zip only)
@@ -52,6 +53,11 @@ resource "aws_lambda_function" "main" {
   publish = var.lambda_publish
 
   tags = local.lambda_default_tags
+
+  # Cross-module dependency: wait for IAM propagation when the role was just created.
+  # time_sleep.iam_propagation is defined in the iam module, which is always composed
+  # alongside this module. When count = 0 (role pre-existed), this is a no-op.
+  depends_on = [time_sleep.iam_propagation]
 
   lifecycle {
     # Ignore changes to code - managed via deployments

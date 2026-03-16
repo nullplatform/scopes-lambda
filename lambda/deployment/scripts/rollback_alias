@@ -2,7 +2,9 @@
 # Rollback Lambda alias to previous version
 # Used when a deployment needs to be rolled back
 
-echo "🔄 Rolling back Lambda alias to previous version..."
+source "$SERVICE_PATH/utils/log"
+
+log info "🔄 Rolling back Lambda alias to previous version..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
@@ -12,37 +14,33 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  exit 1
+  return 1
 fi
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
-echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
-echo "   ✅ alias=$alias_name"
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ alias=$alias_name"
 
-previous_version=""
+# Blue version = Lambda version of the currently active deployment (what we rollback to)
+previous_version="${LAMBDA_BLUE_VERSION:-}"
 
-if [ -n "${SCOPE_NRN:-}" ]; then
-  nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-  previous_version=$(echo "$nrn_output" | jq -r '.LAMBDA_FUNCTION_CURRENT_VERSION // ""')
-fi
-
-if [ -z "$previous_version" ] || [ "$previous_version" = "null" ] || [ "$previous_version" = "" ]; then
-  echo "❌ No previous version found to rollback to" >&2
+if [ -z "$previous_version" ] || [ "$previous_version" = "null" ]; then
+  echo "❌ No blue (currently active) version found to rollback to" >&2
   echo "💡 Possible causes:" >&2
-  echo "   - This is the first deployment (no previous version exists)" >&2
-  echo "   - NRN metadata was not stored properly for scope=$SCOPE_NRN" >&2
-  echo "   - LAMBDA_FUNCTION_CURRENT_VERSION key is missing from NRN" >&2
+  echo "   - This is the first deployment (no active deployment exists)" >&2
+  echo "   - LAMBDA_BLUE_VERSION was not exported from build_context" >&2
+  echo "   - NRN has no version stored for active deployment=$BLUE_DEPLOYMENT_ID" >&2
   echo "🔧 How to fix:" >&2
-  echo "   - Verify NRN metadata: np nrn read --nrn $SCOPE_NRN --namespace aws --format json" >&2
+  echo "   - Verify NRN: np nrn read --nrn $SCOPE_NRN --ids \"lambda.deployment_version_${BLUE_DEPLOYMENT_ID//-/_}\" --format json" >&2
   echo "   - Manually set the alias version if the previous version is known" >&2
-  exit 1
+  return 1
 fi
 
-echo "   ✅ previous_version=$previous_version"
+log debug "   ✅ previous_version=$previous_version"
 
 echo ""
-echo "   📝 Updating alias $alias_name to point to version $previous_version on function $LAMBDA_FUNCTION_NAME..."
+log info "   📝 Updating alias $alias_name to point to version $previous_version on function $LAMBDA_FUNCTION_NAME..."
 
 update_output=$(aws lambda update-alias \
   --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -61,9 +59,9 @@ if [ $update_exit_code -ne 0 ]; then
   echo "   - Check if the version exists: aws lambda get-function --function-name $LAMBDA_FUNCTION_NAME --qualifier $previous_version" >&2
   echo "   - Verify alias exists: aws lambda get-alias --function-name $LAMBDA_FUNCTION_NAME --name $alias_name" >&2
   echo "   📋 Error: $update_output" >&2
-  exit 1
+  return 1
 fi
 
-echo "   ✅ Alias $alias_name rolled back successfully to version $previous_version"
+log debug "   ✅ Alias $alias_name rolled back successfully to version $previous_version"
 echo ""
-echo "✨ Rollback complete - traffic restored to version $previous_version on function=$LAMBDA_FUNCTION_NAME"
+log info "✨ Rollback complete - traffic restored to version $previous_version on function=$LAMBDA_FUNCTION_NAME"
