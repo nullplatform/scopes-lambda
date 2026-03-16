@@ -2,8 +2,7 @@
 #
 # The following values are fetched automatically from the scope-configurations provider:
 #   AWS_REGION               - AWS region for Lambda deployment
-#   TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state
-#   TOFU_LOCK_TABLE          - DynamoDB table for Terraform state locking
+#   TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state (native S3 locking via use_lockfile=true)
 #   ALB_PUBLIC_LISTENER_ARN  - ALB listener ARN for public (internet-facing) scopes
 #   ALB_PRIVATE_LISTENER_ARN - ALB listener ARN for private (internal) scopes
 #   NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer (if USE_NULL_AGENT=true)

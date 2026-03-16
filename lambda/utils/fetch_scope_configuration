@@ -50,8 +50,7 @@ if [ -z "$SCOPE_CONFIG" ]; then
   echo "        \"aws_subnet_ids\": \"<comma-separated-subnet-ids>\"" >&2
   echo "      }," >&2
   echo "      \"state\": {" >&2
-  echo "        \"tofu_state_bucket\": \"<your-terraform-state-bucket>\"," >&2
-  echo "        \"tofu_lock_table\": \"<your-terraform-lock-table>\"" >&2
+  echo "        \"tofu_state_bucket\": \"<your-terraform-state-bucket>\"" >&2
   echo "      }" >&2
   echo "    }'" >&2
   exit 1
@@ -81,8 +80,6 @@ log debug "   ✅ aws_subnet_ids=$AWS_SUBNET_IDS"
 TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // empty')
 log debug "   ✅ tofu_state_bucket=$TOFU_STATE_BUCKET"
 
-TOFU_LOCK_TABLE=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_lock_table // empty')
-log debug "   ✅ tofu_lock_table=$TOFU_LOCK_TABLE"
 
 NULL_AGENT_LAYER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.agent.null_agent_layer_arn // empty')
 log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
@@ -95,7 +92,6 @@ export ALB_PUBLIC_LISTENER_ARN
 export ALB_PRIVATE_LISTENER_ARN
 export AWS_SUBNET_IDS
 export TOFU_STATE_BUCKET
-export TOFU_LOCK_TABLE
 export NULL_AGENT_LAYER_ARN
 
 log info "✨ Scope configuration fetched successfully"
