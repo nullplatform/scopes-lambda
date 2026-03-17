@@ -21,7 +21,11 @@ else
   PROVIDER_RESPONSE=$(np provider list --categories scope-configurations --nrn "$NRN" --dimensions "$DIMENSION_FILTER" --format json)
 fi
 
-SCOPE_CONFIG=$(echo "$PROVIDER_RESPONSE" | jq -r ".results[0].attributes // empty")
+while IFS= read -r collision_key; do
+  log warn "   ⚠️  Key collision in scope-configurations: '$collision_key' is defined in multiple providers — last one wins"
+done < <(echo "$PROVIDER_RESPONSE" | jq -r '[.results[].attributes | keys[]] | group_by(.) | map(select(length > 1) | .[0]) | .[]')
+
+SCOPE_CONFIG=$(echo "$PROVIDER_RESPONSE" | jq -r '[.results[].attributes] | reduce .[] as $item ({}; . * $item)')
 
 if [ -z "$SCOPE_CONFIG" ]; then
   echo "❌ No scope-configurations provider found for NRN '$NRN'${DIMENSION_FILTER:+ with dimensions '$DIMENSION_FILTER'}." >&2
