@@ -1,9 +1,9 @@
 # AWS Lambda Scope Configuration
 #
 # The following values are fetched automatically from the scope-configurations provider:
+# The following values are fetched automatically from the scope-configurations provider:
 #   AWS_REGION               - AWS region for Lambda deployment
-#   TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state
-#   TOFU_LOCK_TABLE          - DynamoDB table for Terraform state locking
+#   TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state (native S3 locking via use_lockfile=true)
 #   ALB_PUBLIC_LISTENER_ARN  - ALB listener ARN for public (internet-facing) scopes
 #   ALB_PRIVATE_LISTENER_ARN - ALB listener ARN for private (internal) scopes
 #   NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer (if USE_NULL_AGENT=true)
@@ -13,12 +13,19 @@
 
 provider_categories:
   - scope-configurations
+  - scope-configurations
   - assets-repository
 
 configuration:
   # ── Terraform ──────────────────────────────────────────────────────────────
+  # ── Terraform ──────────────────────────────────────────────────────────────
   TOFU_PATH: "$SERVICE_PATH/deployment"
 
+  # ── Domain / DNS ───────────────────────────────────────────────────────────
+  USE_ACCOUNT_SLUG: false
+
+  # ── ALB ────────────────────────────────────────────────────────────────────
+  ALB_LISTENER_RULE_PRIORITY_START: 100
   # ── Domain / DNS ───────────────────────────────────────────────────────────
   USE_ACCOUNT_SLUG: false
 
@@ -40,7 +47,22 @@ configuration:
   DEPLOYMENT_MAX_WAIT_IN_SECONDS: 600
 
   # ── CloudWatch Logs ────────────────────────────────────────────────────────
+  # ── Null Agent ─────────────────────────────────────────────────────────────
+  USE_NULL_AGENT: true
+
+  # ── IAM ────────────────────────────────────────────────────────────────────
+  IAM_PROPAGATION_WAIT_SECONDS: 20
+
+  # ── Parameters ─────────────────────────────────────────────────────────────
+  PARAMETERS_STRATEGY: "secretsmanager"
+
+  # ── Deployment ─────────────────────────────────────────────────────────────
+  DEPLOYMENT_MAX_WAIT_IN_SECONDS: 600
+
+  # ── CloudWatch Logs ────────────────────────────────────────────────────────
   LOG_RETENTION_DAYS: 30
 
+  # ── Placeholder Image ──────────────────────────────────────────────────────
+  PLACEHOLDER_IMAGE_URI: "688720756067.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
   # ── Placeholder Image ──────────────────────────────────────────────────────
   PLACEHOLDER_IMAGE_URI: "688720756067.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
