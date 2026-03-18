@@ -8,10 +8,11 @@ log info "🔍 Validating Lambda compute configuration..."
 lambda_function_name=$(echo "$CONTEXT" | jq -r '.lambda.function_name // empty')
 lambda_role_arn=$(echo "$CONTEXT" | jq -r '.lambda.role_arn // empty')
 
-# PACKAGE_TYPE, IMAGE_URI, S3_BUCKET, and S3_KEY are parsed by build_context and exported.
-# Use them directly to avoid re-parsing the asset URL.
+# PACKAGE_TYPE, IMAGE_URI, LAMBDA_FILENAME, S3_BUCKET, and S3_KEY are parsed by
+# build_context and exported. Use them directly to avoid re-parsing the asset URL.
 package_type="${PACKAGE_TYPE:-Zip}"
 lambda_image_uri="${IMAGE_URI:-}"
+lambda_filename="${LAMBDA_FILENAME:-}"
 lambda_s3_bucket="${S3_BUCKET:-}"
 lambda_s3_key="${S3_KEY:-}"
 
@@ -32,6 +33,9 @@ if [ "$package_type" = "Image" ]; then
   fi
   log debug "   ✅ package_type=Image"
   log debug "   ✅ image_uri=$lambda_image_uri"
+elif [ -n "$lambda_filename" ]; then
+  log debug "   ✅ package_type=Zip (local file)"
+  log debug "   ✅ lambda_filename=$lambda_filename"
 else
   if [ -z "$lambda_s3_bucket" ] || [ -z "$lambda_s3_key" ]; then
     echo ""
@@ -56,10 +60,14 @@ memory=$(echo "$CONTEXT" | jq -r '.scope.capabilities.memory // 256')
 timeout=$(echo "$CONTEXT" | jq -r '.scope.capabilities.timeout // 30')
 ephemeral_storage=$(echo "$CONTEXT" | jq -r '.scope.capabilities.ephemeral_storage // 512')
 architecture=$(echo "$CONTEXT" | jq -r '.scope.capabilities.architecture // "arm64"')
+runtime=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs20.x"')
+handler=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler"')
 
 log debug "   ✅ memory=${memory}MB"
 log debug "   ✅ timeout=${timeout}s"
 log debug "   ✅ architecture=$architecture"
+log debug "   ✅ runtime=$runtime"
+log debug "   ✅ handler=$handler"
 
 # Reserved concurrency
 reserved_type=$(echo "$CONTEXT" | jq -r '.scope.capabilities.reserved_concurrency.type // "unreserved"')
@@ -166,8 +174,11 @@ TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --argjson timeout "$timeout" \
   --argjson ephemeral_storage "$ephemeral_storage" \
   --arg architecture "$architecture" \
+  --arg runtime "$runtime" \
+  --arg handler "$handler" \
   --arg package_type "$package_type" \
   --arg image_uri "$lambda_image_uri" \
+  --arg lambda_filename "$lambda_filename" \
   --arg s3_bucket "$lambda_s3_bucket" \
   --arg s3_key "$lambda_s3_key" \
   --argjson environment_variables "$env_vars" \
@@ -186,8 +197,11 @@ TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
     lambda_timeout: $timeout,
     lambda_ephemeral_storage: $ephemeral_storage,
     lambda_architecture: $architecture,
+    lambda_runtime: $runtime,
+    lambda_handler: $handler,
     lambda_package_type: $package_type,
     lambda_image_uri: $image_uri,
+    lambda_filename: $lambda_filename,
     lambda_s3_bucket: $s3_bucket,
     lambda_s3_key: $s3_key,
     lambda_environment_variables: $environment_variables,

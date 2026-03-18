@@ -51,6 +51,12 @@ variable "lambda_image_uri" {
   default     = ""
 }
 
+variable "lambda_filename" {
+  description = "Path to a local zip deployment package (used for initial placeholder; takes precedence over S3)"
+  type        = string
+  default     = ""
+}
+
 variable "lambda_s3_bucket" {
   description = "S3 bucket containing the deployment package"
   type        = string

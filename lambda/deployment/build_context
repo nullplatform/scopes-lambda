@@ -173,6 +173,18 @@ LAMBDA_EPHEMERAL_STORAGE=$(get_config_value \
 )
 log debug "   ✅ ephemeral_storage=$LAMBDA_EPHEMERAL_STORAGE"
 
+LAMBDA_RUNTIME=$(get_config_value \
+  --provider '.scope.capabilities.runtime' \
+  --default "nodejs20.x"
+)
+log debug "   ✅ runtime=$LAMBDA_RUNTIME"
+
+LAMBDA_HANDLER=$(get_config_value \
+  --provider '.scope.capabilities.handler' \
+  --default "index.handler"
+)
+log debug "   ✅ handler=$LAMBDA_HANDLER"
+
 LAMBDA_LAYERS=$(echo "$CONTEXT" | jq -c '.scope.capabilities.layers // []')
 log debug "   ✅ layers=$LAMBDA_LAYERS"
 
@@ -230,6 +242,15 @@ if [ -n "${IMAGE_URI:-}" ]; then
   S3_BUCKET=""
   S3_KEY=""
   log debug "   ✅ image_uri=$IMAGE_URI (provided by caller)"
+elif [ -n "${LAMBDA_FILENAME:-}" ]; then
+  # LAMBDA_FILENAME already set by caller (e.g. scope create with placeholder zip) — skip asset resolution
+  PACKAGE_TYPE="Zip"
+  ASSET_TYPE="lambda"
+  ASSET_URL=""
+  IMAGE_URI=""
+  S3_BUCKET=""
+  S3_KEY=""
+  log debug "   ✅ lambda_filename=$LAMBDA_FILENAME (provided by caller)"
 else
   ASSET_URL=$(echo "$CONTEXT" | jq -r '.asset.url // ""')
   ASSET_TYPE=$(echo "$CONTEXT" | jq -r '.asset.type // "lambda-asset"')
@@ -421,6 +442,8 @@ TOFU_VARIABLES=$(jq -n \
   --arg timeout "$LAMBDA_TIMEOUT" \
   --arg architecture "$LAMBDA_ARCHITECTURE" \
   --arg ephemeral_storage "$LAMBDA_EPHEMERAL_STORAGE" \
+  --arg runtime "$LAMBDA_RUNTIME" \
+  --arg handler "$LAMBDA_HANDLER" \
   --argjson layers "$LAMBDA_LAYERS" \
   --arg reserved_concurrency_type "$RESERVED_CONCURRENCY_TYPE" \
   --arg reserved_concurrency_value "$RESERVED_CONCURRENCY_VALUE" \
@@ -461,6 +484,8 @@ TOFU_VARIABLES=$(jq -n \
     timeout: ($timeout | tonumber),
     architecture: $architecture,
     ephemeral_storage: ($ephemeral_storage | tonumber),
+    runtime: $runtime,
+    handler: $handler,
     layers: $layers,
     reserved_concurrency_type: $reserved_concurrency_type,
     reserved_concurrency_value: ($reserved_concurrency_value | tonumber),
@@ -529,6 +554,8 @@ export LAMBDA_MEMORY
 export LAMBDA_TIMEOUT
 export LAMBDA_ARCHITECTURE
 export LAMBDA_EPHEMERAL_STORAGE
+export LAMBDA_RUNTIME
+export LAMBDA_HANDLER
 export LAMBDA_LAYERS
 export RESERVED_CONCURRENCY_TYPE
 export RESERVED_CONCURRENCY_VALUE
@@ -541,6 +568,7 @@ export SECURITY_GROUP_IDS
 export ASSET_TYPE
 export PACKAGE_TYPE
 export IMAGE_URI
+export LAMBDA_FILENAME
 export S3_BUCKET
 export S3_KEY
 export LAMBDA_ENVIRONMENT_VARIABLES

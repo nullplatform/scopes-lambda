@@ -5,9 +5,10 @@ resource "aws_lambda_function" "main" {
   role          = local.lambda_role_arn
   package_type  = var.lambda_package_type
 
-  # Deployment package from S3 (Zip only)
-  s3_bucket = local.lambda_is_image ? null : var.lambda_s3_bucket
-  s3_key    = local.lambda_is_image ? null : var.lambda_s3_key
+  # Deployment package — local file takes precedence over S3 (Zip only)
+  filename  = local.lambda_use_filename ? var.lambda_filename : null
+  s3_bucket = local.lambda_is_image || local.lambda_use_filename ? null : var.lambda_s3_bucket
+  s3_key    = local.lambda_is_image || local.lambda_use_filename ? null : var.lambda_s3_key
 
   # Container image URI (Image only)
   image_uri = local.lambda_is_image ? var.lambda_image_uri : null

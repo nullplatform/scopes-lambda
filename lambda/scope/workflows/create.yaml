@@ -25,6 +25,12 @@ steps:
         type: environment
       - name: PACKAGE_TYPE
         type: environment
+      - name: ASSET_TYPE
+        type: environment
+      - name: RUNTIME
+        type: environment
+      - name: HANDLER
+        type: environment
       - name: ARCHITECTURE
         type: environment
       - name: OUTPUT_DIR
@@ -36,6 +42,8 @@ steps:
     file: "$SERVICE_PATH/scope/scripts/resolve_placeholder_image"
     output:
       - name: IMAGE_URI
+        type: environment
+      - name: LAMBDA_FILENAME
         type: environment
   - name: build_deployment_context
     type: script
