@@ -1,0 +1,33 @@
+# Copy this file to terraform.tfvars and fill in the values.
+# terraform.tfvars is gitignored — never commit secrets.
+
+################################################################################
+# Required
+################################################################################
+
+nrn        = "organization:account"
+np_api_key = "your-nullplatform-api-key"
+
+tags_selectors = {
+  environment = "production"
+}
+
+################################################################################
+# Repository (override if using a fork or private mirror)
+################################################################################
+
+# github_raw_url = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/heads"
+# github_branch  = "main"
+
+################################################################################
+# Agent
+################################################################################
+
+# repo_path = "/root/.np/nullplatform/scopes-lambda"
+
+################################################################################
+# Scope Definition (override to customize the display name)
+################################################################################
+
+# service_spec_name        = "AWS Lambda"
+# service_spec_description = "AWS Lambda functions managed by nullplatform"
