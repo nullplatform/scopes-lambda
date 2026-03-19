@@ -31,3 +31,11 @@ tags_selectors = {
 
 # service_spec_name        = "AWS Lambda"
 # service_spec_description = "AWS Lambda functions managed by nullplatform"
+
+################################################################################
+# Overrides (optional — appends --overrides-path to the agent cmdline)
+################################################################################
+
+# overrides_enabled      = true
+# overrides_repo_path    = "/root/.np/nullplatform/scopes-networking"
+# overrides_service_path = "/lambda"

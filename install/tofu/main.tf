@@ -68,4 +68,8 @@ module "scope_definition_agent_association" {
   repo_path = var.repo_path
 
   tags_selectors = var.tags_selectors
+
+  enabled_override       = var.overrides_enabled
+  override_repo_path     = var.overrides_repo_path
+  overrides_service_path = var.overrides_service_path
 }

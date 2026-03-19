@@ -248,7 +248,7 @@
         "memory": {
           "type": "integer",
           "title": "Memory (MB)",
-          "description": "Amount of memory allocated to your function in MB (128–10240). CPU scales proportionally.",
+          "description": "Amount of memory allocated to your function in MB (128-10240). CPU scales proportionally.",
           "default": 256,
           "minimum": 128,
           "maximum": 10240

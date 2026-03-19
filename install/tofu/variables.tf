@@ -67,3 +67,25 @@ variable "external_logging_provider" {
   type        = string
   default     = "external"
 }
+
+################################################################################
+# Overrides
+################################################################################
+
+variable "overrides_enabled" {
+  description = "Append --overrides-path to the agent cmdline for local config overrides"
+  type        = bool
+  default     = false
+}
+
+variable "overrides_repo_path" {
+  description = "Base path of the overrides repository on the agent (e.g. /root/.np/nullplatform/scopes-networking)"
+  type        = string
+  default     = null
+}
+
+variable "overrides_service_path" {
+  description = "Service subfolder within the overrides repository (e.g. /lambda)"
+  type        = string
+  default     = null
+}
