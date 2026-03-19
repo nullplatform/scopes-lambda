@@ -16,7 +16,8 @@
         "layers",
         "vpc_enabled",
         "reserved_concurrency",
-        "provisioned_concurrency"
+        "provisioned_concurrency",
+        "runtime"
       ],
       "uiSchema": {
         "type": "VerticalLayout",
