@@ -11,6 +11,9 @@ locals {
   # Whether this is a container image deployment
   lambda_is_image = var.lambda_package_type == "Image"
 
+  # Whether to use a local file instead of S3 for the deployment package
+  lambda_use_filename = !local.lambda_is_image && var.lambda_filename != "" && var.lambda_filename != null
+
   # Whether to create warmup alias
   lambda_create_warmup_alias = var.lambda_warmup_alias_name != "" && var.lambda_warmup_alias_name != null
 
