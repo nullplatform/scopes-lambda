@@ -63,6 +63,14 @@ architecture=$(echo "$CONTEXT" | jq -r '.scope.capabilities.architecture // "arm
 runtime=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs20.x"')
 handler=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler"')
 
+# When deploying the placeholder zip (scope creation), always use nodejs20.x so the
+# runtime matches the placeholder code. The first real deployment will set the correct
+# runtime from capabilities.
+if [ -n "$lambda_filename" ]; then
+  runtime="nodejs20.x"
+  handler="index.handler"
+fi
+
 log debug "   ✅ memory=${memory}MB"
 log debug "   ✅ timeout=${timeout}s"
 log debug "   ✅ architecture=$architecture"
