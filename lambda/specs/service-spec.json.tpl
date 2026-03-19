@@ -4,6 +4,7 @@
     "schema": {
       "type": "object",
       "required": [
+        "deployment_type",
         "handler",
         "memory",
         "timeout",
@@ -20,6 +21,28 @@
       "uiSchema": {
         "type": "VerticalLayout",
         "elements": [
+          {
+            "type": "Control",
+            "label": "Deployment Type",
+            "scope": "#/properties/deployment_type",
+            "options": {
+              "format": "radio"
+            }
+          },
+          {
+            "rule": {
+              "effect": "SHOW",
+              "condition": {
+                "scope": "#/properties/deployment_type",
+                "schema": {
+                  "const": "zip"
+                }
+              }
+            },
+            "type": "Control",
+            "label": "Runtime",
+            "scope": "#/properties/runtime"
+          },
           {
             "type": "Control",
             "label": "Handler",
@@ -47,7 +70,10 @@
             },
             "type": "Control",
             "label": "Visibility",
-            "scope": "#/properties/visibility"
+            "scope": "#/properties/visibility",
+            "options": {
+              "format": "radio"
+            }
           },
           {
             "type": "Categorization",
@@ -177,10 +203,41 @@
         ]
       },
       "properties": {
+        "deployment_type": {
+          "type": "string",
+          "title": "Deployment Type",
+          "description": "Choose how your Lambda function is packaged and deployed. Cannot be changed after scope creation.",
+          "default": "docker-image",
+          "editableOn": ["create"],
+          "oneOf": [
+            { "const": "docker-image", "title": "Docker Image (ECR)" },
+            { "const": "zip", "title": "ZIP Package (S3)" }
+          ]
+        },
         "asset_type": {
           "type": "string",
           "export": false,
           "default": "docker-image"
+        },
+        "runtime": {
+          "type": "string",
+          "title": "Runtime",
+          "description": "Lambda runtime environment for your ZIP deployment",
+          "default": "nodejs20.x",
+          "oneOf": [
+            { "const": "nodejs20.x", "title": "Node.js 20.x" },
+            { "const": "nodejs18.x", "title": "Node.js 18.x" },
+            { "const": "python3.13", "title": "Python 3.13" },
+            { "const": "python3.12", "title": "Python 3.12" },
+            { "const": "python3.11", "title": "Python 3.11" },
+            { "const": "python3.10", "title": "Python 3.10" },
+            { "const": "java21", "title": "Java 21" },
+            { "const": "java17", "title": "Java 17" },
+            { "const": "java11", "title": "Java 11" },
+            { "const": "dotnet8", "title": ".NET 8" },
+            { "const": "ruby3.3", "title": "Ruby 3.3" },
+            { "const": "provided.al2023", "title": "Custom Runtime (Amazon Linux 2023)" }
+          ]
         },
         "handler": {
           "type": "string",
@@ -191,23 +248,10 @@
         "memory": {
           "type": "integer",
           "title": "Memory (MB)",
-          "description": "Amount of memory allocated to your function (CPU scales proportionally)",
+          "description": "Amount of memory allocated to your function in MB (128–10240). CPU scales proportionally.",
           "default": 256,
-          "oneOf": [
-            { "const": 128, "title": "128 MB" },
-            { "const": 256, "title": "256 MB" },
-            { "const": 512, "title": "512 MB" },
-            { "const": 1024, "title": "1 GB" },
-            { "const": 2048, "title": "2 GB" },
-            { "const": 3072, "title": "3 GB" },
-            { "const": 4096, "title": "4 GB" },
-            { "const": 5120, "title": "5 GB" },
-            { "const": 6144, "title": "6 GB" },
-            { "const": 7168, "title": "7 GB" },
-            { "const": 8192, "title": "8 GB" },
-            { "const": 9216, "title": "9 GB" },
-            { "const": 10240, "title": "10 GB" }
-          ]
+          "minimum": 128,
+          "maximum": 10240
         },
         "timeout": {
           "type": "integer",

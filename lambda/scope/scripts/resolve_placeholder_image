@@ -1,9 +1,7 @@
 #!/bin/bash
-# Resolve the placeholder container image URI for scope provisioning.
-# The placeholder Lambda is always a container image regardless of the scope's
-# eventual package type (Zip or Image). This sets IMAGE_URI so that the
-# deployment build_context uses the correct package type and image for the
-# initial Tofu apply.
+# Resolve the placeholder code for scope provisioning.
+# For Image deployments: resolves the placeholder container image URI from ECR.
+# For Zip deployments: generates a minimal placeholder zip and uploads it to S3.
 #
 # Image tags follow the Docker convention for architecture:
 #   arm64  → suffix "-arm64"
@@ -11,6 +9,30 @@
 
 source "$SERVICE_PATH/utils/log"
 
+# ── Zip placeholder path ──────────────────────────────────────────────────────
+if [ "${PACKAGE_TYPE:-Image}" = "Zip" ]; then
+  log info "🔍 Generating placeholder zip for Zip deployment..."
+
+  placeholder_path="${OUTPUT_DIR}/placeholder.zip"
+  b64_file="$SERVICE_PATH/scope/placeholder/placeholder_lambda.zip.b64"
+
+  log debug "   📋 decoding placeholder zip to $placeholder_path"
+
+  # Decode the pre-built base64 zip (index.js handler, no external tools needed)
+  if ! base64 -d < "$b64_file" > "$placeholder_path" 2>/dev/null; then
+    echo "" >&2
+    echo "❌ Failed to decode placeholder zip from $b64_file" >&2
+    return 1
+  fi
+
+  export LAMBDA_FILENAME="$placeholder_path"
+
+  echo ""
+  log info "✨ Placeholder zip ready: $LAMBDA_FILENAME"
+  return 0
+fi
+
+# ── Image placeholder path ────────────────────────────────────────────────────
 log info "🔍 Resolving placeholder image URI..."
 
 placeholder_image_base="${PLACEHOLDER_IMAGE_URI:-public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest}"

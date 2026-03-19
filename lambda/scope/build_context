@@ -70,10 +70,18 @@ ARCHITECTURE=$(get_config_value \
   --default "arm64"
 )
 
-# Determine package type from capabilities
-# If the scope has no runtime specified and is meant for container images,
-# the asset type at deployment time will determine the actual package type
-PACKAGE_TYPE=$(echo "$CONTEXT" | jq -r '.scope.capabilities.package_type // "Zip"')
+# Determine package type and asset type from deployment_type capability
+deployment_type=$(echo "$CONTEXT" | jq -r '.scope.capabilities.deployment_type // "docker-image"')
+if [ "$deployment_type" = "zip" ]; then
+  PACKAGE_TYPE="Zip"
+  ASSET_TYPE="lambda"
+else
+  PACKAGE_TYPE="Image"
+  ASSET_TYPE="docker-image"
+fi
+
+RUNTIME=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs20.x"')
+HANDLER=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler"')
 
 echo "   ✅ package_type=$PACKAGE_TYPE"
 echo "   ✅ architecture=$ARCHITECTURE"
@@ -156,6 +164,9 @@ export ACCOUNT_SLUG
 export LAMBDA_FUNCTION_NAME
 export VISIBILITY
 export PACKAGE_TYPE
+export ASSET_TYPE
+export RUNTIME
+export HANDLER
 export ARCHITECTURE
 export OUTPUT_DIR
 export RESOURCE_TAGS_JSON
