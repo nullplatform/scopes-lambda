@@ -143,6 +143,8 @@ frontend/deployment/tests/integration/volume/
 # Terraform/OpenTofu
 .terraform/
 .terraform.lock.hcl
+*.tfstate
+*.tfvars
 
 # Generated test certificates
 testing/docker/certs/
