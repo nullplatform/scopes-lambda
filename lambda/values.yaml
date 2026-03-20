@@ -10,9 +10,6 @@
 # Conditional environment variables (can override scope-configurations values if needed):
 #   SECURITY_GROUP_IDS       - Comma-separated security group IDs (required when vpc_enabled=true)
 
-provider_categories:
-  - scope-configurations
-
 configuration:
   # ── Terraform ──────────────────────────────────────────────────────────────
   TOFU_PATH: "$SERVICE_PATH/deployment"
