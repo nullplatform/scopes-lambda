@@ -12,7 +12,6 @@
 
 provider_categories:
   - scope-configurations
-  - assets-repository
 
 configuration:
   # ── Terraform ──────────────────────────────────────────────────────────────
@@ -33,7 +32,7 @@ configuration:
   IAM_PROPAGATION_WAIT_SECONDS: 20
 
   # ── Parameters ─────────────────────────────────────────────────────────────
-  PARAMETERS_STRATEGY: "secretsmanager"
+  PARAMETERS_STRATEGY: "env"
 
   # ── Deployment ─────────────────────────────────────────────────────────────
   DEPLOYMENT_MAX_WAIT_IN_SECONDS: 600
