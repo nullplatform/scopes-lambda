@@ -11,7 +11,7 @@
       "api_key": "{{ env.Getenv "NP_API_KEY" }}",
       "command": {
         "data": {
-          "cmdline": "{{ env.Getenv "REPO_PATH" }}/{{ env.Getenv "SERVICE_PATH" }}/entrypoint --service-path={{ env.Getenv "REPO_PATH" }}/{{ env.Getenv "SERVICE_PATH" }}",
+          "cmdline": "{{ env.Getenv "REPO_PATH" }}/lambda/entrypoint --service-path={{ env.Getenv "REPO_PATH" }}/lambda",
           "environment": {
             "NP_ACTION_CONTEXT": "'${NOTIFICATION_CONTEXT}'"
           }
