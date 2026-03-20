@@ -12,7 +12,6 @@
 
 provider_categories:
   - scope-configurations
-  - assets-repository
 
 configuration:
   # ── Terraform ──────────────────────────────────────────────────────────────
@@ -27,13 +26,13 @@ configuration:
   ALB_LISTENER_RULE_ALERT_THRESHOLD: 80
 
   # ── Null Agent ─────────────────────────────────────────────────────────────
-  USE_NULL_AGENT: true
+  USE_NULL_AGENT: false
 
   # ── IAM ────────────────────────────────────────────────────────────────────
   IAM_PROPAGATION_WAIT_SECONDS: 20
 
   # ── Parameters ─────────────────────────────────────────────────────────────
-  PARAMETERS_STRATEGY: "secretsmanager"
+  PARAMETERS_STRATEGY: "env"
 
   # ── Deployment ─────────────────────────────────────────────────────────────
   DEPLOYMENT_MAX_WAIT_IN_SECONDS: 600

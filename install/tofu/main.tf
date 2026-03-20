@@ -56,6 +56,8 @@ module "scope_definition_agent_association" {
   nrn     = var.nrn
   api_key = var.np_api_key
 
+  # description = "Notification channel for AWS Lambda scope definition"
+
   scope_specification_id   = module.scope_definition.service_specification_id
   scope_specification_slug = module.scope_definition.service_slug
 
