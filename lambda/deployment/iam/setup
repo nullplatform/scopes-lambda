@@ -24,11 +24,15 @@ else
   log debug "   📋 role will be created by Tofu (propagation_wait=${propagation_duration})"
 fi
 
+vpc_enabled=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false')
+log debug "   📋 vpc_enabled=$vpc_enabled"
+
 TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --arg role_name "$iam_role_name" \
   --arg scope_id "$SCOPE_ID" \
   --arg duration "$propagation_duration" \
-  '. + {iam_create_role: true, iam_role_name: $role_name, iam_scope_id: $scope_id, iam_propagation_duration: $duration}')
+  --argjson vpc_enabled "$vpc_enabled" \
+  '. + {iam_create_role: true, iam_role_name: $role_name, iam_scope_id: $scope_id, iam_propagation_duration: $duration, iam_vpc_enabled: $vpc_enabled}')
 
 log info "✨ IAM configured"
 echo ""
