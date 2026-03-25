@@ -1,17 +1,24 @@
 # AWS Lambda Scope Configuration
 #
-# The following values are fetched automatically from the scope-configurations provider:
-#   AWS_REGION               - AWS region for Lambda deployment
-#   TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state (native S3 locking via use_lockfile=true)
-#   ALB_PUBLIC_LISTENER_ARN  - ALB listener ARN for public (internet-facing) scopes
-#   ALB_PRIVATE_LISTENER_ARN - ALB listener ARN for private (internal) scopes
-#   NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer (if USE_NULL_AGENT=true)
+# The following values are fetched automatically from provider categories:
 #
-# Conditional environment variables (can override scope-configurations values if needed):
-#   SECURITY_GROUP_IDS       - Comma-separated security group IDs (required when vpc_enabled=true)
-
-provider_categories:
-  - scope-configurations
+#   vpc category:
+#     ALB_PUBLIC_LISTENER_ARN  - ALB listener ARN for public (internet-facing) scopes
+#     ALB_PRIVATE_LISTENER_ARN - ALB listener ARN for private (internal) scopes
+#     VPC_ID                   - VPC ID for Lambda network placement
+#     AWS_SUBNET_IDS           - Comma-separated subnet IDs
+#     SECURITY_GROUP_IDS       - Comma-separated security group IDs
+#
+#   cloud-providers category:
+#     AWS_ACCOUNT_ID           - AWS account ID
+#     AWS_REGION               - AWS region for Lambda deployment
+#     HOSTED_PUBLIC_ZONE_ID    - Route53 public hosted zone ID
+#     HOSTED_PRIVATE_ZONE_ID   - Route53 private hosted zone ID
+#
+#   scope-configurations category:
+#     TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state
+#     PLACEHOLDER_IMAGE_URI    - ECR image URI used during scope creation
+#     NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer (if USE_NULL_AGENT=true)
 
 configuration:
   # ── Terraform ──────────────────────────────────────────────────────────────
@@ -39,6 +46,3 @@ configuration:
 
   # ── CloudWatch Logs ────────────────────────────────────────────────────────
   LOG_RETENTION_DAYS: 30
-
-  # ── Placeholder Image ──────────────────────────────────────────────────────
-  PLACEHOLDER_IMAGE_URI: "688720756067.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"

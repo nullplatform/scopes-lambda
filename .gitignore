@@ -143,6 +143,7 @@ frontend/deployment/tests/integration/volume/
 # Terraform/OpenTofu
 .terraform/
 .terraform.lock.hcl
+*.tfstate
 terraform.tfvars
 *.tfvars
 !*.tfvars.example
