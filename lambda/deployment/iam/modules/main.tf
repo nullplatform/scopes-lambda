@@ -17,6 +17,8 @@ resource "aws_iam_role" "lambda" {
     ]
   })
 
+  permissions_boundary = var.iam_permissions_boundary != "" ? var.iam_permissions_boundary : null
+
   tags = local.iam_default_tags
 }
 
