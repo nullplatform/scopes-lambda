@@ -1,3 +1,6 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 # IAM Role for Lambda execution
 resource "aws_iam_role" "lambda" {
   count = var.iam_create_role ? 1 : 0
@@ -39,7 +42,35 @@ resource "aws_iam_role_policy" "custom" {
   policy = var.iam_role_policies[count.index].policy
 }
 
-# ECR pull permissions — always added when creating the role.
+# CloudWatch Logs — scoped to the Lambda's own log group.
+# Replaces the AWSLambdaBasicExecutionRole managed policy which grants logs:* on Resource: *.
+resource "aws_iam_role_policy" "cloudwatch_logs" {
+  count = var.iam_create_role ? 1 : 0
+
+  name = "cloudwatch-logs"
+  role = aws_iam_role.lambda[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "logs:CreateLogGroup"
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.iam_function_name}"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.iam_function_name}:*"
+      }
+    ]
+  })
+}
+
+# ECR pull permissions — scoped to repositories in the same account.
+# ecr:GetAuthorizationToken requires Resource: * (AWS limitation).
 # The placeholder Lambda always uses a container image regardless of scope package type,
 # so ECR access is required from the first deployment onward.
 resource "aws_iam_role_policy" "ecr" {
@@ -56,7 +87,7 @@ resource "aws_iam_role_policy" "ecr" {
           "ecr:BatchGetImage",
           "ecr:GetDownloadUrlForLayer"
         ]
-        Resource = "*"
+        Resource = "arn:aws:ecr:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:repository/*"
       },
       {
         Effect   = "Allow"

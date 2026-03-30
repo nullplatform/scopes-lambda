@@ -11,17 +11,10 @@ locals {
     Module    = local.iam_module_name
   })
 
-  # Basic Lambda execution policy ARN
-  lambda_basic_execution_policy = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-
-  # VPC access policy ARN
+  # VPC access policy ARN — kept as managed policy because EC2 network interface
+  # operations cannot be scoped to specific resources (AWS limitation).
   lambda_vpc_access_policy = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 
-  # Managed policies to attach
-  iam_managed_policies = var.iam_vpc_enabled ? [
-    local.lambda_basic_execution_policy,
-    local.lambda_vpc_access_policy
-  ] : [
-    local.lambda_basic_execution_policy
-  ]
+  # Managed policies to attach (only VPC when enabled)
+  iam_managed_policies = var.iam_vpc_enabled ? [local.lambda_vpc_access_policy] : []
 }

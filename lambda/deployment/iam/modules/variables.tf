@@ -72,3 +72,8 @@ variable "iam_permissions_boundary" {
   type        = string
   default     = ""
 }
+
+variable "iam_function_name" {
+  description = "Lambda function name — used to scope CloudWatch Logs permissions to /aws/lambda/{function_name}"
+  type        = string
+}

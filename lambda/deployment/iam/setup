@@ -30,9 +30,10 @@ log debug "   📋 vpc_enabled=$vpc_enabled"
 TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --arg role_name "$iam_role_name" \
   --arg scope_id "$SCOPE_ID" \
+  --arg function_name "$LAMBDA_FUNCTION_NAME" \
   --arg duration "$propagation_duration" \
   --argjson vpc_enabled "$vpc_enabled" \
-  '. + {iam_create_role: true, iam_role_name: $role_name, iam_scope_id: $scope_id, iam_propagation_duration: $duration, iam_vpc_enabled: $vpc_enabled}')
+  '. + {iam_create_role: true, iam_role_name: $role_name, iam_scope_id: $scope_id, iam_function_name: $function_name, iam_propagation_duration: $duration, iam_vpc_enabled: $vpc_enabled}')
 
 log info "✨ IAM configured"
 echo ""

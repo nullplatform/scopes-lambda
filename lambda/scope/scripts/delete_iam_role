@@ -1,47 +1,44 @@
 #!/bin/bash
 # Delete IAM role during scope deletion
-# Only deletes if using dedicated role
+# Only deletes roles that were created by the scope (use_dedicated_role=false)
 
-echo "🔍 Cleaning up IAM role..."
+source "$SERVICE_PATH/utils/log"
 
-# Read role info from NRN
+log info "🔍 Cleaning up IAM role..."
+
+# Read role configuration from scope-configurations provider
+use_dedicated_role=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.use_dedicated_role // "false"')
+
+log debug "   📋 use_dedicated_role=$use_dedicated_role"
+
+if [ "$use_dedicated_role" = "true" ]; then
+  log info "   ✅ Using externally managed dedicated role - skipping IAM cleanup"
+  exit 0
+fi
+
+# Role was created by the scope - read stored role info from NRN
 nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-
 role_name=$(echo "$nrn_output" | jq -r '.AWS_DEDICATED_ROLE_NAME // ""')
-use_dedicated_role=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_USE_DEDICATED_ROLE // "false"')
-role_entity=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_DEDICATED_ROLE_ENTITY // "scope"')
 
-echo "   📋 use_dedicated_role=$use_dedicated_role, role_entity=$role_entity, role_name=$role_name"
-
-if [ "$use_dedicated_role" != "true" ]; then
-  echo "   ✅ Not using dedicated role - skipping IAM cleanup"
-  exit 0
-fi
-
-if [ "$role_entity" != "scope" ]; then
-  echo "   ✅ Role entity is '$role_entity' (not scope-level) - skipping deletion"
-  exit 0
-fi
+log debug "   📋 role_name=$role_name"
 
 if [ -z "$role_name" ] || [ "$role_name" = "null" ]; then
-  echo "   ✅ No role name found in NRN - skipping IAM cleanup"
+  log info "   ✅ No role name found in NRN - skipping IAM cleanup"
   exit 0
 fi
 
 # Check if role exists
-echo ""
-echo "   📡 Checking if role '$role_name' exists..."
+log info "   📡 Checking if role '$role_name' exists..."
 
 existing_role=$(aws iam get-role --role-name "$role_name" 2>&1 || echo "NOT_FOUND")
 
 if echo "$existing_role" | grep -q "NoSuchEntity\|NOT_FOUND"; then
-  echo "   ✅ Role '$role_name' does not exist - skipping deletion"
+  log info "   ✅ Role '$role_name' does not exist - skipping deletion"
   exit 0
 fi
 
 # Detach managed policies
-echo ""
-echo "   📝 Detaching managed policies from '$role_name'..."
+log info "   📝 Detaching managed policies from '$role_name'..."
 
 attached_policies=$(aws iam list-attached-role-policies \
   --role-name "$role_name" \
@@ -49,7 +46,7 @@ attached_policies=$(aws iam list-attached-role-policies \
   --output text 2>/dev/null || echo "")
 
 for policy_arn in $attached_policies; do
-  echo "   📝 Detaching: $policy_arn"
+  log debug "   📝 Detaching: $policy_arn"
   aws iam detach-role-policy \
     --role-name "$role_name" \
     --policy-arn "$policy_arn" \
@@ -57,8 +54,7 @@ for policy_arn in $attached_policies; do
 done
 
 # Delete inline policies
-echo ""
-echo "   📝 Deleting inline policies from '$role_name'..."
+log info "   📝 Deleting inline policies from '$role_name'..."
 
 inline_policies=$(aws iam list-role-policies \
   --role-name "$role_name" \
@@ -66,7 +62,7 @@ inline_policies=$(aws iam list-role-policies \
   --output text 2>/dev/null || echo "")
 
 for policy_name in $inline_policies; do
-  echo "   📝 Deleting inline policy: $policy_name"
+  log debug "   📝 Deleting inline policy: $policy_name"
   aws iam delete-role-policy \
     --role-name "$role_name" \
     --policy-name "$policy_name" \
@@ -74,8 +70,7 @@ for policy_name in $inline_policies; do
 done
 
 # Delete the role
-echo ""
-echo "   📡 Deleting IAM role '$role_name'..."
+log info "   📡 Deleting IAM role '$role_name'..."
 
 delete_output=$(aws iam delete-role --role-name "$role_name" 2>&1)
 delete_exit_code=$?
@@ -92,6 +87,5 @@ if [ $delete_exit_code -ne 0 ]; then
   exit 1
 fi
 
-echo "   ✅ IAM role '$role_name' deleted successfully"
-echo ""
-echo "✨ IAM cleanup complete"
+log info "   ✅ IAM role '$role_name' deleted successfully"
+log info "✨ IAM cleanup complete"
