@@ -192,27 +192,6 @@ POLICY
   fi
 fi
 
-# Store role info in NRN for delete/update scripts
-log info "   📡 Storing role info in NRN..."
-
-nrn_write_output=$(np nrn write \
-  --nrn "$SCOPE_NRN" \
-  --namespace aws \
-  --body "{\"AWS_DEDICATED_ROLE_ARN\": \"$LAMBDA_ROLE_ARN\", \"AWS_DEDICATED_ROLE_NAME\": \"$LAMBDA_ROLE_NAME\"}" \
-  --format json 2>&1)
-nrn_write_exit_code=$?
-
-if [ $nrn_write_exit_code -ne 0 ]; then
-  echo "❌ Failed to store role info in NRN" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - NRN service unavailable" >&2
-  echo "   - Invalid SCOPE_NRN: $SCOPE_NRN" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Check nullplatform API connectivity" >&2
-  echo "   - NRN error: $nrn_write_output" >&2
-  exit 1
-fi
-
 # Export variables
 export LAMBDA_ROLE_ARN
 export LAMBDA_ROLE_NAME
