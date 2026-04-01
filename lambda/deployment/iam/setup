@@ -27,13 +27,20 @@ fi
 vpc_enabled=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false')
 log debug "   📋 vpc_enabled=$vpc_enabled"
 
+permissions_boundary=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.permissions_boundary // ""')
+if [ -z "$permissions_boundary" ]; then
+  permissions_boundary="${IAM_PERMISSIONS_BOUNDARY:-}"
+fi
+log debug "   📋 permissions_boundary=$permissions_boundary"
+
 TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --arg role_name "$iam_role_name" \
   --arg scope_id "$SCOPE_ID" \
   --arg function_name "$LAMBDA_FUNCTION_NAME" \
   --arg duration "$propagation_duration" \
+  --arg boundary "$permissions_boundary" \
   --argjson vpc_enabled "$vpc_enabled" \
-  '. + {iam_create_role: true, iam_role_name: $role_name, iam_scope_id: $scope_id, iam_function_name: $function_name, iam_propagation_duration: $duration, iam_vpc_enabled: $vpc_enabled}')
+  '. + {iam_create_role: true, iam_role_name: $role_name, iam_scope_id: $scope_id, iam_function_name: $function_name, iam_propagation_duration: $duration, iam_vpc_enabled: $vpc_enabled, iam_permissions_boundary: $boundary}')
 
 log info "✨ IAM configured"
 echo ""

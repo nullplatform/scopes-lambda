@@ -37,6 +37,9 @@ echo ""
 
 RESOURCE_TAGS_JSON=${RESOURCE_TAGS_JSON:-"{}"}
 
+# Ensure ManagedBy tag is always present — required by IAM policy on all Create* calls
+RESOURCE_TAGS_JSON=$(echo "$RESOURCE_TAGS_JSON" | jq '. + {"ManagedBy": "custom-scope-role"}')
+
 TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --arg aws_region "$AWS_REGION" \
   --arg tf_state_bucket "$TOFU_STATE_BUCKET" \
