@@ -48,6 +48,15 @@ else
   S3_KEY="destroy-placeholder"
 fi
 
+# Convert VPC env vars to JSON arrays (set by fetch_scope_configuration)
+SUBNET_IDS=$(echo "${AWS_SUBNET_IDS:-}" | jq -Rc 'split(",") | map(select(length > 0))')
+SECURITY_GROUP_IDS_JSON=$(echo "${SECURITY_GROUP_IDS:-}" | jq -Rc 'split(",") | map(select(length > 0))')
+
+TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
+  --argjson subnet_ids "$SUBNET_IDS" \
+  --argjson security_group_ids "$SECURITY_GROUP_IDS_JSON" \
+  '. + {subnet_ids: $subnet_ids, security_group_ids: $security_group_ids}')
+
 # Augment CONTEXT with lambda info (required by deployment/compute/lambda/setup)
 CONTEXT=$(echo "${CONTEXT:-{\}}" | jq \
   --arg fn "$LAMBDA_FUNCTION_NAME" \
