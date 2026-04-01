@@ -4,7 +4,7 @@ locals {
 
   # Default tags
   alb_default_tags = merge(var.alb_resource_tags_json, {
-    ManagedBy = "terraform"
+    ManagedBy = "custom-scope-role"
     Module    = local.alb_module_name
   })
 

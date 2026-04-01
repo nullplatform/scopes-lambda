@@ -28,25 +28,12 @@ if [ -z "${DEPLOYMENT_ID:-}" ]; then
   return 1
 fi
 
-if [ -z "${SCOPE_NRN:-}" ]; then
-  echo "❌ SCOPE_NRN is required" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - Scope context not available in the environment" >&2
-  echo "   - NRN not passed from the deployment pipeline" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Verify SCOPE_NRN is exported before this script runs" >&2
-  echo "   - Check the deployment agent configuration" >&2
-  return 1
-fi
-
 log debug "   ✅ role_name=$LAMBDA_ROLE_NAME"
 log debug "   ✅ deployment_id=$DEPLOYMENT_ID"
 
-deployment_nrn="${SCOPE_NRN}:deployment=${DEPLOYMENT_ID}"
-log info "   📡 Reading deployment policies from NRN=$deployment_nrn..."
-
-nrn_output=$(np nrn read --nrn "$deployment_nrn" --namespace aws --format json 2>&1 || echo "{}")
-policies=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_DEDICATED_ROLE_POLICIES // "[]"')
+# Read policies from scope-configurations provider
+log info "   📡 Reading deployment policies from scope-configurations provider..."
+policies=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.role_policies // "[]"')
 
 if [ "$policies" = "[]" ] || [ "$policies" = "null" ]; then
   log info "   ⏭️  No deployment-specific policies to merge"
@@ -86,14 +73,6 @@ for i in $(seq 0 $((policy_count - 1))); do
 
   log debug "   ✅ Policy $full_policy_name attached successfully"
 done
-
-echo ""
-log info "   📝 Storing policies in deployment NRN=$deployment_nrn..."
-np nrn write \
-  --nrn "$deployment_nrn" \
-  --namespace aws \
-  --body "{\"AWS_LAMBDA_MERGED_POLICIES\": $policies}" \
-  --format json >/dev/null 2>&1 || true
 
 echo ""
 log info "✨ IAM policies merged successfully for role=$LAMBDA_ROLE_NAME deployment=$DEPLOYMENT_ID"

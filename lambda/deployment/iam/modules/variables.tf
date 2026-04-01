@@ -66,3 +66,14 @@ variable "iam_scope_id" {
   type        = string
   default     = ""
 }
+
+variable "iam_permissions_boundary" {
+  description = "ARN of the IAM permissions boundary to attach to the Lambda execution role (empty to disable)"
+  type        = string
+  default     = ""
+}
+
+variable "iam_function_name" {
+  description = "Lambda function name — used to scope CloudWatch Logs permissions to /aws/lambda/{function_name}"
+  type        = string
+}

@@ -174,8 +174,8 @@ run "applies_tags_to_role" {
   }
 
   assert {
-    condition     = aws_iam_role.lambda[0].tags["ManagedBy"] == "terraform"
-    error_message = "ManagedBy tag should be 'terraform'"
+    condition     = aws_iam_role.lambda[0].tags["ManagedBy"] == "custom-scope-role"
+    error_message = "ManagedBy tag should be 'custom-scope-role'"
   }
 }
 

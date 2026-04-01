@@ -200,8 +200,8 @@ run "applies_tags_to_api" {
   }
 
   assert {
-    condition     = aws_apigatewayv2_api.main.tags["ManagedBy"] == "terraform"
-    error_message = "ManagedBy tag should be 'terraform'"
+    condition     = aws_apigatewayv2_api.main.tags["ManagedBy"] == "custom-scope-role"
+    error_message = "ManagedBy tag should be 'custom-scope-role'"
   }
 }
 

@@ -30,9 +30,7 @@ if [ -z "$previous_version" ] || [ "$previous_version" = "null" ]; then
   echo "💡 Possible causes:" >&2
   echo "   - This is the first deployment (no active deployment exists)" >&2
   echo "   - LAMBDA_BLUE_VERSION was not exported from build_context" >&2
-  echo "   - NRN has no version stored for active deployment=$BLUE_DEPLOYMENT_ID" >&2
   echo "🔧 How to fix:" >&2
-  echo "   - Verify NRN: np nrn read --nrn $SCOPE_NRN --ids \"lambda.deployment_version_${BLUE_DEPLOYMENT_ID//-/_}\" --format json" >&2
   echo "   - Manually set the alias version if the previous version is known" >&2
   return 1
 fi

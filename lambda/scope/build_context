@@ -2,8 +2,10 @@
 
 # Source utility functions
 source "$SERVICE_PATH/utils/get_config_value"
+source "$SERVICE_PATH/utils/log"
+source "$SERVICE_PATH/utils/fetch_scope_configuration"
 
-echo "🔍 Building scope context..."
+log info "🔍 Building scope context..."
 
 #Validate CONTEXT is available
 if [ -z "${CONTEXT:-}" ]; then
@@ -35,21 +37,21 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
   return 1
 fi
 
-echo "   ✅ scope_id=$SCOPE_ID"
+log debug "   ✅ scope_id=$SCOPE_ID"
 
 #Extract slugs for naming
 NAMESPACE_SLUG=$(echo "$CONTEXT" | jq -r '.namespace.slug')
 APPLICATION_SLUG=$(echo "$CONTEXT" | jq -r '.application.slug')
 ACCOUNT_SLUG=$(echo "$CONTEXT" | jq -r '.account.slug')
 
-echo "   ✅ namespace=$NAMESPACE_SLUG"
-echo "   ✅ application=$APPLICATION_SLUG"
-echo "   ✅ scope=$SCOPE_SLUG"
+log debug "   ✅ namespace=$NAMESPACE_SLUG"
+log debug "   ✅ application=$APPLICATION_SLUG"
+log debug "   ✅ scope=$SCOPE_SLUG"
 
 #Generate Lambda function name (max 64 chars)
 LAMBDA_FUNCTION_NAME="${SCOPE_ID}-${APPLICATION_SLUG}-${SCOPE_SLUG}"
 LAMBDA_FUNCTION_NAME="${LAMBDA_FUNCTION_NAME:0:64}"
-echo "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
 
 #Visibility
 # The service spec has two fields: http_enabled (boolean) and visibility (public/private).
@@ -61,7 +63,7 @@ if echo "$CONTEXT" | jq -e '.scope.capabilities.http_enabled == false' > /dev/nu
 else
   VISIBILITY=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 fi
-echo "   ✅ visibility=$VISIBILITY"
+log debug "   ✅ visibility=$VISIBILITY"
 
 #Lambda capabilities (architecture)
 ARCHITECTURE=$(get_config_value \
@@ -83,8 +85,8 @@ fi
 RUNTIME=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs20.x"')
 HANDLER=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler"')
 
-echo "   ✅ package_type=$PACKAGE_TYPE"
-echo "   ✅ architecture=$ARCHITECTURE"
+log debug "   ✅ package_type=$PACKAGE_TYPE"
+log debug "   ✅ architecture=$ARCHITECTURE"
 
 #ALB listener rule capacity validation (private scopes use internal ALB)
 if [ "$VISIBILITY" = "private" ]; then
@@ -100,8 +102,8 @@ if [ "$VISIBILITY" = "private" ]; then
     --default "80"
   )
 
-  echo "   ✅ alb_listener_rule_capacity=$ALB_LISTENER_RULE_CAPACITY"
-  echo "   ✅ alb_listener_rule_alert_threshold=$ALB_LISTENER_RULE_ALERT_THRESHOLD"
+  log debug "   ✅ alb_listener_rule_capacity=$ALB_LISTENER_RULE_CAPACITY"
+  log debug "   ✅ alb_listener_rule_alert_threshold=$ALB_LISTENER_RULE_ALERT_THRESHOLD"
 
   if [ "$ALB_LISTENER_RULE_CAPACITY" -le "$ALB_LISTENER_RULE_ALERT_THRESHOLD" ] 2>/dev/null; then
     echo "❌ ALB listener rule capacity ($ALB_LISTENER_RULE_CAPACITY) is at or below the alert threshold ($ALB_LISTENER_RULE_ALERT_THRESHOLD)" >&2
@@ -139,7 +141,7 @@ if ! mkdir -p "$OUTPUT_DIR"; then
   return 1
 fi
 
-echo "   ✅ output_dir=$OUTPUT_DIR"
+log debug "   ✅ output_dir=$OUTPUT_DIR"
 
 #Resource tags
 RESOURCE_TAGS_JSON=$(jq -n \
@@ -171,6 +173,5 @@ export ARCHITECTURE
 export OUTPUT_DIR
 export RESOURCE_TAGS_JSON
 
-echo ""
-echo "📋 Function: $LAMBDA_FUNCTION_NAME | Visibility: $VISIBILITY"
-echo "✨ Scope context built successfully"
+log info "📋 Function: $LAMBDA_FUNCTION_NAME | Visibility: $VISIBILITY"
+log info "✨ Scope context built successfully"

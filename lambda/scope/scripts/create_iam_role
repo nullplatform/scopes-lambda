@@ -2,63 +2,43 @@
 # Create IAM role for Lambda execution during scope creation
 # This ensures the role is available for the placeholder Lambda
 
-echo "🔍 Setting up IAM role for Lambda..."
+source "$SERVICE_PATH/utils/log"
 
-echo ""
-echo "   📡 Checking IAM configuration from NRN..."
+log info "🔍 Setting up IAM role for Lambda..."
 
-use_dedicated_role="false"
-role_name_template=""
-role_policies="[]"
-existing_role_arn=""
-existing_role_name=""
+log info "   📡 Checking IAM configuration from providers..."
 
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
+# Read role configuration from scope-configurations provider
+use_dedicated_role=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.use_dedicated_role // "false"')
+role_name_template=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.role_name_template // ""')
+role_policies=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.role_policies // "[]"')
 
-if [ "$nrn_output" != "{}" ]; then
-  use_dedicated_role=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_USE_DEDICATED_ROLE // "false"')
-  role_name_template=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_DEDICATED_ROLE_NAME_TEMPLATE // ""')
-  role_policies=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_DEDICATED_ROLE_POLICIES // "[]"')
-  existing_role_arn=$(echo "$nrn_output" | jq -r '.AWS_DEDICATED_ROLE_ARN // ""')
-  existing_role_name=$(echo "$nrn_output" | jq -r '.AWS_DEDICATED_ROLE_NAME // ""')
-fi
+log debug "   📋 use_dedicated_role=$use_dedicated_role"
 
-echo "   📋 use_dedicated_role=$use_dedicated_role"
+# If using pre-existing dedicated role from provider configuration
+if [ "$use_dedicated_role" = "true" ]; then
+  dedicated_role_arn=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.dedicated_role_arn // ""')
+  dedicated_role_name=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.dedicated_role_name // ""')
 
-# If using existing role from NRN
-if [ -n "$existing_role_arn" ] && [ "$existing_role_arn" != "null" ] && [ "$existing_role_arn" != "" ]; then
-  echo "   ✅ Using existing dedicated role: $existing_role_arn"
-  LAMBDA_ROLE_ARN="$existing_role_arn"
-  LAMBDA_ROLE_NAME="$existing_role_name"
-  export LAMBDA_ROLE_ARN
-  export LAMBDA_ROLE_NAME
-  exit 0
-fi
-
-# If not using dedicated role, check for default role in context
-if [ "$use_dedicated_role" != "true" ]; then
-  default_role=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].lambda.execution_role_arn // empty')
-
-  if [ -n "$default_role" ] && [ "$default_role" != "null" ]; then
-    echo "   ✅ Using default execution role: $default_role"
-    LAMBDA_ROLE_ARN="$default_role"
+  if [ -n "$dedicated_role_arn" ] && [ "$dedicated_role_arn" != "null" ]; then
+    log info "   ✅ Using dedicated role: $dedicated_role_arn"
+    LAMBDA_ROLE_ARN="$dedicated_role_arn"
+    LAMBDA_ROLE_NAME="$dedicated_role_name"
     export LAMBDA_ROLE_ARN
+    export LAMBDA_ROLE_NAME
     exit 0
   fi
 
-  echo "❌ No Lambda execution role configured" >&2
+  echo "❌ Dedicated role enabled but no role ARN configured in scope-configurations provider" >&2
   echo "💡 Possible causes:" >&2
-  echo "   - No dedicated role enabled via NRN configuration" >&2
-  echo "   - No default execution_role_arn set in cloud-provider context" >&2
+  echo "   - lambda.dedicated_role_arn not set in scope-configurations provider" >&2
   echo "🔧 How to fix:" >&2
-  echo "   - Enable dedicated roles by setting AWS_LAMBDA_USE_DEDICATED_ROLE=true in NRN" >&2
-  echo "   - Or configure lambda.execution_role_arn in cloud-provider" >&2
+  echo "   - Configure lambda.dedicated_role_arn in scope-configurations provider" >&2
   exit 1
 fi
 
 # Create dedicated role
-echo ""
-echo "   📝 Creating dedicated IAM role..."
+log info "   📝 Creating dedicated IAM role..."
 
 # Generate role name from template
 iam_role_name="$role_name_template"
@@ -69,13 +49,13 @@ iam_role_name="${iam_role_name//\{application_slug\}/$APPLICATION_SLUG}"
 iam_role_name="${iam_role_name//\{account_slug\}/$ACCOUNT_SLUG}"
 iam_role_name="${iam_role_name:0:64}"
 
-echo "   📋 role_name=$iam_role_name"
+log debug "   📋 role_name=$iam_role_name"
 
 # Check if role already exists
 existing_role=$(aws iam get-role --role-name "$iam_role_name" 2>&1 || echo "NOT_FOUND")
 
 if ! echo "$existing_role" | grep -q "NoSuchEntity\|NOT_FOUND"; then
-  echo "   ✅ Role already exists, reusing it"
+  log info "   ✅ Role already exists, reusing it"
   LAMBDA_ROLE_ARN=$(echo "$existing_role" | jq -r '.Role.Arn')
   LAMBDA_ROLE_NAME="$iam_role_name"
 else
@@ -98,6 +78,7 @@ else
     --role-name "$iam_role_name" \
     --assume-role-policy-document "$trust_policy" \
     --description "Lambda execution role for $SCOPE_SLUG" \
+    --tags Key=ManagedBy,Value=custom-scope-role \
     2>&1)
   create_exit_code=$?
 
@@ -117,27 +98,46 @@ else
   LAMBDA_ROLE_ARN=$(echo "$create_output" | jq -r '.Role.Arn')
   LAMBDA_ROLE_NAME="$iam_role_name"
 
-  echo "   ✅ Role created: $LAMBDA_ROLE_ARN"
+  log info "   ✅ Role created: $LAMBDA_ROLE_ARN"
 
-  # Attach basic Lambda execution policy
-  attach_output=$(aws iam attach-role-policy \
+  # Attach scoped CloudWatch Logs policy (replaces AWSLambdaBasicExecutionRole)
+  logs_policy=$(cat <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "logs:CreateLogGroup",
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/${LAMBDA_FUNCTION_NAME}"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/${LAMBDA_FUNCTION_NAME}:*"
+    }
+  ]
+}
+POLICY
+  )
+
+  attach_output=$(aws iam put-role-policy \
     --role-name "$iam_role_name" \
-    --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole" \
+    --policy-name "cloudwatch-logs" \
+    --policy-document "$logs_policy" \
     2>&1)
   attach_exit_code=$?
 
   if [ $attach_exit_code -ne 0 ]; then
-    echo "❌ Failed to attach AWSLambdaBasicExecutionRole to '$iam_role_name'" >&2
+    echo "❌ Failed to attach CloudWatch Logs policy to '$iam_role_name'" >&2
     echo "💡 Possible causes:" >&2
-    echo "   - Insufficient IAM permissions to attach policies" >&2
-    echo "   - Policy ARN not found in this partition" >&2
+    echo "   - Insufficient IAM permissions to put role policies" >&2
     echo "🔧 How to fix:" >&2
-    echo "   - Verify the agent has iam:AttachRolePolicy permission" >&2
+    echo "   - Verify the agent has iam:PutRolePolicy permission" >&2
     echo "   - AWS error: $attach_output" >&2
     exit 1
   fi
 
-  echo "   ✅ Attached AWSLambdaBasicExecutionRole"
+  log info "   ✅ Attached scoped CloudWatch Logs policy"
 
   # Check if VPC is enabled - attach VPC policy
   vpc_enabled=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false')
@@ -158,13 +158,13 @@ else
       exit 1
     fi
 
-    echo "   ✅ Attached AWSLambdaVPCAccessExecutionRole (vpc_enabled=$vpc_enabled)"
+    log info "   ✅ Attached AWSLambdaVPCAccessExecutionRole (vpc_enabled=$vpc_enabled)"
   fi
 
-  # Attach custom policies from NRN
+  # Attach custom policies from provider configuration
   if [ "$role_policies" != "[]" ] && [ "$role_policies" != "null" ]; then
     policy_count=$(echo "$role_policies" | jq length)
-    echo "   📝 Attaching $policy_count custom policies..."
+    log info "   📝 Attaching $policy_count custom policies..."
 
     for i in $(seq 0 $((policy_count - 1))); do
       policy_name=$(echo "$role_policies" | jq -r ".[$i].name")
@@ -183,41 +183,18 @@ else
         echo "   - Invalid policy document JSON" >&2
         echo "   - Insufficient IAM permissions" >&2
         echo "🔧 How to fix:" >&2
-        echo "   - Validate the policy document in AWS_LAMBDA_DEDICATED_ROLE_POLICIES NRN key" >&2
+        echo "   - Validate the policy document in scope-configurations lambda.role_policies" >&2
         echo "   - AWS error: $put_output" >&2
         exit 1
       fi
 
-      echo "   ✅ Attached custom policy: $policy_name"
+      log debug "   ✅ Attached custom policy: $policy_name"
     done
   fi
-fi
-
-# Store role info in NRN
-echo ""
-echo "   📡 Storing role info in NRN..."
-
-nrn_write_output=$(np nrn write \
-  --nrn "$SCOPE_NRN" \
-  --namespace aws \
-  --body "{\"AWS_DEDICATED_ROLE_ARN\": \"$LAMBDA_ROLE_ARN\", \"AWS_DEDICATED_ROLE_NAME\": \"$LAMBDA_ROLE_NAME\"}" \
-  --format json 2>&1)
-nrn_write_exit_code=$?
-
-if [ $nrn_write_exit_code -ne 0 ]; then
-  echo "❌ Failed to store role info in NRN" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - NRN service unavailable" >&2
-  echo "   - Invalid SCOPE_NRN: $SCOPE_NRN" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Check nullplatform API connectivity" >&2
-  echo "   - NRN error: $nrn_write_output" >&2
-  exit 1
 fi
 
 # Export variables
 export LAMBDA_ROLE_ARN
 export LAMBDA_ROLE_NAME
 
-echo ""
-echo "✨ IAM role setup complete: role_arn=$LAMBDA_ROLE_ARN"
+log info "✨ IAM role setup complete: role_arn=$LAMBDA_ROLE_ARN"

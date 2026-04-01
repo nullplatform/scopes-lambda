@@ -2,28 +2,30 @@
 # Update IAM role for Lambda scope
 # Called when scope capabilities change (e.g., VPC enabled/disabled)
 
-echo "🔍 Updating IAM role configuration..."
+source "$SERVICE_PATH/utils/log"
 
-# Read existing role info from NRN
+log info "🔍 Updating IAM role configuration..."
+
+# Read role configuration from scope-configurations provider
+use_dedicated_role=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.use_dedicated_role // "false"')
+
+# Read stored role info from NRN (for roles created by the scope)
 nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-
 role_name=$(echo "$nrn_output" | jq -r '.AWS_DEDICATED_ROLE_NAME // ""')
-use_dedicated_role=$(echo "$nrn_output" | jq -r '.AWS_LAMBDA_USE_DEDICATED_ROLE // "false"')
 
-echo "   📋 use_dedicated_role=$use_dedicated_role, role_name=$role_name"
+log debug "   📋 use_dedicated_role=$use_dedicated_role, role_name=$role_name"
 
-if [ "$use_dedicated_role" != "true" ] || [ -z "$role_name" ] || [ "$role_name" = "null" ]; then
-  echo "   ✅ Not using dedicated role - no updates needed"
+if [ "$use_dedicated_role" = "true" ] || [ -z "$role_name" ] || [ "$role_name" = "null" ]; then
+  log info "   ✅ No scope-managed role to update"
   exit 0
 fi
 
 # Check if VPC status changed
 vpc_enabled=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false')
-echo "   📋 vpc_enabled=$vpc_enabled"
+log debug "   📋 vpc_enabled=$vpc_enabled"
 
 # Check current VPC policy attachment
-echo ""
-echo "   📡 Checking current VPC policy state for role '$role_name'..."
+log info "   📡 Checking current VPC policy state for role '$role_name'..."
 
 vpc_policy_attached=$(aws iam list-attached-role-policies \
   --role-name "$role_name" \
@@ -31,7 +33,7 @@ vpc_policy_attached=$(aws iam list-attached-role-policies \
   --output text 2>/dev/null || echo "")
 
 if [ "$vpc_enabled" = "true" ] && [ -z "$vpc_policy_attached" ]; then
-  echo "   📝 Attaching VPC access policy to '$role_name'..."
+  log info "   📝 Attaching VPC access policy to '$role_name'..."
 
   attach_output=$(aws iam attach-role-policy \
     --role-name "$role_name" \
@@ -51,10 +53,10 @@ if [ "$vpc_enabled" = "true" ] && [ -z "$vpc_policy_attached" ]; then
     exit 1
   fi
 
-  echo "   ✅ VPC access policy attached to '$role_name'"
+  log info "   ✅ VPC access policy attached to '$role_name'"
 
 elif [ "$vpc_enabled" = "false" ] && [ -n "$vpc_policy_attached" ]; then
-  echo "   📝 Detaching VPC access policy from '$role_name'..."
+  log info "   📝 Detaching VPC access policy from '$role_name'..."
 
   detach_output=$(aws iam detach-role-policy \
     --role-name "$role_name" \
@@ -73,11 +75,10 @@ elif [ "$vpc_enabled" = "false" ] && [ -n "$vpc_policy_attached" ]; then
     exit 1
   fi
 
-  echo "   ✅ VPC access policy detached from '$role_name'"
+  log info "   ✅ VPC access policy detached from '$role_name'"
 
 else
-  echo "   ✅ No VPC policy changes needed (vpc_enabled=$vpc_enabled, policy_attached=$([ -n "$vpc_policy_attached" ] && echo 'true' || echo 'false'))"
+  log info "   ✅ No VPC policy changes needed (vpc_enabled=$vpc_enabled, policy_attached=$([ -n "$vpc_policy_attached" ] && echo 'true' || echo 'false'))"
 fi
 
-echo ""
-echo "✨ IAM role update complete for role '$role_name'"
+log info "✨ IAM role update complete for role '$role_name'"

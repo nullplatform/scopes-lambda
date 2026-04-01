@@ -109,7 +109,6 @@ lambda/
 │   │   ├── cleanup_old_version
 │   │   ├── merge_iam_policies
 │   │   ├── rollback_alias
-│   │   ├── rollback_iam_policies
 │   │   ├── store_nrn_metadata
 │   │   ├── sync_parameters_to_secrets_manager
 │   │   ├── update_alias_full

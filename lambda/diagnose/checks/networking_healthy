@@ -10,51 +10,35 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
    echo "   - LAMBDA_FUNCTION_NAME was not exported" >&2
    echo "🔧 How to fix:" >&2
    echo "   - Check that build_context ran successfully" >&2
-   echo "   - Verify the NRN contains LAMBDA_FUNCTION_NAME" >&2
    exit 1
 fi
 
 # Get visibility from context
 visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
+# Get the Lambda resource-based policy — it contains the permissions granted
+# to API Gateway or ALB to invoke this function.
+permissions=$(aws lambda get-policy \
+   --function-name "$LAMBDA_FUNCTION_NAME" \
+   2>&1 || echo "{}")
+
 if [ "$visibility" = "public" ]; then
-   # Check API Gateway
    echo "   Checking API Gateway integration (visibility: $visibility)..."
 
-   # Get API Gateway ID from NRN
-   nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-   api_id=$(echo "$nrn_output" | jq -r '.APIGATEWAY_HTTP_API_ID // ""')
-
-   if [ -z "$api_id" ] || [ "$api_id" = "null" ]; then
-      echo "   No API Gateway ID stored (may be managed by Terraform state)"
-      exit 0
-   fi
-
-   # Check if API exists
-   api_check=$(aws apigatewayv2 get-api --api-id "$api_id" 2>&1 || echo "NOT_FOUND")
-
-   if echo "$api_check" | grep -q "NotFoundException\|NOT_FOUND"; then
-      echo "❌ API Gateway '$api_id' not found" >&2
+   if echo "$permissions" | grep -q "apigateway"; then
+      echo "   API Gateway permission configured for $LAMBDA_FUNCTION_NAME"
+   else
+      echo "❌ API Gateway permission may not be configured for '$LAMBDA_FUNCTION_NAME'" >&2
       echo "💡 Possible causes:" >&2
-      echo "   - The API Gateway was deleted outside of Terraform" >&2
-      echo "   - The API ID stored in the NRN is incorrect" >&2
+      echo "   - The Lambda resource-based policy is missing the API Gateway permission" >&2
+      echo "   - The API Gateway integration has not been created" >&2
       echo "🔧 How to fix:" >&2
-      echo "   - Re-run Terraform to recreate the API Gateway" >&2
-      echo "   - Verify the API ID '$api_id' in the AWS console" >&2
-      exit 1
+      echo "   - Re-run Terraform to configure API Gateway permissions" >&2
+      echo "   - Verify the API Gateway integration references this function" >&2
    fi
-
-   api_endpoint=$(echo "$api_check" | jq -r '.ApiEndpoint // ""')
-   echo "   API Gateway healthy: $api_endpoint"
 
 else
-   # Check ALB (private/internal)
    echo "   Checking ALB integration (visibility: $visibility)..."
-
-   # For ALB, we just verify the Lambda permission exists
-   permissions=$(aws lambda get-policy \
-      --function-name "$LAMBDA_FUNCTION_NAME" \
-      2>&1 || echo "{}")
 
    if echo "$permissions" | grep -q "elasticloadbalancing"; then
       echo "   ALB permission configured for $LAMBDA_FUNCTION_NAME"
