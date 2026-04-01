@@ -169,8 +169,8 @@ run "applies_tags_to_target_group" {
   }
 
   assert {
-    condition     = aws_lb_target_group.lambda.tags["ManagedBy"] == "terraform"
-    error_message = "ManagedBy tag should be 'terraform'"
+    condition     = aws_lb_target_group.lambda.tags["ManagedBy"] == "custom-scope-role"
+    error_message = "ManagedBy tag should be 'custom-scope-role'"
   }
 }
 

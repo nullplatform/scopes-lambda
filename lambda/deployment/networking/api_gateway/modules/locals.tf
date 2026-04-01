@@ -7,7 +7,7 @@ locals {
 
   # Default tags
   api_gateway_default_tags = merge(var.api_gateway_resource_tags_json, {
-    ManagedBy = "terraform"
+    ManagedBy = "custom-scope-role"
     Module    = local.api_gateway_module_name
   })
 

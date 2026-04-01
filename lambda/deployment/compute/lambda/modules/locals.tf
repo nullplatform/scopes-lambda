@@ -25,7 +25,7 @@ locals {
 
   # Default tags for Lambda resources
   lambda_default_tags = merge(var.lambda_tags, {
-    ManagedBy = "terraform"
+    ManagedBy = "custom-scope-role"
     Module    = local.lambda_module_name
   })
 

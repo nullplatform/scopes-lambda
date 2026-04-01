@@ -7,7 +7,7 @@ locals {
 
   # Default tags
   iam_default_tags = merge(var.iam_resource_tags_json, {
-    ManagedBy = "terraform"
+    ManagedBy = "custom-scope-role"
     Module    = local.iam_module_name
   })
 

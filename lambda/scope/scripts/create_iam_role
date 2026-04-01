@@ -78,6 +78,7 @@ else
     --role-name "$iam_role_name" \
     --assume-role-policy-document "$trust_policy" \
     --description "Lambda execution role for $SCOPE_SLUG" \
+    --tags Key=ManagedBy,Value=custom-scope-role \
     2>&1)
   create_exit_code=$?
 
