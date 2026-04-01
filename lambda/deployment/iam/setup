@@ -37,6 +37,7 @@ TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   --arg role_name "$iam_role_name" \
   --arg scope_id "$SCOPE_ID" \
   --arg function_name "$LAMBDA_FUNCTION_NAME" \
+  --arg function_name "$LAMBDA_FUNCTION_NAME" \
   --arg duration "$propagation_duration" \
   --arg boundary "$permissions_boundary" \
   --argjson vpc_enabled "$vpc_enabled" \
