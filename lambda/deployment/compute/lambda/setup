@@ -128,13 +128,18 @@ if [ "${USE_NULL_AGENT:-true}" = "true" ] && [ -n "${NULL_AGENT_LAYER_ARN:-}" ];
   log debug "   ✅ nullplatform_agent_layer=$NULL_AGENT_LAYER_ARN"
 fi
 
-# Build environment variables from parameters
-env_vars=$(echo "$CONTEXT" | jq -c '
-  .parameters.results // [] |
-  map(select(.resolved_value != null)) |
-  map({(.name): .resolved_value}) |
-  add // {}
-')
+# Build environment variables based on parameters strategy
+if [ "${PARAMETERS_STRATEGY:-env}" = "env" ]; then
+  # Each parameter becomes an individual Lambda environment variable
+  env_vars=$(echo "$CONTEXT" | jq -c '
+    [.parameters.results // [] | .[] | {(.variable): (.values[0].value // empty)}] | add // {}
+  ')
+  log debug "   ✅ parameters_strategy=env ($(echo "$env_vars" | jq 'length') parameters as env vars)"
+else
+  # Parameters stored in Secrets Manager — not injected as env vars
+  env_vars='{}'
+  log debug "   ✅ parameters_strategy=secretsmanager (parameters via Secrets Manager)"
+fi
 
 # Add deployment metadata to environment
 deployment_id=$(echo "$CONTEXT" | jq -r '.deployment.id')
