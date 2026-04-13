@@ -1,0 +1,60 @@
+#!/bin/bash
+# Publish a new Lambda function version.
+# Uses the deployment ID as the version description so that build_context
+# can look up versions by deployment ID on subsequent operations.
+
+source "$SERVICE_PATH/utils/log"
+
+log info "📝 Publishing new Lambda version..."
+
+if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
+  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Environment variable not set by the deployment pipeline" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Ensure build_context runs before this script" >&2
+  return 1
+fi
+
+description="${DEPLOYMENT_ID:-}"
+
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ description=$description"
+
+echo ""
+log info "   📡 Publishing version..."
+
+publish_output=$(aws lambda publish-version \
+  --function-name "$LAMBDA_FUNCTION_NAME" \
+  --description "$description" \
+  --output json \
+  2>&1)
+publish_exit_code=$?
+
+if [ $publish_exit_code -ne 0 ]; then
+  echo "❌ Failed to publish version for $LAMBDA_FUNCTION_NAME" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Function code update is still in progress" >&2
+  echo "   - Insufficient Lambda permissions" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Ensure update_function_code completes before publishing" >&2
+  echo "   - Check the agent's IAM permissions include lambda:PublishVersion" >&2
+  echo "   📋 Error: $publish_output" >&2
+  return 1
+fi
+
+LAMBDA_GREEN_VERSION=$(echo "$publish_output" | jq -r '.Version')
+LAMBDA_CURRENT_VERSION="$LAMBDA_GREEN_VERSION"
+
+if [ -z "$LAMBDA_GREEN_VERSION" ] || [ "$LAMBDA_GREEN_VERSION" = "null" ]; then
+  echo "❌ Failed to extract version number from publish response" >&2
+  echo "   📋 Response: $publish_output" >&2
+  return 1
+fi
+
+export LAMBDA_GREEN_VERSION
+export LAMBDA_CURRENT_VERSION
+
+log debug "   ✅ Published version: $LAMBDA_GREEN_VERSION"
+echo ""
+log info "✨ Version $LAMBDA_GREEN_VERSION published for $LAMBDA_FUNCTION_NAME (deployment: $description)"
