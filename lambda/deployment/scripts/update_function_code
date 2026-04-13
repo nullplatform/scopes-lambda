@@ -1,0 +1,98 @@
+#!/bin/bash
+# Update Lambda function code with a new container image or zip package.
+# Waits for the update to complete before returning.
+
+source "$SERVICE_PATH/utils/log"
+
+log info "📝 Updating Lambda function code..."
+
+if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
+  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Environment variable not set by the deployment pipeline" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Ensure build_context runs before this script" >&2
+  return 1
+fi
+
+package_type="${PACKAGE_TYPE:-Image}"
+
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ package_type=$package_type"
+
+echo ""
+log info "   📡 Updating function code..."
+
+if [ "$package_type" = "Image" ]; then
+  if [ -z "${IMAGE_URI:-}" ] || [ "$IMAGE_URI" = "null" ]; then
+    echo "❌ IMAGE_URI is required for Image package type" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The build did not produce a container image URL" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Verify the build pipeline pushes the image to ECR and sets asset.url" >&2
+    return 1
+  fi
+  log debug "   ✅ image_uri=$IMAGE_URI"
+
+  update_output=$(aws lambda update-function-code \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --image-uri "$IMAGE_URI" \
+    2>&1)
+  update_exit_code=$?
+else
+  if [ -z "${S3_BUCKET:-}" ] || [ -z "${S3_KEY:-}" ]; then
+    echo "❌ S3_BUCKET and S3_KEY are required for Zip package type" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The build did not produce a zip asset" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Verify the build pipeline uploads the zip to S3" >&2
+    return 1
+  fi
+  log debug "   ✅ s3_bucket=$S3_BUCKET"
+  log debug "   ✅ s3_key=$S3_KEY"
+
+  update_output=$(aws lambda update-function-code \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --s3-bucket "$S3_BUCKET" \
+    --s3-key "$S3_KEY" \
+    2>&1)
+  update_exit_code=$?
+fi
+
+if [ $update_exit_code -ne 0 ]; then
+  echo "❌ Failed to update function code for $LAMBDA_FUNCTION_NAME" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The image or zip does not exist at the specified location" >&2
+  echo "   - Insufficient Lambda permissions" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Verify the asset exists and is accessible" >&2
+  echo "   - Check the agent's IAM permissions include lambda:UpdateFunctionCode" >&2
+  echo "   📋 Error: $update_output" >&2
+  return 1
+fi
+
+log info "   📡 Waiting for function update to complete..."
+
+aws lambda wait function-updated \
+  --function-name "$LAMBDA_FUNCTION_NAME" 2>&1
+wait_exit_code=$?
+
+if [ $wait_exit_code -ne 0 ]; then
+  last_status=$(aws lambda get-function-configuration \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --query 'LastUpdateStatus' \
+    --output text 2>/dev/null || echo "Unknown")
+
+  echo "❌ Function update did not complete successfully (status: $last_status)" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The image is invalid or has an incompatible architecture" >&2
+  echo "   - The function configuration is incompatible with the new code" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Check the function logs and update status reason" >&2
+  echo "   - Verify the image architecture matches the function's architecture setting" >&2
+  return 1
+fi
+
+log debug "   ✅ Function code updated successfully"
+echo ""
+log info "✨ Function code updated for $LAMBDA_FUNCTION_NAME"
