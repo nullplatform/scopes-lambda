@@ -22,7 +22,7 @@
 
 configuration:
   # ── Terraform ──────────────────────────────────────────────────────────────
-  TOFU_PATH: "$SERVICE_PATH/deployment"
+  TOFU_PATH: "$SERVICE_PATH/scope/tofu"
 
   # ── Domain / DNS ───────────────────────────────────────────────────────────
   USE_ACCOUNT_SLUG: false
