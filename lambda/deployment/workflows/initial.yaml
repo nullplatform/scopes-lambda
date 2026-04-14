@@ -45,6 +45,9 @@ steps:
   - name: update_function_code
     type: script
     file: "$SERVICE_PATH/deployment/scripts/update_function_code"
+  - name: update_function_configuration
+    type: script
+    file: "$SERVICE_PATH/deployment/scripts/update_function_configuration"
   - name: publish_version
     type: script
     file: "$SERVICE_PATH/deployment/scripts/publish_version"
