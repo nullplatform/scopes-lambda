@@ -1,6 +1,63 @@
 include:
-  - "$SERVICE_PATH/deployment/workflows/initial.yaml"
+  - "$SERVICE_PATH/values.yaml"
 configuration:
   DEPLOYMENT_STRATEGY: "blue_green"
-  # Blue-green specific: don't fully switch traffic initially
-  SKIP_FULL_TRAFFIC_SWITCH: true
+steps:
+  - name: build_context
+    type: script
+    file: "$SERVICE_PATH/deployment/build_context"
+    output:
+      - name: SCOPE_ID
+        type: environment
+      - name: DEPLOYMENT_ID
+        type: environment
+      - name: SCOPE_NRN
+        type: environment
+      - name: LAMBDA_FUNCTION_NAME
+        type: environment
+      - name: LAMBDA_CURRENT_VERSION
+        type: environment
+      - name: LAMBDA_GREEN_VERSION
+        type: environment
+      - name: LAMBDA_BLUE_VERSION
+        type: environment
+      - name: LAMBDA_MAIN_ALIAS_NAME
+        type: environment
+      - name: VISIBILITY
+        type: environment
+      - name: CONTEXT
+        type: environment
+      - name: RESOURCE_TAGS_JSON
+        type: environment
+      - name: SECRETS_MANAGER_SECRET_NAME
+        type: environment
+      - name: BLUE_DEPLOYMENT_ID
+        type: environment
+      - name: PACKAGE_TYPE
+        type: environment
+      - name: IMAGE_URI
+        type: environment
+      - name: S3_BUCKET
+        type: environment
+      - name: S3_KEY
+        type: environment
+  - name: sync_parameters_to_secrets_manager
+    type: script
+    file: "$SERVICE_PATH/deployment/scripts/sync_parameters_to_secrets_manager"
+  - name: update_function_code
+    type: script
+    file: "$SERVICE_PATH/deployment/scripts/update_function_code"
+  - name: update_function_configuration
+    type: script
+    file: "$SERVICE_PATH/deployment/scripts/update_function_configuration"
+  - name: publish_version
+    type: script
+    file: "$SERVICE_PATH/deployment/scripts/publish_version"
+    output:
+      - name: LAMBDA_GREEN_VERSION
+        type: environment
+      - name: LAMBDA_CURRENT_VERSION
+        type: environment
+  - name: wait_provisioned_concurrency
+    type: script
+    file: "$SERVICE_PATH/deployment/scripts/wait_provisioned_concurrency"

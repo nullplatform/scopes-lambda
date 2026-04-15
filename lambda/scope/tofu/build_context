@@ -1,0 +1,50 @@
+#!/bin/bash
+# Build tofu context for scope operations (create, update, delete).
+# Sets up working directory, state key, and initializes tofu variables.
+#
+# Assumes scope/build_context has already run and exported:
+#   SCOPE_ID, LAMBDA_FUNCTION_NAME, OUTPUT_DIR, VISIBILITY,
+#   PACKAGE_TYPE, RESOURCE_TAGS_JSON, CONTEXT
+#
+# Assumes fetch_scope_configuration has exported:
+#   AWS_REGION, TOFU_STATE_BUCKET
+
+source "$SERVICE_PATH/utils/log"
+
+log info "🔍 Building tofu context..."
+
+# Working directories
+TF_WORKING_DIR="$OUTPUT_DIR/terraform"
+TOFU_MODULE_DIR="$TF_WORKING_DIR"
+mkdir -p "$TF_WORKING_DIR"
+
+# State key — unique per scope
+STATE_KEY="lambda/${SCOPE_ID}/terraform.tfstate"
+log debug "   ✅ state_key=$STATE_KEY"
+
+# Initialize tofu control variables (setup scripts will augment these)
+TOFU_INIT_VARIABLES="-backend-config=key=$STATE_KEY"
+TOFU_VARIABLES="{}"
+MODULES_TO_USE=""
+
+# Lambda alias name
+LAMBDA_MAIN_ALIAS_NAME="${LAMBDA_MAIN_ALIAS_NAME:-main}"
+
+# Augment CONTEXT with lambda info for downstream setup scripts
+# (compute/lambda/setup reads .lambda.function_name from CONTEXT)
+CONTEXT=$(echo "$CONTEXT" | jq \
+  --arg fn "$LAMBDA_FUNCTION_NAME" \
+  --arg alias "$LAMBDA_MAIN_ALIAS_NAME" \
+  '. + {lambda: {function_name: $fn, main_alias: $alias}}')
+
+export TF_WORKING_DIR
+export TOFU_MODULE_DIR
+export STATE_KEY
+export TOFU_INIT_VARIABLES
+export TOFU_VARIABLES
+export MODULES_TO_USE
+export LAMBDA_MAIN_ALIAS_NAME
+export CONTEXT
+
+log debug "   ✅ tf_working_dir=$TF_WORKING_DIR"
+log info "✨ Tofu context built successfully"

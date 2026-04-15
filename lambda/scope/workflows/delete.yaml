@@ -43,7 +43,7 @@ steps:
         type: environment
   - name: setup_provider
     type: script
-    file: "$SERVICE_PATH/deployment/provider/aws/setup"
+    file: "$SERVICE_PATH/scope/tofu/provider/aws/setup"
     output:
       - name: TOFU_VARIABLES
         type: environment
@@ -53,7 +53,7 @@ steps:
         type: environment
   - name: setup_iam
     type: script
-    file: "$SERVICE_PATH/deployment/iam/setup"
+    file: "$SERVICE_PATH/scope/tofu/iam/setup"
     output:
       - name: TOFU_VARIABLES
         type: environment
@@ -61,7 +61,7 @@ steps:
         type: environment
   - name: setup_compute
     type: script
-    file: "$SERVICE_PATH/deployment/compute/lambda/setup"
+    file: "$SERVICE_PATH/scope/tofu/compute/lambda/setup"
     output:
       - name: TOFU_VARIABLES
         type: environment
@@ -69,10 +69,10 @@ steps:
         type: environment
   - name: compose_modules
     type: script
-    file: "$SERVICE_PATH/deployment/compose_modules"
+    file: "$SERVICE_PATH/scope/tofu/compose_modules"
   - name: tofu
     type: script
-    file: "$SERVICE_PATH/deployment/do_tofu"
+    file: "$SERVICE_PATH/scope/tofu/do_tofu"
   - name: delete_sm_secrets
     type: script
     file: "$SERVICE_PATH/scope/scripts/delete_sm_secret"

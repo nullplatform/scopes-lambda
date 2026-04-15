@@ -94,6 +94,86 @@ if [ "$TOFU_ACTION" = "apply" ]; then
     fi
   fi
 
+  # Import ALB target group (created by networking overlay during previous deployments)
+  target_group_name=$(echo "$TOFU_VARIABLES" | jq -r '.alb_target_group_name // empty')
+  if [ -n "$target_group_name" ]; then
+    if ! tofu -chdir="$TF_WORKING_DIR" state show aws_lb_target_group.lambda &>/dev/null; then
+      tg_arn=$(aws elbv2 describe-target-groups \
+        --names "$target_group_name" \
+        --query 'TargetGroups[0].TargetGroupArn' \
+        --output text 2>/dev/null || echo "")
+      if [ -n "$tg_arn" ] && [ "$tg_arn" != "None" ]; then
+        log info "   📡 Importing existing ALB target group: $target_group_name"
+        tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_lb_target_group.lambda "$tg_arn" || true
+        log debug "   ✅ ALB target group imported"
+      fi
+    fi
+  fi
+
+  # Import ALB listener rule
+  alb_listener_arn=$(echo "$TOFU_VARIABLES" | jq -r '.alb_listener_arn // empty')
+  alb_host_header=$(echo "$TOFU_VARIABLES" | jq -r '.alb_host_header // empty')
+  if [ -n "$alb_listener_arn" ] && [ -n "$alb_host_header" ]; then
+    if ! tofu -chdir="$TF_WORKING_DIR" state show aws_lb_listener_rule.lambda &>/dev/null; then
+      rule_arn=$(aws elbv2 describe-rules \
+        --listener-arn "$alb_listener_arn" \
+        --query "Rules[?Conditions[?Values[?contains(@, '$alb_host_header')]]] | [0].RuleArn" \
+        --output text 2>/dev/null || echo "")
+      if [ -n "$rule_arn" ] && [ "$rule_arn" != "None" ]; then
+        log info "   📡 Importing existing ALB listener rule for host: $alb_host_header"
+        tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_lb_listener_rule.lambda "$rule_arn" || true
+        log debug "   ✅ ALB listener rule imported"
+      fi
+    fi
+  fi
+
+  # Import Route53 record
+  dns_zone_id=$(echo "$TOFU_VARIABLES" | jq -r '.dns_hosted_zone_id // empty')
+  dns_full_domain=$(echo "$TOFU_VARIABLES" | jq -r '.dns_full_domain // empty')
+  if [ -n "$dns_zone_id" ] && [ -n "$dns_full_domain" ]; then
+    if ! tofu -chdir="$TF_WORKING_DIR" state show aws_route53_record.main &>/dev/null; then
+      record_exists=$(aws route53 list-resource-record-sets \
+        --hosted-zone-id "$dns_zone_id" \
+        --query "ResourceRecordSets[?Name=='${dns_full_domain}.'] | [0].Name" \
+        --output text 2>/dev/null || echo "")
+      if [ -n "$record_exists" ] && [ "$record_exists" != "None" ]; then
+        log info "   📡 Importing existing Route53 record: $dns_full_domain"
+        tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_route53_record.main "${dns_zone_id}_${dns_full_domain}_A" || true
+        log debug "   ✅ Route53 record imported"
+      fi
+    fi
+  fi
+
+  # Import Lambda permission for ALB
+  if ! tofu -chdir="$TF_WORKING_DIR" state show aws_lambda_permission.alb &>/dev/null; then
+    permission_sid="AllowALBInvoke"
+    policy_json=$(aws lambda get-policy \
+      --function-name "$LAMBDA_FUNCTION_NAME" \
+      --qualifier "${main_alias_name}" \
+      --output json 2>/dev/null || echo "")
+    if [ -n "$policy_json" ] && echo "$policy_json" | jq -e ".Policy" &>/dev/null; then
+      has_alb_permission=$(echo "$policy_json" | jq -r ".Policy" | jq -r ".Statement[] | select(.Sid == \"$permission_sid\") | .Sid" 2>/dev/null || echo "")
+      if [ -n "$has_alb_permission" ]; then
+        log info "   📡 Importing existing Lambda ALB permission"
+        tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_lambda_permission.alb "$permission_sid" || true
+        log debug "   ✅ Lambda ALB permission imported"
+      fi
+    fi
+  fi
+
+  # Import API Gateway resources (public visibility scopes)
+  if ! tofu -chdir="$TF_WORKING_DIR" state show aws_apigatewayv2_api.main &>/dev/null; then
+    api_name="${LAMBDA_FUNCTION_NAME}-api"
+    api_id=$(aws apigatewayv2 get-apis \
+      --query "Items[?Name=='${api_name}'] | [0].ApiId" \
+      --output text 2>/dev/null || echo "")
+    if [ -n "$api_id" ] && [ "$api_id" != "None" ]; then
+      log info "   📡 Importing existing API Gateway: $api_name"
+      tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" aws_apigatewayv2_api.main "$api_id" || true
+      log debug "   ✅ API Gateway imported"
+    fi
+  fi
+
 fi
 
 # Run tofu action

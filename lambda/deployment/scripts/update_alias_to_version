@@ -1,0 +1,61 @@
+#!/bin/bash
+# Update Lambda alias to point to the newly published version at 100% traffic.
+# Used by the initial deployment workflow after publishing a new version.
+# Replaces the alias update logic that previously lived at the end of do_tofu.
+
+source "$SERVICE_PATH/utils/log"
+
+log info "📝 Updating alias to new version..."
+
+if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
+  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Environment variable not set by the deployment pipeline" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Ensure build_context runs before this script" >&2
+  return 1
+fi
+
+alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
+new_version="${LAMBDA_GREEN_VERSION:-$LAMBDA_CURRENT_VERSION}"
+
+if [ -z "$new_version" ] || [ "$new_version" = "null" ]; then
+  echo "❌ No version to update alias to (LAMBDA_GREEN_VERSION and LAMBDA_CURRENT_VERSION are both empty)" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - publish_version did not run before this script" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Ensure publish_version runs and exports LAMBDA_GREEN_VERSION" >&2
+  return 1
+fi
+
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   ✅ alias=$alias_name"
+log debug "   ✅ new_version=$new_version"
+
+echo ""
+log info "   📡 Updating alias $alias_name to version $new_version..."
+
+update_output=$(aws lambda update-alias \
+  --function-name "$LAMBDA_FUNCTION_NAME" \
+  --name "$alias_name" \
+  --function-version "$new_version" \
+  --routing-config '{}' \
+  2>&1)
+update_exit_code=$?
+
+if [ $update_exit_code -ne 0 ]; then
+  echo "❌ Failed to update alias $alias_name to version $new_version on $LAMBDA_FUNCTION_NAME" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Version $new_version does not exist on function $LAMBDA_FUNCTION_NAME" >&2
+  echo "   - Alias $alias_name does not exist" >&2
+  echo "   - Insufficient Lambda permissions" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Verify version exists: aws lambda get-function --function-name $LAMBDA_FUNCTION_NAME --qualifier $new_version" >&2
+  echo "   - Verify alias exists: aws lambda get-alias --function-name $LAMBDA_FUNCTION_NAME --name $alias_name" >&2
+  echo "   📋 Error: $update_output" >&2
+  return 1
+fi
+
+log debug "   ✅ Alias $alias_name updated to version $new_version"
+echo ""
+log info "✨ Alias $alias_name now points to version $new_version on $LAMBDA_FUNCTION_NAME"

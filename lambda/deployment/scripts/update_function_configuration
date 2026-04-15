@@ -1,0 +1,121 @@
+#!/bin/bash
+# Update Lambda function configuration (handler, runtime, memory, timeout,
+# ephemeral storage, environment variables, layers, VPC).
+# Waits for the update to complete before returning.
+#
+# This is necessary because update-function-code only changes the code/image,
+# not the configuration. Scope-create provisions the Lambda with placeholder
+# values (e.g. handler=index.handler, runtime=nodejs20.x) that must be
+# overwritten with the real values from capabilities on first deployment.
+
+source "$SERVICE_PATH/utils/log"
+
+log info "📝 Updating Lambda function configuration..."
+
+if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
+  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Environment variable not set by the deployment pipeline" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Ensure build_context runs before this script" >&2
+  return 1
+fi
+
+log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
+
+# Build the AWS CLI arguments
+cli_args=(
+  --function-name "$LAMBDA_FUNCTION_NAME"
+  --memory-size "${LAMBDA_MEMORY:-256}"
+  --timeout "${LAMBDA_TIMEOUT:-30}"
+  --ephemeral-storage "Size=${LAMBDA_EPHEMERAL_STORAGE:-512}"
+)
+
+log debug "   ✅ memory=${LAMBDA_MEMORY:-256}"
+log debug "   ✅ timeout=${LAMBDA_TIMEOUT:-30}"
+log debug "   ✅ ephemeral_storage=${LAMBDA_EPHEMERAL_STORAGE:-512}"
+
+# Handler and runtime only apply to Zip deployments — Image uses container config
+package_type="${PACKAGE_TYPE:-Image}"
+if [ "$package_type" = "Zip" ]; then
+  cli_args+=(
+    --runtime "${LAMBDA_RUNTIME:-nodejs20.x}"
+    --handler "${LAMBDA_HANDLER:-index.handler}"
+  )
+  log debug "   ✅ runtime=${LAMBDA_RUNTIME:-nodejs20.x}"
+  log debug "   ✅ handler=${LAMBDA_HANDLER:-index.handler}"
+fi
+
+# Environment variables
+if [ -n "${LAMBDA_ENVIRONMENT_VARIABLES:-}" ] && [ "$LAMBDA_ENVIRONMENT_VARIABLES" != "{}" ]; then
+  env_json=$(echo "$LAMBDA_ENVIRONMENT_VARIABLES" | jq -c '{Variables: .}')
+  cli_args+=(--environment "$env_json")
+  log debug "   ✅ environment_variables=$(echo "$LAMBDA_ENVIRONMENT_VARIABLES" | jq 'length') vars"
+else
+  cli_args+=(--environment '{"Variables":{}}')
+  log debug "   ✅ environment_variables=0 vars"
+fi
+
+# Layers
+if [ -n "${LAMBDA_LAYERS:-}" ] && [ "$LAMBDA_LAYERS" != "[]" ]; then
+  layers_list=$(echo "$LAMBDA_LAYERS" | jq -r '.[]' | tr '\n' ' ')
+  cli_args+=(--layers $layers_list)
+  log debug "   ✅ layers=$(echo "$LAMBDA_LAYERS" | jq 'length')"
+else
+  cli_args+=(--layers)
+  log debug "   ✅ layers=0"
+fi
+
+# VPC configuration
+if [ "${VPC_ENABLED:-false}" = "true" ]; then
+  subnet_csv=$(echo "${SUBNET_IDS:-[]}" | jq -r 'join(",")')
+  sg_csv=$(echo "${SECURITY_GROUP_IDS:-[]}" | jq -r 'join(",")')
+  if [ -n "$subnet_csv" ] && [ -n "$sg_csv" ]; then
+    cli_args+=(--vpc-config "SubnetIds=$subnet_csv,SecurityGroupIds=$sg_csv")
+    log debug "   ✅ vpc=enabled"
+  fi
+fi
+
+echo ""
+log info "   📡 Updating function configuration..."
+
+update_output=$(aws lambda update-function-configuration "${cli_args[@]}" 2>&1)
+update_exit_code=$?
+
+if [ $update_exit_code -ne 0 ]; then
+  echo "❌ Failed to update function configuration for $LAMBDA_FUNCTION_NAME" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Invalid configuration values (memory, timeout, etc.)" >&2
+  echo "   - Insufficient Lambda permissions" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Verify capability values are within Lambda limits" >&2
+  echo "   - Check the agent's IAM permissions include lambda:UpdateFunctionConfiguration" >&2
+  echo "   📋 Error: $update_output" >&2
+  return 1
+fi
+
+log info "   📡 Waiting for configuration update to complete..."
+
+aws lambda wait function-updated \
+  --function-name "$LAMBDA_FUNCTION_NAME" 2>&1
+wait_exit_code=$?
+
+if [ $wait_exit_code -ne 0 ]; then
+  last_status=$(aws lambda get-function-configuration \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --query 'LastUpdateStatus' \
+    --output text 2>/dev/null || echo "Unknown")
+
+  echo "❌ Configuration update did not complete successfully (status: $last_status)" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - VPC configuration is invalid (subnets or security groups don't exist)" >&2
+  echo "   - Lambda layer ARN is invalid or inaccessible" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Check the function's last update status reason" >&2
+  echo "   - Verify VPC and layer configurations" >&2
+  return 1
+fi
+
+log debug "   ✅ Function configuration updated successfully"
+echo ""
+log info "✨ Configuration updated for $LAMBDA_FUNCTION_NAME"
