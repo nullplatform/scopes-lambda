@@ -51,17 +51,17 @@ if ! docker buildx version &>/dev/null; then
 fi
 
 # Extract registry host and region from IMAGE_REPO
-ECR_REGISTRY=$(echo "$IMAGE_REPO" | cut -d/ -f1)       # 688720756067.dkr.ecr.us-east-1.amazonaws.com
-ECR_REGION=$(echo "$ECR_REGISTRY" | cut -d. -f4)        # us-east-1
-ECR_REPO_NAME=$(echo "$IMAGE_REPO" | cut -d/ -f2-)      # aws-lambda/nullplatform-lambda-placeholder
+ECR_REGISTRY=$(echo "$IMAGE_REPO" | cut -d/ -f1)
+ECR_REGION=$(echo "$ECR_REGISTRY" | cut -d. -f4)
+ECR_REPO_NAME=$(echo "$IMAGE_REPO" | cut -d/ -f2-)
 
 # Create ECR repository if it does not exist
 echo "📋 Ensuring ECR repository exists: $ECR_REPO_NAME"
-if ! aws --profile kwik ecr describe-repositories \
+if ! aws ecr describe-repositories \
     --repository-names "$ECR_REPO_NAME" \
     --region "$ECR_REGION" &>/dev/null 2>&1; then
   echo "   Creating repository..."
-  aws --profile kwik ecr create-repository \
+  aws ecr create-repository \
     --repository-name "$ECR_REPO_NAME" \
     --region "$ECR_REGION" \
     --image-scanning-configuration scanOnPush=false >/dev/null
@@ -71,11 +71,18 @@ else
 fi
 echo ""
 
-# Authenticate to private ECR
+# Authenticate to public ECR (for pulling base images without rate limits)
+echo "🔑 Authenticating to public ECR..."
+aws ecr-public get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin public.ecr.aws
+echo "   ✅ Public ECR authenticated"
+echo ""
+
+# Authenticate to private ECR (for pushing built images)
 echo "🔑 Authenticating to private ECR..."
 aws ecr get-login-password --region "$ECR_REGION" | \
   docker login --username AWS --password-stdin "$ECR_REGISTRY"
-echo "   ✅ Authenticated"
+echo "   ✅ Private ECR authenticated"
 echo ""
 
 # Lambda does not support OCI image index (multi-arch manifest lists).
