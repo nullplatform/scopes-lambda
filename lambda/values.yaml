@@ -36,7 +36,7 @@ configuration:
   USE_NULL_AGENT: false
 
   # ── IAM ────────────────────────────────────────────────────────────────────
-  IAM_PROPAGATION_WAIT_SECONDS: 20
+  IAM_PROPAGATION_WAIT_SECONDS: 45
 
   # ── Parameters ─────────────────────────────────────────────────────────────
   PARAMETERS_STRATEGY: "env"
