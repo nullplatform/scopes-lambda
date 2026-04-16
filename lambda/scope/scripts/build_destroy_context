@@ -43,7 +43,8 @@ if [ -n "$lambda_info" ]; then
   fi
 else
   log warn "   ⚠️  Lambda function not found in AWS — Tofu will destroy resources from state"
-  IMAGE_URI=""
+  PACKAGE_TYPE="${PACKAGE_TYPE:-Image}"
+  IMAGE_URI="destroy-placeholder"
   S3_BUCKET="destroy-placeholder"
   S3_KEY="destroy-placeholder"
 fi
