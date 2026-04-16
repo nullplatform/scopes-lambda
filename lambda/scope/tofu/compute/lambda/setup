@@ -98,8 +98,8 @@ vpc_enabled=$(echo "$CONTEXT" | jq -r '.scope.capabilities.vpc_enabled // false'
 vpc_config="null"
 
 if [ "$vpc_enabled" = "true" ]; then
-  subnet_ids=$(echo "$TOFU_VARIABLES" | jq -c '.subnet_ids // []')
-  security_group_ids=$(echo "$TOFU_VARIABLES" | jq -c '.security_group_ids // []')
+  subnet_ids=$(echo "${AWS_SUBNET_IDS:-}" | jq -Rc 'split(",") | map(select(length > 0))')
+  security_group_ids=$(echo "${SECURITY_GROUP_IDS:-}" | jq -Rc 'split(",") | map(select(length > 0))')
 
   if [ "$(echo "$subnet_ids" | jq 'length')" -gt 0 ] && [ "$(echo "$security_group_ids" | jq 'length')" -gt 0 ]; then
     vpc_config=$(jq -n \
