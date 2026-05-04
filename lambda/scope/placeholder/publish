@@ -57,11 +57,11 @@ ECR_REPO_NAME=$(echo "$IMAGE_REPO" | cut -d/ -f2-)      # aws-lambda/nullplatfor
 
 # Create ECR repository if it does not exist
 echo "📋 Ensuring ECR repository exists: $ECR_REPO_NAME"
-if ! aws --profile kwik ecr describe-repositories \
+if ! aws ecr describe-repositories \
     --repository-names "$ECR_REPO_NAME" \
     --region "$ECR_REGION" &>/dev/null 2>&1; then
   echo "   Creating repository..."
-  aws --profile kwik ecr create-repository \
+  aws ecr create-repository \
     --repository-name "$ECR_REPO_NAME" \
     --region "$ECR_REGION" \
     --image-scanning-configuration scanOnPush=false >/dev/null
