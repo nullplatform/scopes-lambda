@@ -221,3 +221,110 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
   "Resource": "*"
 }
 ```
+
+## ECR Repository Policies (resource policies, not IAM)
+
+The IAM policies above govern what the **agent's role** can do. They do
+not govern what the **AWS Lambda service principal** can do, which is a
+separate concern: when Lambda's `CreateFunction` and `UpdateFunctionCode`
+APIs pull a container image from ECR, the call is made by the
+`lambda.amazonaws.com` service principal — not by the agent's role.
+
+By default the Lambda service principal has **no implicit access** to
+private ECR repositories in the customer's account. Each ECR repository
+that holds a Lambda image must therefore have a resource-based policy
+allowing the Lambda service to pull. Without this policy, the deploy
+workflow's `update_function_code` step fails with:
+
+```
+api error AccessDeniedException: Lambda does not have permission to
+access the ECR image. Check the ECR permissions.
+```
+
+This applies to **every** ECR repository that ever stores a Lambda
+image:
+
+1. The placeholder ECR (created during installation, addressed by
+   `install/tofu/main.tf` if you use the bundled module — the policy is
+   already applied there).
+2. **The per-application ECR repositories** that `np asset push`
+   creates dynamically when each app does its first build, named
+   `<namespace_slug>/<application_slug>`. **These need the same policy
+   applied — the bundled installation module does NOT set it up for
+   per-app repos today, which is the most common cause of the first
+   real deploy failing on a new installation.**
+3. Any other ECR repository you may use to host Lambda images (custom
+   per-team repos, shared base images, etc.).
+
+### Policy to apply
+
+The policy is the same in every case:
+
+```hcl
+resource "aws_ecr_repository_policy" "lambda_image_pull" {
+  repository = "<ecr-repo-name>"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "LambdaECRImageRetrievalPolicy"
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = "<aws-account-id>"
+          }
+        }
+      },
+    ]
+  })
+}
+```
+
+The `aws:SourceAccount` condition restricts the trust to Lambda
+functions in your own account. AWS recommends this exact pattern in the
+[ECR repository policy docs](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html).
+
+### Recommended pattern for per-application ECRs
+
+Because per-application ECRs are created on-demand by `np asset push`,
+declaring a static `aws_ecr_repository_policy` resource per app does
+not scale — every new Lambda Application needs a manual TF change.
+
+The recommended approach is an
+[`aws_ecr_repository_creation_template`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecr_repository_creation_template)
+matching the namespace prefix used by your `np asset push` invocations
+(typically `<namespace_slug>/`):
+
+```hcl
+resource "aws_ecr_repository_creation_template" "lambda_app_repos" {
+  prefix       = "<namespace_slug>/"
+  description  = "Auto-apply LambdaECRImageRetrievalPolicy to per-app ECR repos"
+  applied_for  = ["PULL_THROUGH_CACHE", "REPLICATION"] # adjust to your needs
+
+  repository_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "LambdaECRImageRetrievalPolicy"
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = "<aws-account-id>"
+          }
+        }
+      },
+    ]
+  })
+}
+```
+
+> **Important:** repository creation templates apply only to ECR
+> repositories created **after** the template is in place. ECR repos
+> that already exist must still be patched with explicit
+> `aws_ecr_repository_policy` resources (or a one-off
+> `aws ecr set-repository-policy` call) — the template is forward-only.
