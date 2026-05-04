@@ -222,6 +222,142 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
 }
 ```
 
+## Runtime infrastructure and nullplatform provider configurations
+
+The IAM policies above let the agent CREATE Lambda functions and target
+groups, but the `create-scope` workflow ALSO depends on three runtime
+artifacts that must exist BEFORE the first scope is created. None are
+auto-created by the bundled `install/tofu/main.tf` today — the operator
+must provision them.
+
+### 1. Placeholder image (private ECR)
+
+The first step of `create-scope` (`resolve_placeholder_image`) reads
+`.deployment.placeholder_image_uri` from a `nullplatform_provider_config`
+of category `scope-configurations`. The image is loaded into the new
+Lambda function on creation and is later replaced by the user's image
+on first deploy.
+
+Publish it with the bundled
+[`lambda/scope/placeholder/publish`](../lambda/scope/placeholder/publish)
+script. The script:
+
+- Creates a private ECR repository if missing.
+- Builds and pushes single-architecture images
+  (`<image>:<tag>-arm64` and `<image>:<tag>-amd64`) with Docker Buildx —
+  Lambda does not support multi-arch manifest lists.
+
+```bash
+export PLACEHOLDER_IMAGE_REPO=<account-id>.dkr.ecr.<region>.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder
+cd lambda/scope/placeholder
+./publish
+```
+
+Apply the `LambdaECRImageRetrievalPolicy` resource policy
+(see [ECR Repository Policies](#ecr-repository-policies-resource-policies-not-iam)
+below) to the placeholder repository so the Lambda service principal
+can pull the image.
+
+### 2. Application Load Balancer
+
+The bundled ALB tofu module (`lambda/scope/tofu/networking/alb/`)
+registers a target group and a listener rule on an existing ALB. The
+ALB itself is the operator's responsibility — the workflow only
+consumes it.
+
+You need:
+
+- An `aws_lb` of type `application` (internet-facing or internal, as
+  appropriate for the namespace's traffic profile).
+- An HTTPS:443 listener with a certificate matching the namespace's
+  domain (typically a wildcard).
+- A `nullplatform_provider_config` of category `vpc` /
+  `aws-networking-configuration` exposing the listener's ARN under
+  `load_balancer.public.listener_arn` (see step 3).
+
+The ALB does not need to be dedicated to Lambda — the workflow only
+adds rules to the listener you point it at, scoped by host header.
+
+### 3. Provider configurations
+
+The `create-scope` workflow reads two `nullplatform_provider_config`s
+by category. Both must be in place before the first scope is created.
+
+#### `scope-configurations`
+
+This category is **not** auto-created by the bundled installation —
+the operator must provision the `nullplatform_provider_config`
+manually. The expected attribute schema:
+
+| Path | Type | Required | Description |
+|---|---|---|---|
+| `deployment.placeholder_image_uri` | string | yes | Full URI of the placeholder image you published in step 1, **without** the architecture suffix. The workflow appends `-arm64` or `-amd64` based on the scope's architecture. |
+| `state.tofu_state_bucket` | string | yes | S3 bucket where each Lambda scope writes its OpenTofu state. Each scope uses a unique key prefix, so a single bucket can be shared across all Lambda scopes (and across scope types — e.g. `static-files` reuses the same bucket convention). |
+
+Example:
+
+```hcl
+resource "nullplatform_provider_config" "scope_configurations" {
+  nrn        = "organization=<org-id>:account=<account-id>"
+  type       = "scope-configurations"
+  dimensions = { environment = "development" }
+
+  attributes = jsonencode({
+    deployment = {
+      placeholder_image_uri = "<account-id>.dkr.ecr.<region>.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
+    }
+    state = {
+      tofu_state_bucket = "<your-tofu-state-bucket>"
+    }
+  })
+}
+```
+
+#### `vpc` / `aws-networking-configuration`
+
+The `build_context` step (via `lambda/utils/fetch_scope_configuration`)
+reads `.load_balancer.public.listener_arn` from a
+`nullplatform_provider_config` of category `vpc` (the legacy name) or
+`aws-networking-configuration` (newer schemas) and exports it as
+`ALB_PUBLIC_LISTENER_ARN`, which the ALB tofu module then consumes via
+its `alb_listener_arn` variable. Recent schema versions also require
+`vpc.id`, `vpc.subnets`, and `vpc.security_groups` on the same config
+— check the spec your installation has by querying the API.
+
+Other scope types (notably `nullplatform/cloud/aws/vpc` and
+`nullplatform/scopes-static-files`) may already create a `vpc` provider
+for general networking. You have two options:
+
+- **Add `load_balancer.public.listener_arn` to the existing config**
+  (preferred, when not blocked by `lifecycle.ignore_changes` on the
+  upstream module).
+- **Create a second provider config of the same category** with a
+  distinct `dimensions` map — the agent merges attributes across all
+  configs that match the scope's NRN at resolution time.
+
+Example dedicated config:
+
+```hcl
+resource "nullplatform_provider_config" "lambda_networking" {
+  nrn        = "organization=<org-id>:account=<account-id>"
+  type       = "aws-networking-configuration"
+  dimensions = { environment = "development" }
+
+  attributes = jsonencode({
+    vpc = {
+      id              = aws_vpc.main.id
+      subnets         = [for s in aws_subnet.private : s.id]
+      security_groups = [aws_security_group.lambda.id]
+    }
+    load_balancer = {
+      public = {
+        listener_arn = aws_lb_listener.lambda_https.arn
+      }
+    }
+  })
+}
+```
+
 ## ECR Repository Policies (resource policies, not IAM)
 
 The IAM policies above govern what the **agent's role** can do. They do
