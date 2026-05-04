@@ -114,6 +114,8 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
 {
   "Effect": "Allow",
   "Action": [
+    "elasticloadbalancing:DescribeLoadBalancers",
+    "elasticloadbalancing:DescribeLoadBalancerAttributes",
     "elasticloadbalancing:CreateTargetGroup",
     "elasticloadbalancing:DeleteTargetGroup",
     "elasticloadbalancing:ModifyTargetGroup",
