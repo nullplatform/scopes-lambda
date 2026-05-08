@@ -9,8 +9,7 @@ module "scope_definition" {
   nrn        = var.nrn
   np_api_key = var.np_api_key
 
-  # Spec templates are fetched from install/specs/ in this repository
-  service_path = "install"
+  service_path = var.service_path
 
   repository_service_spec            = var.github_raw_url
   repository_service_spec_branch     = var.github_branch
@@ -43,6 +42,8 @@ module "scope_definition" {
 
   external_metrics_provider = var.external_metrics_provider
   external_logging_provider = var.external_logging_provider
+
+  create_scope_configuration = true
 }
 
 ################################################################################
@@ -61,8 +62,7 @@ module "scope_definition_agent_association" {
   scope_specification_id   = module.scope_definition.service_specification_id
   scope_specification_slug = module.scope_definition.service_slug
 
-  # Notification channel template is also in install/specs/
-  service_path = "install"
+  service_path = var.service_path
 
   repository_notification_channel        = var.github_raw_url
   repository_notification_channel_branch = var.github_branch
