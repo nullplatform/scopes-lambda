@@ -383,7 +383,7 @@ This applies to **every** ECR repository that ever stores a Lambda
 image:
 
 1. The placeholder ECR (created during installation, addressed by
-   `install/tofu/main.tf` if you use the bundled module — the policy is
+   `lambda/tofu/main.tf` if you use the bundled module — the policy is
    already applied there).
 2. **The per-application ECR repositories** that `np asset push`
    creates dynamically when each app does its first build, named
