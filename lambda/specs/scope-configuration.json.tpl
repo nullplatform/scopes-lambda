@@ -2,7 +2,7 @@
   "name": "AWS Lambda",
   "description": "Scope-wide configuration for AWS Lambda scopes (placeholder image URI, OpenTofu state bucket, optional agent layer)",
   "category": "scope-configurations",
-  "icon": "mdi:lambda",
+  "icon": "np:aws-lambda",
   "visible_to": [
     "{{ env.Getenv "NRN" }}"
   ],
