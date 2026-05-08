@@ -4,7 +4,7 @@
 ################################################################################
 
 module "scope_definition" {
-  source = "../../../tofu-modules/nullplatform/scope_definition"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=main"
 
   nrn        = var.nrn
   np_api_key = var.np_api_key
@@ -51,7 +51,7 @@ module "scope_definition" {
 ################################################################################
 
 module "scope_definition_agent_association" {
-  source = "../../../tofu-modules/nullplatform/scope_definition_agent_association"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=main"
 
   nrn     = var.nrn
   api_key = var.np_api_key
