@@ -31,6 +31,7 @@ tags_selectors = {
 
 # service_spec_name        = "AWS Lambda"
 # service_spec_description = "AWS Lambda functions managed by nullplatform"
+# service_path             = "lambda"
 
 ################################################################################
 # Overrides (optional — appends --overrides-path to the agent cmdline)

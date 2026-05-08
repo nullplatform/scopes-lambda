@@ -68,6 +68,12 @@ variable "external_logging_provider" {
   default     = "external"
 }
 
+variable "service_path" {
+  description = "Path to the spec definition"
+  type        = string
+  default     = "lambda"
+}
+
 ################################################################################
 # Overrides
 ################################################################################
