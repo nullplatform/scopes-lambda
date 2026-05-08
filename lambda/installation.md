@@ -29,7 +29,7 @@ git clone https://github.com/nullplatform/tofu-modules /root/.np/nullplatform/to
 ### 2. Configure variables
 
 ```bash
-cd install/tofu
+cd lambda/tofu
 cp terraform.tfvars.example terraform.tfvars
 ```
 
@@ -80,7 +80,7 @@ This results in the agent running:
 
 ## Updating specs
 
-To push spec changes after editing templates in `install/specs/`:
+To push spec changes after editing templates in `lambda/specs/`:
 
 1. Merge your branch to `main` (or update `github_branch` in tfvars)
 2. Run `tofu apply` — the module fetches templates from GitHub raw on each run
