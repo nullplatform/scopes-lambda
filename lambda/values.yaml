@@ -40,7 +40,7 @@ configuration:
   # Recommended: set via the scope-configurations provider key assume_role.arn
   # so it's managed per-account without changing code.
   # This value is only used if the provider does not supply assume_role.arn.
-  ASSUME_ROLE_ARN_DEFAULT: ""
+  ASSUME_ROLE_ARN_DEFAULT: "arn:aws:iam::235494813897:role/nullplatform_aws-services-cluster_lambda_role"
 
   # ── IAM ────────────────────────────────────────────────────────────────────
   IAM_PROPAGATION_WAIT_SECONDS: 20
