@@ -35,14 +35,20 @@ fi
 # ── Image placeholder path ────────────────────────────────────────────────────
 log info "🔍 Resolving placeholder image URI..."
 
-placeholder_image_base="${PLACEHOLDER_IMAGE_URI:-public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest}"
+default_image_base="public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest"
+placeholder_image_base="${PLACEHOLDER_IMAGE_URI:-$default_image_base}"
 architecture="${ARCHITECTURE:-arm64}"
 
 # Lambda uses "x86_64" but images are tagged with Docker convention "amd64"
 arch_tag="${architecture}"
 [ "$architecture" = "x86_64" ] && arch_tag="amd64"
 
-if [[ "$placeholder_image_base" == *":"* ]]; then
+# Only append the architecture suffix when using the default image.
+# If PLACEHOLDER_IMAGE_URI is explicitly set, use it as-is — the operator
+# already chose the exact tag they want.
+if [ -n "${PLACEHOLDER_IMAGE_URI:-}" ]; then
+  placeholder_image_uri="$placeholder_image_base"
+elif [[ "$placeholder_image_base" == *":"* ]]; then
   placeholder_image_uri="${placeholder_image_base}-${arch_tag}"
 else
   placeholder_image_uri="${placeholder_image_base}:latest-${arch_tag}"
