@@ -35,11 +35,6 @@ configuration:
   # ── Null Agent ─────────────────────────────────────────────────────────────
   USE_NULL_AGENT: false
 
-  # ── Placeholder image ──────────────────────────────────────────────────────
-  # Set to the exact image URI to use as-is (no architecture suffix appended).
-  # Leave empty to let the script auto-select latest-arm64 / latest-amd64.
-  PLACEHOLDER_IMAGE_URI: "public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest"
-
   # ── Assume Role ────────────────────────────────────────────────────────────
   # IAM role ARN to assume before any AWS operation.
   # Recommended: set via the scope-configurations provider key assume_role.arn
