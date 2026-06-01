@@ -76,6 +76,11 @@ log debug "   ✅ placeholder_image_uri=$PLACEHOLDER_IMAGE_URI"
 NULL_AGENT_LAYER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.agent.null_agent_layer_arn // empty')
 log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
 
+# From scope-configurations category (optional — fallback to env var set in values.yaml)
+ASSUME_ROLE_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.assume_role.arn // empty')
+ASSUME_ROLE_ARN="${ASSUME_ROLE_ARN:-${ASSUME_ROLE_ARN_DEFAULT:-}}"
+log debug "   ✅ assume_role_arn=${ASSUME_ROLE_ARN:-(not set, using pod credentials)}"
+
 export ALB_PUBLIC_LISTENER_ARN
 export ALB_PRIVATE_LISTENER_ARN
 export VPC_ID
@@ -88,5 +93,9 @@ export HOSTED_PRIVATE_ZONE_ID
 export TOFU_STATE_BUCKET
 export PLACEHOLDER_IMAGE_URI
 export NULL_AGENT_LAYER_ARN
+export ASSUME_ROLE_ARN
+
+# Apply assume role immediately so all subsequent AWS calls run under the target role
+source "$SERVICE_PATH/utils/assume_role"
 
 log info "✨ Scope configuration fetched successfully"

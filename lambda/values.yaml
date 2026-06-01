@@ -35,6 +35,13 @@ configuration:
   # ── Null Agent ─────────────────────────────────────────────────────────────
   USE_NULL_AGENT: false
 
+  # ── Assume Role ────────────────────────────────────────────────────────────
+  # IAM role ARN to assume before any AWS operation.
+  # Recommended: set via the scope-configurations provider key assume_role.arn
+  # so it's managed per-account without changing code.
+  # This value is only used if the provider does not supply assume_role.arn.
+  ASSUME_ROLE_ARN_DEFAULT: ""
+
   # ── IAM ────────────────────────────────────────────────────────────────────
   IAM_PROPAGATION_WAIT_SECONDS: 20
 
