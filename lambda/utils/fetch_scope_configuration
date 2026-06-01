@@ -67,7 +67,7 @@ HOSTED_PRIVATE_ZONE_ID=$(echo "$CLOUD_PROVIDER_CONFIG" | jq -r '.networking.host
 log debug "   ✅ hosted_private_zone_id=$HOSTED_PRIVATE_ZONE_ID"
 
 # From scope-configurations category
-TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // empty')
+TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // .provider.aws_state_bucket // empty')
 log debug "   ✅ tofu_state_bucket=$TOFU_STATE_BUCKET"
 
 PLACEHOLDER_IMAGE_URI=$(echo "$SCOPE_CONFIG" | jq -r '.deployment.placeholder_image_uri // empty')
