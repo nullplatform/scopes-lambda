@@ -261,7 +261,10 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "logs:FilterLogEvents",
           "logs:GetLogEvents",
           "logs:PutRetentionPolicy",
-          "logs:TagLogGroup"
+          "logs:TagLogGroup",
+          "logs:ListTagsForResource",
+          "logs:TagResource",
+          "logs:UntagResource"
         ]
         Resource = "*"
       },
