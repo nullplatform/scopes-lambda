@@ -40,17 +40,21 @@ configuration:
   # before the first real deployment. MUST live in a private ECR in the same
   # account/region (Lambda rejects public.ecr.aws images), and be single-arch
   # matching the scope architecture (publish :latest-amd64 / :latest-arm64).
-  # Recommended: set via the scope-configurations provider key
-  # deployment.placeholder_image_uri so it's managed per-account without code.
-  # This value is only used if the provider does not supply it.
-  PLACEHOLDER_IMAGE_URI_DEFAULT: "235494813897.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-amd64"
+  # Resolution precedence (see utils/fetch_scope_configuration):
+  #   scope-configurations provider key deployment.placeholder_image_uri
+  #     > PLACEHOLDER_IMAGE_URI_DEFAULT env var (set per-account on the agent)
+  #       > the public default in scope/scripts/resolve_placeholder_image
+  # Account-specific, so it is NOT set here — provide it via the scope-config
+  # or the agent's extra_envs (Helm) for your installation.
 
   # ── Assume Role ────────────────────────────────────────────────────────────
   # IAM role ARN to assume before any AWS operation.
-  # Recommended: set via the scope-configurations provider key assume_role.arn
-  # so it's managed per-account without changing code.
-  # This value is only used if the provider does not supply assume_role.arn.
-  ASSUME_ROLE_ARN_DEFAULT: "arn:aws:iam::235494813897:role/nullplatform_aws-services-cluster_lambda_role"
+  # Resolution precedence (see utils/fetch_scope_configuration):
+  #   scope-configurations provider key assume_role.arn
+  #     > ASSUME_ROLE_ARN_DEFAULT env var (set per-account on the agent)
+  # Account-specific, so it is NOT set here — provide it via the scope-config
+  # or the agent's extra_envs (Helm) for your installation. If unset, the
+  # agent's own pod credentials are used.
 
   # ── IAM ────────────────────────────────────────────────────────────────────
   IAM_PROPAGATION_WAIT_SECONDS: 20
