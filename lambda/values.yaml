@@ -35,6 +35,16 @@ configuration:
   # ── Null Agent ─────────────────────────────────────────────────────────────
   USE_NULL_AGENT: false
 
+  # ── Placeholder image ──────────────────────────────────────────────────────
+  # Container image used to bootstrap the Lambda function at scope creation,
+  # before the first real deployment. MUST live in a private ECR in the same
+  # account/region (Lambda rejects public.ecr.aws images), and be single-arch
+  # matching the scope architecture (publish :latest-amd64 / :latest-arm64).
+  # Recommended: set via the scope-configurations provider key
+  # deployment.placeholder_image_uri so it's managed per-account without code.
+  # This value is only used if the provider does not supply it.
+  PLACEHOLDER_IMAGE_URI_DEFAULT: "235494813897.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-amd64"
+
   # ── Assume Role ────────────────────────────────────────────────────────────
   # IAM role ARN to assume before any AWS operation.
   # Recommended: set via the scope-configurations provider key assume_role.arn

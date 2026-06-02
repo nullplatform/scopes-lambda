@@ -71,7 +71,9 @@ TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // .p
 log debug "   ✅ tofu_state_bucket=$TOFU_STATE_BUCKET"
 
 PLACEHOLDER_IMAGE_URI=$(echo "$SCOPE_CONFIG" | jq -r '.deployment.placeholder_image_uri // empty')
-log debug "   ✅ placeholder_image_uri=$PLACEHOLDER_IMAGE_URI"
+# Fallback to env var set in values.yaml when the provider does not supply it.
+PLACEHOLDER_IMAGE_URI="${PLACEHOLDER_IMAGE_URI:-${PLACEHOLDER_IMAGE_URI_DEFAULT:-}}"
+log debug "   ✅ placeholder_image_uri=${PLACEHOLDER_IMAGE_URI:-(not set, using script default)}"
 
 NULL_AGENT_LAYER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.agent.null_agent_layer_arn // empty')
 log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
