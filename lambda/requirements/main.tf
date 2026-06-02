@@ -231,7 +231,9 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "ecr:CompleteLayerUpload",
           "ecr:PutImage",
           "ecr:BatchCheckLayerAvailability",
-          "ecr:TagResource"
+          "ecr:TagResource",
+          "ecr:GetRepositoryPolicy",
+          "ecr:SetRepositoryPolicy"
         ]
         Resource = "*"
       },
