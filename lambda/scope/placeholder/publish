@@ -51,7 +51,7 @@ if ! docker buildx version &>/dev/null; then
 fi
 
 # Extract registry host and region from IMAGE_REPO
-ECR_REGISTRY=$(echo "$IMAGE_REPO" | cut -d/ -f1)       # 688720756067.dkr.ecr.us-east-1.amazonaws.com
+ECR_REGISTRY=$(echo "$IMAGE_REPO" | cut -d/ -f1)       # 123456789012.dkr.ecr.us-east-1.amazonaws.com
 ECR_REGION=$(echo "$ECR_REGISTRY" | cut -d. -f4)        # us-east-1
 ECR_REPO_NAME=$(echo "$IMAGE_REPO" | cut -d/ -f2-)      # aws-lambda/nullplatform-lambda-placeholder
 
