@@ -16,9 +16,17 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.2"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 }
 
 provider "nullplatform" {
   api_key = var.np_api_key
+}
+
+provider "aws" {
+  region = var.aws_region
 }

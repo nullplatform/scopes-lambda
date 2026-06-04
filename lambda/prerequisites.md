@@ -229,7 +229,7 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
 The IAM policies above let the agent CREATE Lambda functions and target
 groups, but the `create-scope` workflow ALSO depends on three runtime
 artifacts that must exist BEFORE the first scope is created. None are
-auto-created by the bundled `install/tofu/main.tf` today — the operator
+auto-created by the bundled `setup/main.tf` today — the operator
 must provision them.
 
 ### 1. Placeholder image (private ECR)
@@ -383,7 +383,7 @@ This applies to **every** ECR repository that ever stores a Lambda
 image:
 
 1. The placeholder ECR (created during installation, addressed by
-   `lambda/tofu/main.tf` if you use the bundled module — the policy is
+   `lambda/setup/main.tf` if you use the bundled module — the policy is
    already applied there).
 2. **The per-application ECR repositories** that `np asset push`
    creates dynamically when each app does its first build, named

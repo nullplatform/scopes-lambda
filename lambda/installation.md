@@ -29,17 +29,24 @@ git clone https://github.com/nullplatform/tofu-modules /root/.np/nullplatform/to
 ### 2. Configure variables
 
 ```bash
-cd lambda/tofu
+cd lambda/setup
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Edit `terraform.tfvars` with your values:
+This module registers the scope type **and** provisions the IAM policies the
+agent needs to operate Lambda scopes (formerly the separate `requirements`
+module — now consolidated here). Edit `terraform.tfvars` with your values:
 
 | Variable | Required | Description |
 |---|---|---|
 | `nrn` | ✅ | Nullplatform Resource Name (`organization:account`) |
 | `np_api_key` | ✅ | Nullplatform API key |
 | `tags_selectors` | ✅ | Tags to select the agent (e.g. `{ environment = "production" }`) |
+| `name` | ✅ | Unique identifier for IAM policy naming (account-global, e.g. `prod-us-east-1`) |
+| `aws_region` | — | AWS provider region. IAM is global; leave unset to resolve from the environment |
+| `create_role` | — | `true` to create a new IAM role and attach the Lambda policies to it |
+| `trusted_arns` | — | Principal ARNs allowed to assume the created role (with `create_role = true`) |
+| `role_name` | — | Existing IAM role to attach the Lambda policies to (instead of `create_role`) |
 | `github_branch` | — | Branch to fetch specs from (default: `main`) |
 | `repo_path` | — | Path where scopes-lambda is cloned on the agent |
 | `overrides_enabled` | — | Set `true` to enable config overrides from scopes-networking |

@@ -12,6 +12,23 @@ tags_selectors = {
   environment = "production"
 }
 
+# Unique identifier for IAM policy naming (policy names are account-global).
+name = "prod-us-east-1"
+
+################################################################################
+# IAM permissions (optional)
+################################################################################
+
+# AWS provider region (IAM is global; leave unset to resolve from the environment).
+# aws_region = "us-east-1"
+
+# Attach the Lambda policies to a brand-new role (and trust the given principals)...
+# create_role  = true
+# trusted_arns = ["arn:aws:iam::123456789012:role/my-agent-role"]
+
+# ...or attach them to an existing role instead:
+# role_name = "my-existing-agent-role"
+
 ################################################################################
 # Repository (override if using a fork or private mirror)
 ################################################################################

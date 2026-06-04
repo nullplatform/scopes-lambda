@@ -5,7 +5,7 @@ source "$SERVICE_PATH/utils/log"
 log info "🔍 Configuring IAM role for deployment..."
 
 # Prefix with "np-lambda-" so the role name matches the iam:CreateRole/PassRole
-# Resource constraint in lambda/requirements (arn:aws:iam::*:role/np-lambda-*).
+# Resource constraint in lambda/setup (arn:aws:iam::*:role/np-lambda-*).
 iam_role_name="np-lambda-${LAMBDA_FUNCTION_NAME}-role"
 iam_role_name="${iam_role_name:0:64}"
 
