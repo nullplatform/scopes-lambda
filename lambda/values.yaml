@@ -44,11 +44,11 @@ configuration:
   #   scope-configurations provider key deployment.placeholder_image_uri
   #     > PLACEHOLDER_IMAGE_URI_DEFAULT env var (set per-account on the agent)
   #       > the public default in scope/scripts/resolve_placeholder_image
-  # The URI is account-specific, so no real value is committed here. To choose
-  # your own placeholder image per installation, uncomment the line below and
-  # point it at your private ECR (or instead set it via the scope-config or the
-  # agent's extra_envs in Helm).
-  # PLACEHOLDER_IMAGE_URI_DEFAULT: "<account-id>.dkr.ecr.<region>.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-amd64"
+  # Default placeholder image for this installation. Account-specific, but
+  # committed here intentionally. Can still be overridden per scope via the
+  # scope-config provider key deployment.placeholder_image_uri, or per agent
+  # via extra_envs in Helm.
+  PLACEHOLDER_IMAGE_URI_DEFAULT: "235494813897.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
 
   # ── Assume Role ────────────────────────────────────────────────────────────
   # IAM role ARN to assume before any AWS operation.
