@@ -78,8 +78,40 @@ log debug "   ✅ placeholder_image_uri=${PLACEHOLDER_IMAGE_URI:-(not set, using
 NULL_AGENT_LAYER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.agent.null_agent_layer_arn // empty')
 log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
 
-# From scope-configurations category (optional — fallback to env var set in values.yaml)
-ASSUME_ROLE_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.assume_role.arn // empty')
+# --- Resolve the IAM role ARN to assume -------------------------------------
+# Precedence (highest to lowest):
+#   1. $ASSUME_ROLE_ARN already in the environment (explicit override).
+#   2. The "AWS IAM" provider (Identity & Access Control, spec
+#      aws-iam-configuration) at the ACCOUNT nrn, matched by selector. The
+#      selector defaults to "lambda"; override with the ASSUME_ROLE_SELECTOR
+#      env var (values.yaml / agent extra_envs) if the provider uses another key.
+#   3. scope-configurations provider key assume_role.arn (back-compat).
+#   4. $ASSUME_ROLE_ARN_DEFAULT env var (per-account default on the agent).
+#   5. None of the above -> empty -> use the pod's IRSA credentials directly.
+# shellcheck source=assume_role_lib
+source "$SERVICE_PATH/utils/assume_role_lib"
+
+# The IAM provider lives at the account level; derive the account nrn from the
+# scope nrn by stripping everything from :namespace= onward.
+ACCOUNT_NRN=$(echo "$NRN" | sed 's/:namespace=.*$//')
+ASSUME_ROLE_SELECTOR="${ASSUME_ROLE_SELECTOR:-lambda}"
+
+ASSUME_ROLE_ARN="${ASSUME_ROLE_ARN:-}"
+
+# 2. nullplatform IAM provider, by selector.
+if [ -z "$ASSUME_ROLE_ARN" ] && [ -n "$ACCOUNT_NRN" ] && [ -n "$ASSUME_ROLE_SELECTOR" ]; then
+  ASSUME_ROLE_ARN=$(provider_arn_for_selector "$ACCOUNT_NRN" "$ASSUME_ROLE_SELECTOR")
+  if [ -n "$ASSUME_ROLE_ARN" ]; then
+    log debug "   ✅ assume_role_arn from IAM provider (selector=$ASSUME_ROLE_SELECTOR)"
+  fi
+fi
+
+# 3. scope-configurations provider key (back-compat).
+if [ -z "$ASSUME_ROLE_ARN" ]; then
+  ASSUME_ROLE_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.assume_role.arn // empty')
+fi
+
+# 4. Per-account default env var.
 ASSUME_ROLE_ARN="${ASSUME_ROLE_ARN:-${ASSUME_ROLE_ARN_DEFAULT:-}}"
 log debug "   ✅ assume_role_arn=${ASSUME_ROLE_ARN:-(not set, using pod credentials)}"
 

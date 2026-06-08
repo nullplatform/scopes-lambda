@@ -53,11 +53,17 @@ configuration:
   # ── Assume Role ────────────────────────────────────────────────────────────
   # IAM role ARN to assume before any AWS operation.
   # Resolution precedence (see utils/fetch_scope_configuration):
-  #   scope-configurations provider key assume_role.arn
-  #     > ASSUME_ROLE_ARN_DEFAULT env var (set per-account on the agent)
-  # Account-specific, so it is NOT set here — provide it via the scope-config
-  # or the agent's extra_envs (Helm) for your installation. If unset, the
-  # agent's own pod credentials are used.
+  #   1. ASSUME_ROLE_ARN env var (explicit override)
+  #   2. "AWS IAM" provider (Identity & Access Control, spec aws-iam-configuration)
+  #      at the account NRN, matched by selector. The selector defaults to
+  #      "lambda"; override it with ASSUME_ROLE_SELECTOR if the provider's arns
+  #      list uses a different key.
+  #   3. scope-configurations provider key assume_role.arn (back-compat)
+  #   4. ASSUME_ROLE_ARN_DEFAULT env var (set per-account on the agent)
+  # All account-specific, so none are set here — provide them via the IAM
+  # provider, the scope-config, or the agent's extra_envs (Helm). If nothing
+  # resolves, the agent's own pod credentials (IRSA) are used.
+  # ASSUME_ROLE_SELECTOR: "lambda"
 
   # ── IAM ────────────────────────────────────────────────────────────────────
   IAM_PROPAGATION_WAIT_SECONDS: 20

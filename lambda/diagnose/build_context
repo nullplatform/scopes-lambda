@@ -15,6 +15,19 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
 fi
 
 source "$SERVICE_PATH/utils/lambda_function_name"
+
+# Resolve the IAM role ARN to assume before any AWS call, mirroring
+# fetch_scope_configuration: env override -> "AWS IAM" provider matched by the
+# "lambda" selector (account nrn) -> ASSUME_ROLE_ARN_DEFAULT -> IRSA.
+source "$SERVICE_PATH/utils/assume_role_lib"
+ACCOUNT_NRN=$(echo "$SCOPE_NRN" | sed 's/:namespace=.*$//')
+ASSUME_ROLE_SELECTOR="${ASSUME_ROLE_SELECTOR:-lambda}"
+ASSUME_ROLE_ARN="${ASSUME_ROLE_ARN:-}"
+if [ -z "$ASSUME_ROLE_ARN" ] && [ -n "$ACCOUNT_NRN" ] && [ -n "$ASSUME_ROLE_SELECTOR" ]; then
+  ASSUME_ROLE_ARN=$(provider_arn_for_selector "$ACCOUNT_NRN" "$ASSUME_ROLE_SELECTOR")
+fi
+export ASSUME_ROLE_ARN="${ASSUME_ROLE_ARN:-${ASSUME_ROLE_ARN_DEFAULT:-}}"
+
 source "$SERVICE_PATH/utils/assume_role"
 
 lambda_info=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --output json 2>/dev/null || echo "{}")
