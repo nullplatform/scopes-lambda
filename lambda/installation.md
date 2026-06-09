@@ -29,7 +29,7 @@ git clone https://github.com/nullplatform/tofu-modules /root/.np/nullplatform/to
 ### 2. Configure variables
 
 ```bash
-cd lambda/setup
+cd lambda/specs/tofu
 cp terraform.tfvars.example terraform.tfvars
 ```
 
