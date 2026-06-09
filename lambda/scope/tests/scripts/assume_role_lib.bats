@@ -114,3 +114,59 @@ JSON='{"attributes":{"iam_role_arns":{"arns":[{"selector":"s3","arn":"arn:aws:ia
   assert_success
   [ -z "$output" ]
 }
+
+# --- resolve_assume_role_arn (full precedence chain) -----------------------
+# Each test defines its own stateless np stub (branches on args) so it survives
+# the command-substitution subshells the resolver uses.
+
+@test "resolve_assume_role_arn: env override wins over everything" {
+  export ASSUME_ROLE_ARN="arn:env"
+  run resolve_assume_role_arn "organization=1:account=2" lambda
+  assert_success
+  [ "$output" = "arn:env" ]
+}
+
+@test "resolve_assume_role_arn: IAM provider when no env override" {
+  np() {
+    case "$*" in
+      *"--specification_slug aws-iam-configuration"*) echo '{"results":[{"id":"iam-1"}]}' ;;
+      *"provider read"*) echo '{"attributes":{"iam_role_arns":{"arns":[{"selector":"lambda","arn":"arn:provider:lambda"}]}}}' ;;
+      *) echo '{}' ;;
+    esac
+  }
+  export -f np
+  run resolve_assume_role_arn "organization=1:account=2" lambda
+  assert_success
+  [ "$output" = "arn:provider:lambda" ]
+}
+
+@test "resolve_assume_role_arn: scope-config fallback when provider misses" {
+  np() {
+    case "$*" in
+      *"--specification_slug aws-iam-configuration"*) echo '{"results":[]}' ;;
+      *"--categories scope-configurations"*) echo '{"results":[{"attributes":{"assume_role":{"arn":"arn:scopecfg:legacy"}}}]}' ;;
+      *) echo '{}' ;;
+    esac
+  }
+  export -f np
+  run resolve_assume_role_arn "organization=1:account=2" lambda
+  assert_success
+  [ "$output" = "arn:scopecfg:legacy" ]
+}
+
+@test "resolve_assume_role_arn: ASSUME_ROLE_ARN_DEFAULT when nothing else resolves" {
+  np() { echo '{"results":[]}'; }
+  export -f np
+  export ASSUME_ROLE_ARN_DEFAULT="arn:default"
+  run resolve_assume_role_arn "organization=1:account=2" lambda
+  assert_success
+  [ "$output" = "arn:default" ]
+}
+
+@test "resolve_assume_role_arn: empty (IRSA) when nothing resolves and no default" {
+  np() { echo '{"results":[]}'; }
+  export -f np
+  run resolve_assume_role_arn "organization=1:account=2" lambda
+  assert_success
+  [ -z "$output" ]
+}
