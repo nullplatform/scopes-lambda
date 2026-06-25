@@ -217,7 +217,7 @@
         },
         "asset_type": {
           "type": "string",
-          "export": false,
+          "export": true,
           "default": "docker-image"
         },
         "runtime": {
@@ -399,7 +399,17 @@
           },
           "description": "Configure automatic deployment from Git branches"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "deployment_type": { "const": "zip" } }, "required": ["deployment_type"] },
+          "then": { "properties": { "asset_type": { "const": "lambda", "default": "lambda" } } }
+        },
+        {
+          "if": { "properties": { "deployment_type": { "const": "docker-image" } }, "required": ["deployment_type"] },
+          "then": { "properties": { "asset_type": { "const": "docker-image", "default": "docker-image" } } }
+        }
+      ]
     }
   },
   "name": "AWS Lambda",
