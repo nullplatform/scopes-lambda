@@ -35,6 +35,9 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
     "lambda:DeleteFunction",
     "lambda:GetFunction",
     "lambda:GetFunctionConfiguration",
+    "lambda:GetFunctionConcurrency",
+    "lambda:GetFunctionCodeSigningConfig",
+    "lambda:GetAccountSettings",
     "lambda:UpdateFunctionCode",
     "lambda:UpdateFunctionConfiguration",
     "lambda:ListVersionsByFunction",
@@ -43,6 +46,7 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
     "lambda:UpdateAlias",
     "lambda:DeleteAlias",
     "lambda:GetAlias",
+    "lambda:ListAliases",
     "lambda:AddPermission",
     "lambda:RemovePermission",
     "lambda:GetPolicy",
@@ -70,11 +74,32 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
   "Action": [
     "logs:CreateLogGroup",
     "logs:DeleteLogGroup",
-    "logs:PutRetentionPolicy",
     "logs:DescribeLogGroups",
+    "logs:CreateLogStream",
+    "logs:PutLogEvents",
+    "logs:FilterLogEvents",
+    "logs:GetLogEvents",
+    "logs:PutRetentionPolicy",
     "logs:TagLogGroup",
+    "logs:ListTagsForResource",
     "logs:TagResource",
     "logs:UntagResource"
+  ],
+  "Resource": "*"
+}
+```
+
+---
+
+### CloudWatch Metrics (diagnose / metric actions)
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "cloudwatch:GetMetricStatistics",
+    "cloudwatch:GetMetricData",
+    "cloudwatch:ListMetrics"
   ],
   "Resource": "*"
 }
@@ -106,6 +131,30 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
 }
 ```
 
+> The implementation scopes the `iam:*` actions to the roles the scope manages
+> (`arn:aws:iam::*:role/nullplatform-*`, `arn:aws:iam::*:role/np-lambda-*`).
+> Narrow the `Resource` accordingly in production instead of `*`.
+
+---
+
+### API Gateway
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "apigateway:GET",
+    "apigateway:POST",
+    "apigateway:PUT",
+    "apigateway:PATCH",
+    "apigateway:DELETE",
+    "apigateway:TagResource",
+    "apigateway:UntagResource"
+  ],
+  "Resource": "*"
+}
+```
+
 ---
 
 ### ALB (Application Load Balancer)
@@ -119,7 +168,9 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
     "elasticloadbalancing:CreateTargetGroup",
     "elasticloadbalancing:DeleteTargetGroup",
     "elasticloadbalancing:ModifyTargetGroup",
+    "elasticloadbalancing:ModifyTargetGroupAttributes",
     "elasticloadbalancing:DescribeTargetGroups",
+    "elasticloadbalancing:DescribeTargetGroupAttributes",
     "elasticloadbalancing:RegisterTargets",
     "elasticloadbalancing:DeregisterTargets",
     "elasticloadbalancing:DescribeTargetHealth",
@@ -162,19 +213,34 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
 {
   "Effect": "Allow",
   "Action": [
+    "s3:CreateBucket",
+    "s3:HeadBucket",
+    "s3:PutBucketVersioning",
+    "s3:GetBucketVersioning",
+    "s3:GetBucketLocation",
+    "s3:ListBucket",
+    "s3:ListBucketVersions",
     "s3:GetObject",
     "s3:PutObject",
     "s3:DeleteObject",
-    "s3:ListBucket",
-    "s3:GetBucketVersioning",
-    "s3:GetBucketLocation"
+    "s3:DeleteObjectVersion"
   ],
   "Resource": [
     "arn:aws:s3:::<state-bucket>",
-    "arn:aws:s3:::<state-bucket>/*"
+    "arn:aws:s3:::<state-bucket>/*",
+    "arn:aws:s3:::<assets-bucket>",
+    "arn:aws:s3:::<assets-bucket>/*"
   ]
 }
 ```
+
+> **Two distinct buckets.** `<state-bucket>` is where the create/delete
+> workflows persist the per-scope OpenTofu state (read/write). `<assets-bucket>`
+> is where nullplatform stores the build's Zip deployment packages
+> (e.g. `lambda-files-<cluster>`); the role only needs **read** access there
+> (`s3:GetObject` + `s3:ListBucket`) so `UpdateFunctionCode` can fetch the Zip.
+> They are often different buckets — make sure both are in the `Resource` list,
+> otherwise the Zip deployment fails with `AccessDenied` on `s3:GetObject`.
 
 ---
 
@@ -185,9 +251,19 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
   "Effect": "Allow",
   "Action": [
     "ecr:GetAuthorizationToken",
+    "ecr:CreateRepository",
+    "ecr:DescribeRepositories",
+    "ecr:DescribeImages",
     "ecr:BatchGetImage",
     "ecr:GetDownloadUrlForLayer",
-    "ecr:DescribeImages"
+    "ecr:BatchCheckLayerAvailability",
+    "ecr:InitiateLayerUpload",
+    "ecr:UploadLayerPart",
+    "ecr:CompleteLayerUpload",
+    "ecr:PutImage",
+    "ecr:TagResource",
+    "ecr:GetRepositoryPolicy",
+    "ecr:SetRepositoryPolicy"
   ],
   "Resource": "*"
 }
@@ -206,6 +282,7 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
     "secretsmanager:PutSecretValue",
     "secretsmanager:DeleteSecret",
     "secretsmanager:DescribeSecret",
+    "secretsmanager:ListSecrets",
     "secretsmanager:TagResource"
   ],
   "Resource": "arn:aws:secretsmanager:*:*:secret:nullplatform/*"
