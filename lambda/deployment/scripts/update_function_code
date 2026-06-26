@@ -34,6 +34,22 @@ if [ "$package_type" = "Image" ]; then
   fi
   log debug "   ✅ image_uri=$IMAGE_URI"
 
+  # Ensure the image's ECR repo lets the Lambda service pull it. Container-image
+  # Lambdas require a repository policy granting lambda.amazonaws.com; without it
+  # update-function-code fails with "Lambda does not have permission to access
+  # the ECR image". Idempotent and best-effort (cross-account repos may not be
+  # writable from here — Lambda would then need the policy set on the source side).
+  if [[ "$IMAGE_URI" == *.dkr.ecr.*.amazonaws.com/* ]]; then
+    ecr_region=$(echo "${IMAGE_URI%%/*}" | cut -d. -f4)
+    ecr_repo="${IMAGE_URI#*/}"; ecr_repo="${ecr_repo%%:*}"; ecr_repo="${ecr_repo%%@*}"
+    lambda_pull_policy='{"Version":"2008-10-17","Statement":[{"Sid":"LambdaECRImageRetrievalPolicy","Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":["ecr:BatchGetImage","ecr:GetDownloadUrlForLayer"]}]}'
+    if aws ecr set-repository-policy --repository-name "$ecr_repo" --region "$ecr_region" --policy-text "$lambda_pull_policy" >/dev/null 2>&1; then
+      log debug "   ✅ ensured Lambda pull policy on ECR repo $ecr_repo"
+    else
+      log warn "   ⚠️  could not set Lambda pull policy on ECR repo $ecr_repo (continuing; pull may fail if not already allowed)"
+    fi
+  fi
+
   update_output=$(aws lambda update-function-code \
     --function-name "$LAMBDA_FUNCTION_NAME" \
     --image-uri "$IMAGE_URI" \

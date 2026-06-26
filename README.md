@@ -288,6 +288,67 @@ LOG_RETENTION_DAYS: 30
 PARAMETERS_STRATEGY: "env"              # or "secretsmanager"
 ```
 
+### Placeholder Image (Scope Bootstrap)
+
+When a scope is created, the Lambda function and its IAM role must exist **before**
+the first real deployment — otherwise aliases, networking, and IAM have nothing to
+attach to. To bootstrap this, `create-scope` provisions a throwaway **placeholder**
+function that the first deployment then overwrites with the real code.
+
+How the placeholder is sourced depends on the scope's **package type**:
+
+- **Zip** — fully self-contained. A minimal handler ships pre-built and
+  base64-encoded in the repo (`scope/placeholder/placeholder_lambda.zip.b64`) and is
+  used automatically. **No configuration needed.**
+- **Image** — the placeholder must be a container image, and this is where
+  `PLACEHOLDER_IMAGE_URI_DEFAULT` comes in.
+
+#### Why `PLACEHOLDER_IMAGE_URI_DEFAULT` is needed for Image scopes
+
+A Lambda function with `PackageType=Image` can only pull from a **private ECR
+repository in the same account and region** — Lambda rejects `public.ecr.aws`
+images at function-creation time. The built-in default in
+`scope/scripts/resolve_placeholder_image` points at a public image
+(`public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest`),
+which is fine to *validate* but cannot actually back a real Lambda function.
+
+So for Image-based scopes you **must** mirror a placeholder into your own private
+ECR and point the scope at it. The image must also be **single-arch matching the
+scope architecture** (`-amd64` for `x86_64`, `-arm64` for `arm64`) — Lambda does
+not accept multi-arch manifest lists.
+
+#### Resolution precedence
+
+The placeholder image URI is resolved in this order (first match wins):
+
+1. scope-configurations provider key `deployment.placeholder_image_uri` — per-scope,
+   managed without code
+2. `PLACEHOLDER_IMAGE_URI_DEFAULT` env var — the **account-wide** knob, set in
+   `values.yaml` or via the agent's `extra_envs` (Helm)
+3. the public default in `scope/scripts/resolve_placeholder_image` (validation-only
+   fallback; not usable for real Image functions)
+
+Because the URI is account-specific, `values.yaml` ships it commented out — set it
+once per installation and every Image scope in that account uses it, unless a
+specific scope overrides it via the provider key.
+
+#### Publishing a placeholder image
+
+Use the helper script to build and push the single-arch placeholders to your private
+ECR (it creates the repository if it does not exist):
+
+```bash
+export PLACEHOLDER_IMAGE_REPO=123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder
+lambda/scope/placeholder/publish        # pushes <repo>:latest-arm64 and <repo>:latest-amd64
+```
+
+Then set the URI (matching your scope architecture) in `values.yaml` or the agent's
+`extra_envs`:
+
+```yaml
+PLACEHOLDER_IMAGE_URI_DEFAULT: "123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-arm64"
+```
+
 ### Resource Naming
 
 | Resource | Format | Example |
@@ -507,6 +568,7 @@ export TOFU_LOCK_TABLE=my-lock-table
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | "Function name too long" | Name exceeds 64 chars | Shorten namespace/application/scope slugs |
+| "Placeholder image not found" | Image scope with no private placeholder published | Run `lambda/scope/placeholder/publish` and set `PLACEHOLDER_IMAGE_URI_DEFAULT` (see [Placeholder Image](#placeholder-image-scope-bootstrap)) |
 | "Provisioned concurrency timeout" | Warmup taking too long | Increase `PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS` |
 | "ALB listener rule capacity" | Too many rules on ALB | Increase `ALB_LISTENER_RULE_CAPACITY` in values.yaml |
 | "Module not composed" | `MODULES_TO_USE` not updated | Verify setup script appends to `MODULES_TO_USE` |

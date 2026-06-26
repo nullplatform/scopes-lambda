@@ -35,6 +35,36 @@ configuration:
   # ── Null Agent ─────────────────────────────────────────────────────────────
   USE_NULL_AGENT: false
 
+  # ── Placeholder image ──────────────────────────────────────────────────────
+  # Container image used to bootstrap the Lambda function at scope creation,
+  # before the first real deployment. MUST live in a private ECR in the same
+  # account/region (Lambda rejects public.ecr.aws images), and be single-arch
+  # matching the scope architecture (publish :latest-amd64 / :latest-arm64).
+  # Resolution precedence (see utils/fetch_scope_configuration):
+  #   scope-configurations provider key deployment.placeholder_image_uri
+  #     > PLACEHOLDER_IMAGE_URI_DEFAULT env var (set per-account on the agent)
+  #       > the public default in scope/scripts/resolve_placeholder_image
+  # Default placeholder image for this installation. Account-specific, but
+  # committed here intentionally. Can still be overridden per scope via the
+  # scope-config provider key deployment.placeholder_image_uri, or per agent
+  # via extra_envs in Helm.
+  PLACEHOLDER_IMAGE_URI_DEFAULT: "235494813897.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
+
+  # ── Assume Role ────────────────────────────────────────────────────────────
+  # IAM role ARN to assume before any AWS operation.
+  # Resolution precedence (see utils/fetch_scope_configuration):
+  #   1. ASSUME_ROLE_ARN env var (explicit override)
+  #   2. "AWS IAM" provider (Identity & Access Control, spec aws-iam-configuration)
+  #      at the account NRN, matched by selector. The selector defaults to
+  #      "lambda"; override it with ASSUME_ROLE_SELECTOR if the provider's arns
+  #      list uses a different key.
+  #   3. scope-configurations provider key assume_role.arn (back-compat)
+  #   4. ASSUME_ROLE_ARN_DEFAULT env var (set per-account on the agent)
+  # All account-specific, so none are set here — provide them via the IAM
+  # provider, the scope-config, or the agent's extra_envs (Helm). If nothing
+  # resolves, the agent's own pod credentials (IRSA) are used.
+  # ASSUME_ROLE_SELECTOR: "lambda"
+
   # ── IAM ────────────────────────────────────────────────────────────────────
   IAM_PROPAGATION_WAIT_SECONDS: 20
 

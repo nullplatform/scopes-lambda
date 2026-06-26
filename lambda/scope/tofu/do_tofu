@@ -176,14 +176,13 @@ if [ "$TOFU_ACTION" = "apply" ]; then
 
 fi
 
-# Run tofu action
 log info "📝 Running tofu $TOFU_ACTION..."
 tofu_exit_code=0
-tofu -chdir="$TF_WORKING_DIR" "$TOFU_ACTION" -auto-approve -var-file="$TOFU_VAR_FILE" || tofu_exit_code=$?
+tofu -chdir="$TF_WORKING_DIR" "$TOFU_ACTION" -auto-approve -var-file="$TOFU_VAR_FILE" 2>&1 || tofu_exit_code=$?
 if [ $tofu_exit_code -ne 0 ]; then
   echo ""
-  echo "❌ Tofu $TOFU_ACTION failed with exit code $tofu_exit_code" >&2
-  echo "" >&2
+  echo "❌ Tofu $TOFU_ACTION failed with exit code $tofu_exit_code"
+  echo ""
   return 1
 fi
 

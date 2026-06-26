@@ -1,11 +1,29 @@
 #!/bin/bash
 
 source "$SERVICE_PATH/utils/log"
+source "$SERVICE_PATH/utils/get_config_value"
 
 log info "🔍 Configuring IAM role for deployment..."
 
-iam_role_name="${LAMBDA_FUNCTION_NAME}-role"
+# Execution-role name = <prefix><function>-role. The prefix is configurable
+# (scope-config provider > LAMBDA_EXECUTION_ROLE_PREFIX env > default), but it
+# MUST keep matching the iam:CreateRole/PassRole Resource constraint of the
+# assume role's policy in lambda/setup (arn:aws:iam::*:role/np-lambda-* or
+# .../nullplatform-*); otherwise CreateRole/PassRole are denied. The default
+# preserves the historical "np-lambda-".
+exec_role_prefix=$(get_config_value \
+  --provider '.providers["scope-configurations"].lambda.execution_role_prefix' \
+  --env LAMBDA_EXECUTION_ROLE_PREFIX \
+  --default 'np-lambda-')
+
+iam_role_name="${exec_role_prefix}${LAMBDA_FUNCTION_NAME}-role"
 iam_role_name="${iam_role_name:0:64}"
+
+# Warn (don't block) if the prefix falls outside the policy's allowed prefixes.
+case "$exec_role_prefix" in
+  np-lambda-*|nullplatform-*) : ;;
+  *) log warn "   ⚠️  execution_role_prefix='$exec_role_prefix' is outside the assume role's IAM policy constraint (np-lambda-* / nullplatform-*); CreateRole/PassRole may be denied unless that policy is updated" ;;
+esac
 
 log debug "   📋 role_name=$iam_role_name"
 

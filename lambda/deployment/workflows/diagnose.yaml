@@ -13,13 +13,19 @@ steps:
         type: environment
   - name: build_context
     type: script
-    file: "$SERVICE_PATH/scope/build_context"
+    file: "$SERVICE_PATH/diagnose/build_context"
     output:
       - name: SCOPE_ID
         type: environment
       - name: SCOPE_NRN
         type: environment
       - name: LAMBDA_FUNCTION_NAME
+        type: environment
+      - name: LAMBDA_FUNCTION_ARN
+        type: environment
+      - name: LAMBDA_ROLE_ARN
+        type: environment
+      - name: SCOPE_DOMAIN
         type: environment
   - name: diagnose
     type: executor

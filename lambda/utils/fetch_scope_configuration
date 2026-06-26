@@ -67,14 +67,21 @@ HOSTED_PRIVATE_ZONE_ID=$(echo "$CLOUD_PROVIDER_CONFIG" | jq -r '.networking.host
 log debug "   ✅ hosted_private_zone_id=$HOSTED_PRIVATE_ZONE_ID"
 
 # From scope-configurations category
-TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // empty')
+TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // .provider.aws_state_bucket // empty')
 log debug "   ✅ tofu_state_bucket=$TOFU_STATE_BUCKET"
 
 PLACEHOLDER_IMAGE_URI=$(echo "$SCOPE_CONFIG" | jq -r '.deployment.placeholder_image_uri // empty')
-log debug "   ✅ placeholder_image_uri=$PLACEHOLDER_IMAGE_URI"
+# Fallback to env var set in values.yaml when the provider does not supply it.
+PLACEHOLDER_IMAGE_URI="${PLACEHOLDER_IMAGE_URI:-${PLACEHOLDER_IMAGE_URI_DEFAULT:-}}"
+log debug "   ✅ placeholder_image_uri=${PLACEHOLDER_IMAGE_URI:-(not set, using script default)}"
 
 NULL_AGENT_LAYER_ARN=$(echo "$SCOPE_CONFIG" | jq -r '.agent.null_agent_layer_arn // empty')
 log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
+
+# NOTE: The IAM role is assumed by the dedicated `assume_role` step that runs
+# first in each workflow (see utils/assume_role_step). By the time this script
+# runs, AWS_ACCESS_KEY_ID/SECRET/SESSION_TOKEN are already in the environment, so
+# no assume-role resolution happens here anymore.
 
 export ALB_PUBLIC_LISTENER_ARN
 export ALB_PRIVATE_LISTENER_ARN

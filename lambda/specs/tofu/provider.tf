@@ -2,7 +2,7 @@ terraform {
   required_providers {
     nullplatform = {
       source  = "nullplatform/nullplatform"
-      version = "0.0.87, < 0.1.0"
+      version = ">= 0.0.90, < 0.1.0"
     }
     http = {
       source  = "hashicorp/http"
@@ -16,9 +16,17 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.2"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.47.0"
+    }
   }
 }
 
 provider "nullplatform" {
   api_key = var.np_api_key
+}
+
+provider "aws" {
+  region = var.aws_region
 }

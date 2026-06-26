@@ -38,14 +38,15 @@ log info "🔍 Resolving placeholder image URI..."
 placeholder_image_base="${PLACEHOLDER_IMAGE_URI:-public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest}"
 architecture="${ARCHITECTURE:-arm64}"
 
-# Lambda uses "x86_64" but images are tagged with Docker convention "amd64"
-arch_tag="${architecture}"
-[ "$architecture" = "x86_64" ] && arch_tag="amd64"
+log debug "   📋 architecture=$architecture"
 
+# Use the image URI as-is. If PLACEHOLDER_IMAGE_URI is not set, the default
+# :latest tag is used without any architecture suffix — publish arch-specific
+# tags and set PLACEHOLDER_IMAGE_URI explicitly if needed.
 if [[ "$placeholder_image_base" == *":"* ]]; then
-  placeholder_image_uri="${placeholder_image_base}-${arch_tag}"
+  placeholder_image_uri="$placeholder_image_base"
 else
-  placeholder_image_uri="${placeholder_image_base}:latest-${arch_tag}"
+  placeholder_image_uri="${placeholder_image_base}:latest"
 fi
 
 log debug "   📋 architecture=$architecture"
