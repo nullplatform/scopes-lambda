@@ -1,64 +1,45 @@
 ################################################################################
-# IAM role (only when create_role = true)
+# AWS Lambda scope — assume-role IAM
+#
+# Unlike scopes whose permissions are attached directly to the agent role, the
+# Lambda scope uses the ASSUME-ROLE pattern: a dedicated role holds the Lambda
+# permissions and the agent assumes it (sts:AssumeRole). The consuming stack
+# passes this role's ARN to the agent (assume_role_arns) and publishes it to the
+# nullplatform AWS IAM provider (selector "lambda").
+#
+# The role trusts the agent role BY NAME (derived default) rather than by a
+# module output, so the consuming stack can wire the ARN back into the agent
+# without creating a dependency cycle. The agent role name is the conventional
+# "nullplatform-{cluster_name}-agent-role".
+#
+# Policies are split in four to stay under the IAM policy size limit.
 ################################################################################
 
-resource "aws_iam_role" "nullplatform_lambda_role" {
-  count = var.create_role ? 1 : 0
-  name  = "nullplatform_${var.name}_lambda_role"
+resource "aws_iam_role" "nullplatform_lambda" {
+  count = local.iam_create ? 1 : 0
+
+  name        = local.role_name
+  description = "Permissions role assumed by the nullplatform agent role for the Lambda scope"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { AWS = var.trusted_arns }
-        Action    = "sts:AssumeRole"
-      }
-    ]
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = concat([local.agent_role_arn], var.additional_agent_role_arns) }
+      Action    = "sts:AssumeRole"
+    }]
   })
+
+  tags = local.iam_default_tags
 }
 
-################################################################################
-# Policy attachments
-################################################################################
-
-locals {
-  effective_role_name = var.create_role ? aws_iam_role.nullplatform_lambda_role[0].name : var.role_name
-  attach_policies     = var.create_role || var.role_name != null
-}
-
-resource "aws_iam_role_policy_attachment" "lambda" {
-  count      = local.attach_policies ? 1 : 0
-  role       = local.effective_role_name
-  policy_arn = aws_iam_policy.nullplatform_lambda_policy.arn
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_iam" {
-  count      = local.attach_policies ? 1 : 0
-  role       = local.effective_role_name
-  policy_arn = aws_iam_policy.nullplatform_lambda_iam_policy.arn
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_networking" {
-  count      = local.attach_policies ? 1 : 0
-  role       = local.effective_role_name
-  policy_arn = aws_iam_policy.nullplatform_lambda_networking_policy.arn
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_storage" {
-  count      = local.attach_policies ? 1 : 0
-  role       = local.effective_role_name
-  policy_arn = aws_iam_policy.nullplatform_lambda_storage_policy.arn
-}
-
-################################################################################
-# Lambda core policy
-# Manages Lambda functions, versions, aliases, concurrency, and invocations.
-################################################################################
-
+# --- Lambda core: manage functions, versions, aliases, concurrency, invoke ---
 resource "aws_iam_policy" "nullplatform_lambda_policy" {
-  name        = "nullplatform_${var.name}_lambda_policy"
+  count = local.iam_create ? 1 : 0
+
+  name        = "${local.policies_name_prefix}_lambda_policy"
   description = "Policy for managing Lambda functions provisioned by the scopes-lambda provider"
+  tags        = local.iam_default_tags
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -71,6 +52,7 @@ resource "aws_iam_policy" "nullplatform_lambda_policy" {
           "lambda:GetFunction",
           "lambda:GetFunctionConfiguration",
           "lambda:GetFunctionConcurrency",
+          "lambda:GetFunctionCodeSigningConfig",
           "lambda:UpdateFunctionCode",
           "lambda:UpdateFunctionConfiguration",
           "lambda:PublishVersion",
@@ -91,7 +73,7 @@ resource "aws_iam_policy" "nullplatform_lambda_policy" {
           "lambda:RemovePermission",
           "lambda:TagResource",
           "lambda:UntagResource",
-          "lambda:ListTags"
+          "lambda:ListTags",
         ]
         Resource = "*"
       }
@@ -99,14 +81,13 @@ resource "aws_iam_policy" "nullplatform_lambda_policy" {
   })
 }
 
-################################################################################
-# IAM management policy
-# Creates and manages Lambda execution roles (scoped to nullplatform roles).
-################################################################################
-
+# --- IAM management: create/manage Lambda execution roles (scoped) -----------
 resource "aws_iam_policy" "nullplatform_lambda_iam_policy" {
-  name        = "nullplatform_${var.name}_lambda_iam_policy"
+  count = local.iam_create ? 1 : 0
+
+  name        = "${local.policies_name_prefix}_lambda_iam_policy"
   description = "Policy for managing IAM execution roles for Lambda scopes"
+  tags        = local.iam_default_tags
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -126,11 +107,11 @@ resource "aws_iam_policy" "nullplatform_lambda_iam_policy" {
           "iam:ListAttachedRolePolicies",
           "iam:TagRole",
           "iam:UntagRole",
-          "iam:PassRole"
+          "iam:PassRole",
         ]
         Resource = [
           "arn:aws:iam::*:role/nullplatform-*",
-          "arn:aws:iam::*:role/np-lambda-*"
+          "arn:aws:iam::*:role/np-lambda-*",
         ]
       },
       {
@@ -142,14 +123,13 @@ resource "aws_iam_policy" "nullplatform_lambda_iam_policy" {
   })
 }
 
-################################################################################
-# Networking policy
-# API Gateway (HTTP APIs), ALB (target groups + listener rules), Route53 DNS.
-################################################################################
-
+# --- Networking: API Gateway, ALB target groups/listener rules, Route53 ------
 resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
-  name        = "nullplatform_${var.name}_lambda_networking_policy"
+  count = local.iam_create ? 1 : 0
+
+  name        = "${local.policies_name_prefix}_lambda_networking_policy"
   description = "Policy for managing API Gateway, ALB, and Route53 for Lambda scopes"
+  tags        = local.iam_default_tags
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -163,7 +143,7 @@ resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
           "apigateway:PATCH",
           "apigateway:DELETE",
           "apigateway:TagResource",
-          "apigateway:UntagResource"
+          "apigateway:UntagResource",
         ]
         Resource = "*"
       },
@@ -179,13 +159,13 @@ resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
           "elasticloadbalancing:RegisterTargets",
           "elasticloadbalancing:DeregisterTargets",
           "elasticloadbalancing:DescribeTargetHealth",
-          "elasticloadbalancing:CreateListenerRule",
-          "elasticloadbalancing:DeleteListenerRule",
-          "elasticloadbalancing:ModifyListenerRule",
+          "elasticloadbalancing:CreateRule",
+          "elasticloadbalancing:DeleteRule",
+          "elasticloadbalancing:ModifyRule",
           "elasticloadbalancing:DescribeRules",
           "elasticloadbalancing:DescribeListeners",
           "elasticloadbalancing:AddTags",
-          "elasticloadbalancing:RemoveTags"
+          "elasticloadbalancing:RemoveTags",
         ]
         Resource = "*"
       },
@@ -195,7 +175,7 @@ resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
           "route53:ChangeResourceRecordSets",
           "route53:GetHostedZone",
           "route53:ListResourceRecordSets",
-          "route53:ListHostedZones"
+          "route53:ListHostedZones",
         ]
         Resource = "*"
       }
@@ -203,15 +183,13 @@ resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
   })
 }
 
-################################################################################
-# Storage & Observability policy
-# ECR (placeholder image), Secrets Manager (deployment parameters),
-# CloudWatch Logs & Metrics, S3 (tfstate bucket).
-################################################################################
-
+# --- Storage & observability: ECR, Secrets Manager, CloudWatch, S3 tfstate ---
 resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
-  name        = "nullplatform_${var.name}_lambda_storage_policy"
+  count = local.iam_create ? 1 : 0
+
+  name        = "${local.policies_name_prefix}_lambda_storage_policy"
   description = "Policy for ECR, Secrets Manager, CloudWatch, and S3 tfstate for Lambda scopes"
+  tags        = local.iam_default_tags
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -233,7 +211,7 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "ecr:BatchCheckLayerAvailability",
           "ecr:TagResource",
           "ecr:GetRepositoryPolicy",
-          "ecr:SetRepositoryPolicy"
+          "ecr:SetRepositoryPolicy",
         ]
         Resource = "*"
       },
@@ -247,7 +225,7 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "secretsmanager:DescribeSecret",
           "secretsmanager:ListSecrets",
           "secretsmanager:DeleteSecret",
-          "secretsmanager:TagResource"
+          "secretsmanager:TagResource",
         ]
         Resource = "arn:aws:secretsmanager:*:*:secret:nullplatform/*"
       },
@@ -266,7 +244,7 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "logs:TagLogGroup",
           "logs:ListTagsForResource",
           "logs:TagResource",
-          "logs:UntagResource"
+          "logs:UntagResource",
         ]
         Resource = "*"
       },
@@ -276,7 +254,7 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
         Action = [
           "cloudwatch:GetMetricStatistics",
           "cloudwatch:ListMetrics",
-          "cloudwatch:GetMetricData"
+          "cloudwatch:GetMetricData",
         ]
         Resource = "*"
       },
@@ -292,13 +270,110 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "s3:GetObject",
           "s3:PutObject",
           "s3:DeleteObject",
-          "s3:DeleteObjectVersion"
+          "s3:DeleteObjectVersion",
         ]
         Resource = [
           "arn:aws:s3:::nullplatform-lambda-tfstate-*",
-          "arn:aws:s3:::nullplatform-lambda-tfstate-*/*"
+          "arn:aws:s3:::nullplatform-lambda-tfstate-*/*",
+        ]
+      },
+      {
+        Sid    = "S3Assets"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.assets_bucket_name}",
+          "arn:aws:s3:::${var.assets_bucket_name}/*",
         ]
       }
     ]
+  })
+}
+
+# --- Attach the four policies to the assume-role ----------------------------
+resource "aws_iam_role_policy_attachment" "lambda" {
+  count = local.iam_create ? 1 : 0
+
+  role       = aws_iam_role.nullplatform_lambda[0].name
+  policy_arn = aws_iam_policy.nullplatform_lambda_policy[0].arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_iam" {
+  count = local.iam_create ? 1 : 0
+
+  role       = aws_iam_role.nullplatform_lambda[0].name
+  policy_arn = aws_iam_policy.nullplatform_lambda_iam_policy[0].arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_networking" {
+  count = local.iam_create ? 1 : 0
+
+  role       = aws_iam_role.nullplatform_lambda[0].name
+  policy_arn = aws_iam_policy.nullplatform_lambda_networking_policy[0].arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_storage" {
+  count = local.iam_create ? 1 : 0
+
+  role       = aws_iam_role.nullplatform_lambda[0].name
+  policy_arn = aws_iam_policy.nullplatform_lambda_storage_policy[0].arn
+}
+
+################################################################################
+# Lambda placeholder image registry
+#
+# Lambda container functions must pull their image from a PRIVATE ECR repo in
+# the same account/region (public.ecr.aws is rejected). Scope creation bootstraps
+# each Lambda with this placeholder image until the first real deployment
+# replaces it. The consuming stack points the agent at this repo via
+# PLACEHOLDER_IMAGE_URI_DEFAULT (repository_url is exported as an output).
+#
+# Terraform manages the repository and the pull policy; it does NOT push images.
+# The placeholder image must be mirrored once (requires `crane`):
+#
+#   ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+#   REGISTRY="$ACCOUNT.dkr.ecr.<region>.amazonaws.com"
+#   aws ecr get-login-password --region <region> \
+#     | crane auth login --username AWS --password-stdin "$REGISTRY"
+#   for arch in amd64 arm64; do
+#     crane copy --platform linux/$arch \
+#       public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest \
+#       "$REGISTRY/aws-lambda/nullplatform-lambda-placeholder:latest-$arch"
+#   done
+################################################################################
+
+resource "aws_ecr_repository" "lambda_placeholder" {
+  count = local.iam_create ? 1 : 0
+
+  name                 = var.placeholder_repository_name
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = false
+  }
+
+  tags = local.iam_default_tags
+}
+
+# Allow the Lambda service to pull the placeholder image.
+resource "aws_ecr_repository_policy" "lambda_placeholder" {
+  count = local.iam_create ? 1 : 0
+
+  repository = aws_ecr_repository.lambda_placeholder[0].name
+
+  policy = jsonencode({
+    Version = "2008-10-17"
+    Statement = [{
+      Sid       = "LambdaECRImageRetrievalPolicy"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action = [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+      ]
+    }]
   })
 }
