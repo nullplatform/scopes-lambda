@@ -1,0 +1,10 @@
+# Trivy misconfiguration suppressions for this repo (intentional, documented).
+
+# AVD-DS-0002 — placeholder container images run as-is: the root http-echo
+# placeholder and the Lambda base image (public.ecr.aws/lambda/nodejs) manage the
+# runtime user themselves; a USER directive is not applicable.
+AVD-DS-0002
+
+# AVD-AWS-0031 — the placeholder ECR repo uses mutable 'latest-<arch>' tags by
+# design (a mirrored placeholder image, overwritten in place).
+AVD-AWS-0031
