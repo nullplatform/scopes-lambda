@@ -17,3 +17,18 @@ output "placeholder_image_repository_url" {
   description = "URL of the private ECR repository holding the Lambda placeholder image. Consumed by the agent via PLACEHOLDER_IMAGE_URI_DEFAULT."
   value       = local.iam_create ? aws_ecr_repository.lambda_placeholder[0].repository_url : ""
 }
+
+output "lambda_alb_arn" {
+  description = "ARN of the public Lambda ALB (empty when install_alb = false)."
+  value       = local.alb_create ? aws_lb.lambda_public[0].arn : ""
+}
+
+output "lambda_alb_listener_arn" {
+  description = "ARN of the HTTPS:443 listener on the Lambda ALB. Publish to the aws-networking-configuration provider (load_balancer.public.listener_arn) so the Lambda scope workflow can attach per-scope rules. Empty when install_alb = false."
+  value       = local.alb_create ? aws_lb_listener.lambda_public_https[0].arn : ""
+}
+
+output "lambda_alb_dns_name" {
+  description = "DNS name of the public Lambda ALB (empty when install_alb = false)."
+  value       = local.alb_create ? aws_lb.lambda_public[0].dns_name : ""
+}

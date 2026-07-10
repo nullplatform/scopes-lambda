@@ -60,3 +60,47 @@ variable "assets_bucket_name" {
   type        = string
   default     = "lambda-files-aws-services"
 }
+
+# --- Optional public ALB for Lambda HTTP exposure ---------------------------
+
+variable "install_alb" {
+  description = "When true, create a dedicated public ALB (+ HTTPS/HTTP listeners + SG) for exposing Lambda functions over HTTP. Off by default so IAM-only consumers are unaffected."
+  type        = bool
+  default     = false
+}
+
+variable "vpc_id" {
+  description = "VPC where the Lambda ALB is created. Required when install_alb = true."
+  type        = string
+  default     = ""
+}
+
+variable "public_subnet_ids" {
+  description = "Public subnet IDs for the ALB. When empty and install_alb = true, subnets are discovered by the nullplatform/subnet-type=public tag on vpc_id."
+  type        = list(string)
+  default     = []
+}
+
+variable "public_zone_id" {
+  description = "Route53 public hosted zone ID used to DNS-validate the wildcard certificate. Required when install_alb = true and certificate_arn is empty."
+  type        = string
+  default     = ""
+}
+
+variable "domain_name" {
+  description = "Base domain for the wildcard certificate (*.<domain_name>). Required when install_alb = true and certificate_arn is empty."
+  type        = string
+  default     = ""
+}
+
+variable "certificate_arn" {
+  description = "Existing ACM wildcard certificate ARN to reuse for the ALB HTTPS listener. When empty and install_alb = true, a wildcard cert is created from domain_name + public_zone_id."
+  type        = string
+  default     = ""
+}
+
+variable "alb_name" {
+  description = "Override for the ALB name (max 32 chars). Defaults to np-{cluster_name}-lambda."
+  type        = string
+  default     = ""
+}
