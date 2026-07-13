@@ -71,9 +71,11 @@ resource "aws_iam_policy" "nullplatform_lambda_policy" {
           "lambda:GetAccountSettings",
           "lambda:AddPermission",
           "lambda:RemovePermission",
+          "lambda:GetPolicy",
           "lambda:TagResource",
           "lambda:UntagResource",
           "lambda:ListTags",
+          "tag:GetResources",
         ]
         Resource = "*"
       }
@@ -150,20 +152,20 @@ resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
       {
         Effect = "Allow"
         Action = [
+          # All read actions (Describe*) so the provider's data lookups
+          # (aws_lb_listener / aws_lb + tags on refresh) succeed without a
+          # missing-permission whack-a-mole (e.g. DescribeTags,
+          # DescribeLoadBalancers). Mutating actions stay enumerated.
+          "elasticloadbalancing:Describe*",
           "elasticloadbalancing:CreateTargetGroup",
           "elasticloadbalancing:DeleteTargetGroup",
           "elasticloadbalancing:ModifyTargetGroup",
           "elasticloadbalancing:ModifyTargetGroupAttributes",
-          "elasticloadbalancing:DescribeTargetGroups",
-          "elasticloadbalancing:DescribeTargetGroupAttributes",
           "elasticloadbalancing:RegisterTargets",
           "elasticloadbalancing:DeregisterTargets",
-          "elasticloadbalancing:DescribeTargetHealth",
           "elasticloadbalancing:CreateRule",
           "elasticloadbalancing:DeleteRule",
           "elasticloadbalancing:ModifyRule",
-          "elasticloadbalancing:DescribeRules",
-          "elasticloadbalancing:DescribeListeners",
           "elasticloadbalancing:AddTags",
           "elasticloadbalancing:RemoveTags",
         ]
@@ -176,6 +178,7 @@ resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
           "route53:GetHostedZone",
           "route53:ListResourceRecordSets",
           "route53:ListHostedZones",
+          "route53:GetChange",
         ]
         Resource = "*"
       }
