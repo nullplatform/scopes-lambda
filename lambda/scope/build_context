@@ -82,7 +82,7 @@ else
   ASSET_TYPE="docker-image"
 fi
 
-RUNTIME=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs20.x"')
+RUNTIME=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs22.x"')
 HANDLER=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler"')
 
 log debug "   ✅ package_type=$PACKAGE_TYPE"

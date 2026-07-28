@@ -41,7 +41,7 @@ echo "   📋 role_arn=$LAMBDA_ROLE_ARN"
 
 # Determine package type from capabilities or environment
 package_type="${PACKAGE_TYPE:-Zip}"
-runtime="${RUNTIME:-nodejs20.x}"
+runtime="${RUNTIME:-nodejs22.x}"
 handler="${HANDLER:-index.handler}"
 architecture="${ARCHITECTURE:-arm64}"
 

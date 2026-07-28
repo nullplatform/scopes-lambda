@@ -60,14 +60,14 @@ memory=$(echo "$CONTEXT" | jq -r '.scope.capabilities.memory // 256')
 timeout=$(echo "$CONTEXT" | jq -r '.scope.capabilities.timeout // 30')
 ephemeral_storage=$(echo "$CONTEXT" | jq -r '.scope.capabilities.ephemeral_storage // 512')
 architecture=$(echo "$CONTEXT" | jq -r '.scope.capabilities.architecture // "arm64"')
-runtime=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs20.x"')
+runtime=$(echo "$CONTEXT" | jq -r '.scope.capabilities.runtime // "nodejs22.x"')
 handler=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler"')
 
-# When deploying the placeholder zip (scope creation), always use nodejs20.x so the
+# When deploying the placeholder zip (scope creation), always use nodejs22.x so the
 # runtime matches the placeholder code. The first real deployment will set the correct
 # runtime from capabilities.
 if [ -n "$lambda_filename" ]; then
-  runtime="nodejs20.x"
+  runtime="nodejs22.x"
   handler="index.handler"
 fi
 

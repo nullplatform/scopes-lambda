@@ -175,7 +175,7 @@ log debug "   ✅ ephemeral_storage=$LAMBDA_EPHEMERAL_STORAGE"
 
 LAMBDA_RUNTIME=$(get_config_value \
   --provider '.scope.capabilities.runtime' \
-  --default "nodejs20.x"
+  --default "nodejs22.x"
 )
 log debug "   ✅ runtime=$LAMBDA_RUNTIME"
 
