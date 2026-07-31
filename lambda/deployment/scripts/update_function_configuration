@@ -5,7 +5,7 @@
 #
 # This is necessary because update-function-code only changes the code/image,
 # not the configuration. Scope-create provisions the Lambda with placeholder
-# values (e.g. handler=index.handler, runtime=nodejs20.x) that must be
+# values (e.g. handler=index.handler, runtime=nodejs22.x) that must be
 # overwritten with the real values from capabilities on first deployment.
 
 source "$SERVICE_PATH/utils/log"
@@ -39,10 +39,10 @@ log debug "   ✅ ephemeral_storage=${LAMBDA_EPHEMERAL_STORAGE:-512}"
 package_type="${PACKAGE_TYPE:-Image}"
 if [ "$package_type" = "Zip" ]; then
   cli_args+=(
-    --runtime "${LAMBDA_RUNTIME:-nodejs20.x}"
+    --runtime "${LAMBDA_RUNTIME:-nodejs22.x}"
     --handler "${LAMBDA_HANDLER:-index.handler}"
   )
-  log debug "   ✅ runtime=${LAMBDA_RUNTIME:-nodejs20.x}"
+  log debug "   ✅ runtime=${LAMBDA_RUNTIME:-nodejs22.x}"
   log debug "   ✅ handler=${LAMBDA_HANDLER:-index.handler}"
 fi
 
