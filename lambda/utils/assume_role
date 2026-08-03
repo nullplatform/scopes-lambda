@@ -8,11 +8,16 @@
 # Expects:  ASSUME_ROLE_ARN (exported by fetch_scope_configuration or values.yaml)
 #           SCOPE_ID (optional, used for the session name)
 
+# Progress goes to stderr, including when the pretty logger is available: the
+# telemetry workflows (metric, log, instance) hand their stdout to the platform as
+# the response body, so anything printed here lands in front of the JSON and the
+# parse fails. utils/log keeps writing to stdout for the deployment workflows,
+# where that output is the progress the user sees.
 _ar_log() {
   if declare -f log > /dev/null 2>&1; then
-    log "$1" "$2"
+    log "$1" "$2" >&2
   else
-    echo "$2"
+    echo "$2" >&2
   fi
 }
 

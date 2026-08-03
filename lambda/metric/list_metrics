@@ -36,6 +36,13 @@ echo '{
       "unit": "count",
       "available_filters": ["scope_id"],
       "available_group_by": []
+    },
+    {
+      "name": "stream.iterator_age",
+      "title": "Stream iterator age",
+      "unit": "ms",
+      "available_filters": ["scope_id"],
+      "available_group_by": []
     }
   ]
 }'

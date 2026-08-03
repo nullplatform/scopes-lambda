@@ -41,7 +41,7 @@ export SCOPE_ID
 export SCOPE_NRN
 export LAMBDA_FUNCTION_NAME
 
-echo "Instance build_context completed"
-echo "   SCOPE_ID=$SCOPE_ID"
-echo "   SCOPE_NRN=$SCOPE_NRN"
-echo "   LAMBDA_FUNCTION_NAME=$LAMBDA_FUNCTION_NAME"
+echo "Instance build_context completed" >&2
+echo "   SCOPE_ID=$SCOPE_ID" >&2
+echo "   SCOPE_NRN=$SCOPE_NRN" >&2
+echo "   LAMBDA_FUNCTION_NAME=$LAMBDA_FUNCTION_NAME" >&2
