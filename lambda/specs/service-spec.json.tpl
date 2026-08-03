@@ -1,4 +1,20 @@
 {
+  "available_actions": [
+    "create-scope",
+    "update-scope",
+    "delete-scope",
+    "start-initial",
+    "start-blue-green",
+    "finalize-blue-green",
+    "switch-traffic",
+    "rollback-deployment",
+    "delete-deployment",
+    "adjust-provisioned-concurrency",
+    "adjust-reserved-concurrency",
+    "invoke",
+    "diagnose-deployment",
+    "diagnose-scope"
+  ],
   "assignable_to": "any",
   "attributes": {
     "schema": {
