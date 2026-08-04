@@ -25,7 +25,7 @@ FROM alpine:3.20
 # here because they are what the Lambda scope's scripts actually call.
 RUN apk add --no-cache libstdc++ libgcc bash jq curl ca-certificates openssl aws-cli
 RUN curl -sSL https://cli.nullplatform.com/install.sh | sh
-ARG TOFU_VERSION=1.8.5
+ARG TOFU_VERSION=1.10.6
 RUN arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" \
  && curl -sSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${arch}.tar.gz" \
       | tar -xz -C /usr/local/bin tofu
@@ -41,7 +41,7 @@ ENV NODE_CONFIG_DIR=/app/worker/config \
     NP_SERVICE_PATH=/app/pkg/lambda \
     NP_SCOPE_ENTRYPOINT=/app/pkg/lambda/entrypoint \
     NP_PACKAGE_NAME=scopes-lambda \
-    NP_PACKAGE_VERSION=0.0.1
+    NP_PACKAGE_VERSION=0.0.2
 
 EXPOSE 50051
 ENTRYPOINT ["worker"]
