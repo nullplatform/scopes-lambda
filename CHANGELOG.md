@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/nullplatform/scopes-lambda/compare/v0.2.0...v0.3.0) (2026-08-07)
+
+
+### Features
+
+* build lambda worker image on worker-bridge base + register artifact ([4f15889](https://github.com/nullplatform/scopes-lambda/commit/4f15889dfc0fc2fdc94aceb6373f502f810a94bd))
+* build lambda worker image on worker-bridge base + register artifact ([7e57fa5](https://github.com/nullplatform/scopes-lambda/commit/7e57fa5179c28a970f7cd56a65ab28452a5aaaf5))
+* **lambda:** declare the scope's available actions in its spec ([#35](https://github.com/nullplatform/scopes-lambda/issues/35)) ([7766a59](https://github.com/nullplatform/scopes-lambda/commit/7766a5926e16934cb6f67692ac484888a89421ca))
+
+
+### Bug Fixes
+
+* **lambda:** repair the metrics catalog and resolve each metric's statistic ([#33](https://github.com/nullplatform/scopes-lambda/issues/33)) ([a4642cc](https://github.com/nullplatform/scopes-lambda/commit/a4642cc3e1c46543f11165a3df4d6397d74b9bdc))
+
 ## [0.2.0](https://github.com/nullplatform/scopes-lambda/compare/v0.1.0...v0.2.0) (2026-07-31)
 
 
