@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/nullplatform/scopes-lambda/compare/v0.3.0...v0.3.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **docker:** install OpenTofu &gt;= 1.10 instead of alpine's 1.7.2 ([b10067b](https://github.com/nullplatform/scopes-lambda/commit/b10067b5e461889ac62411bb623e569ec4e6b81d))
+* **docker:** install OpenTofu &gt;= 1.10 instead of alpine's 1.7.2 ([055b7ed](https://github.com/nullplatform/scopes-lambda/commit/055b7ed6377c2d365a905e612eb85e5df9c07473))
+
 ## [0.3.0](https://github.com/nullplatform/scopes-lambda/compare/v0.2.0...v0.3.0) (2026-08-07)
 
 
