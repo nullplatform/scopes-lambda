@@ -1,11 +1,17 @@
 name: publish-image
 
-# Publishes the scope image to ECR Public on every semver tag (created by the
-# release workflow). Result: public.ecr.aws/nullplatform/scopes/lambda:<version>
+# MANUAL fallback: republish the scope image for an EXISTING tag (backfill an
+# old release, recover from a failed publish). The normal path is release.yml,
+# which builds and publishes in the same run release-please cuts the release —
+# a tag-push trigger would never fire there anyway (tags are created by the
+# GitHub Actions bot token, whose events do not trigger workflows).
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing git tag to build and publish (e.g. v0.3.1)'
+        required: true
+        type: string
 
 permissions:
   id-token: write   # required for OIDC auth against AWS
@@ -17,7 +23,7 @@ jobs:
     with:
       image_name: scopes/lambda
       context: .
-      tag: ${{ github.ref_name }}
+      tag: ${{ inputs.tag }}
     secrets:
       aws_role_arn: ${{ secrets.AWS_ROLE_ARN_ECR_PUSH }}
 
