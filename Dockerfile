@@ -13,9 +13,9 @@ RUN apk add --no-cache aws-cli gomplate
 # OpenTofu >= 1.10 — the scope inits its S3 backend with use_lockfile=true
 # (lambda/scope/tofu/provider/aws/setup), which needs tofu 1.10+. alpine 3.20
 # only packages 1.7.2, so pull the official static binary for the build arch.
-ARG TOFU_VERSION=1.10.10
+ARG TOFU_VERSION=1.10.6
 ARG TARGETARCH
-RUN curl -fsSL --retry 3 --retry-delay 2 "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TARGETARCH}.tar.gz" \
+RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin tofu \
     && tofu version
 
