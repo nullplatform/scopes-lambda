@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/nullplatform/scopes-lambda/compare/v0.3.1...v0.3.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **docker:** bump tofu to 1.10.10 and retry its download ([#42](https://github.com/nullplatform/scopes-lambda/issues/42)) ([fda68df](https://github.com/nullplatform/scopes-lambda/commit/fda68df107a9f3aa655b5f56f1fcdca0c6684cb2))
+
 ## [0.3.1](https://github.com/nullplatform/scopes-lambda/compare/v0.3.0...v0.3.1) (2026-08-10)
 
 
