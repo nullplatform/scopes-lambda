@@ -71,6 +71,13 @@ SCRIPT
 }
 
 # Input validation
+# These scripts are sourced by the workflow engine, so `return` is their exit
+# path. `run bash <script>` turns `return` into a warning and keeps going, so a
+# failure assertion could never observe the non-zero status.
+run_sourced() {
+  run bash -c "source '$1'"
+}
+
 @test "deployment/scripts/update_alias_weights: fails when LAMBDA_FUNCTION_NAME is not set" {
   unset LAMBDA_FUNCTION_NAME
   export LAMBDA_MAIN_ALIAS_NAME="main"
@@ -78,7 +85,7 @@ SCRIPT
   export DESIRED_TRAFFIC="10"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -91,7 +98,7 @@ SCRIPT
   unset DESIRED_TRAFFIC
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "DESIRED_TRAFFIC is required"
@@ -105,7 +112,7 @@ SCRIPT
   export DESIRED_TRAFFIC="10"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "No version specified"
@@ -122,7 +129,7 @@ SCRIPT
   create_aws_sequential_mock '{"FunctionVersion": "1", "Name": "main"}'
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
 }
@@ -136,7 +143,7 @@ SCRIPT
   create_aws_sequential_mock '{"FunctionVersion": "1", "Name": "main"}'
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
 }
@@ -150,7 +157,7 @@ SCRIPT
   create_aws_sequential_mock '{"FunctionVersion": "1", "Name": "main"}'
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
 }
@@ -266,7 +273,7 @@ SCRIPT
   create_aws_error_mock "ResourceNotFoundException: Function not found"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
 }
@@ -280,7 +287,7 @@ SCRIPT
   create_aws_error_mock "ResourceNotFoundException: Version 999 not found"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
 }

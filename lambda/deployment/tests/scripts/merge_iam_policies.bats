@@ -98,12 +98,19 @@ OUTERSCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+# These scripts are sourced by the workflow engine, so `return` is their exit
+# path. `run bash <script>` turns `return` into a warning and keeps going, so a
+# failure assertion could never observe the non-zero status.
+run_sourced() {
+  run bash -c "source '$1'"
+}
+
 @test "deployment/scripts/merge_iam_policies: fails when LAMBDA_ROLE_NAME is not set" {
   unset LAMBDA_ROLE_NAME
   export DEPLOYMENT_ID="deploy-123"
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ LAMBDA_ROLE_NAME is required"
@@ -120,7 +127,7 @@ OUTERSCRIPT
   unset DEPLOYMENT_ID
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ DEPLOYMENT_ID is required"
@@ -137,7 +144,7 @@ OUTERSCRIPT
   export DEPLOYMENT_ID="deploy-123"
   unset SCOPE_NRN
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ SCOPE_NRN is required"
@@ -223,7 +230,7 @@ OUTERSCRIPT
     '{"AWS_LAMBDA_DEDICATED_ROLE_POLICIES": "[{\"name\":\"sqs-access\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[]}\"}]"}'
   create_aws_error_mock "NoSuchEntityException: Role my-role does not exist"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ Failed to attach policy sqs-access-deploy-123 to role my-role"

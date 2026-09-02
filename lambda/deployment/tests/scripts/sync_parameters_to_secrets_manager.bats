@@ -91,6 +91,13 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+# These scripts are sourced by the workflow engine, so `return` is their exit
+# path. `run bash <script>` turns `return` into a warning and keeps going, so a
+# failure assertion could never observe the non-zero status.
+run_sourced() {
+  run bash -c "source '$1'"
+}
+
 @test "sync_parameters: skips when strategy is env" {
   export PARAMETERS_STRATEGY="env"
   set_context secretsmanager
@@ -144,7 +151,7 @@ MOCK_SCRIPT
   unset SCOPE_ID
   set_context secretsmanager
 
-  run bash "$LAMBDA_DIR/deployment/scripts/sync_parameters_to_secrets_manager"
+  run_sourced "$LAMBDA_DIR/deployment/scripts/sync_parameters_to_secrets_manager"
 
   assert_failure
   assert_output_contains "SCOPE_ID is not set"

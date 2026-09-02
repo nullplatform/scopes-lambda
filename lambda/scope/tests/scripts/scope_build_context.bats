@@ -24,10 +24,17 @@ teardown() {
   done
 }
 
+# build_context is sourced by the workflow engine, so `return` is its exit path.
+# Running it with `bash <file>` makes `return` a no-op warning and the script
+# exits 0, which would make every failure assertion below vacuous.
+run_sourced_build_context() {
+  run bash -c "source '$LAMBDA_DIR/scope/build_context'"
+}
+
 @test "scope/build_context: fails when CONTEXT is not set" {
   unset CONTEXT
 
-  run bash "$LAMBDA_DIR/scope/build_context"
+  run_sourced_build_context
 
   assert_failure
   assert_output_contains "CONTEXT variable is not set or empty"
@@ -38,7 +45,7 @@ teardown() {
 @test "scope/build_context: fails when CONTEXT is empty string" {
   export CONTEXT=""
 
-  run bash "$LAMBDA_DIR/scope/build_context"
+  run_sourced_build_context
 
   assert_failure
   assert_output_contains "CONTEXT variable is not set or empty"
@@ -47,7 +54,7 @@ teardown() {
 @test "scope/build_context: fails when scope ID is missing from CONTEXT" {
   export CONTEXT='{"scope": {"slug": "test"}, "namespace": {"slug": "ns"}, "application": {"slug": "app"}, "account": {"slug": "acc"}}'
 
-  run bash "$LAMBDA_DIR/scope/build_context"
+  run_sourced_build_context
 
   assert_failure
   assert_output_contains "Failed to extract scope ID from CONTEXT"
@@ -58,7 +65,7 @@ teardown() {
 @test "scope/build_context: fails when scope ID is null" {
   export CONTEXT='{"scope": {"id": null, "slug": "test", "nrn": "nrn:1", "visibility": "public"}, "namespace": {"slug": "ns"}, "application": {"slug": "app"}, "account": {"slug": "acc"}}'
 
-  run bash "$LAMBDA_DIR/scope/build_context"
+  run_sourced_build_context
 
   assert_failure
   assert_output_contains "Failed to extract scope ID from CONTEXT"
@@ -136,7 +143,7 @@ teardown() {
   export NP_OUTPUT_DIR="$(mktemp -d)"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
-  run bash "$LAMBDA_DIR/scope/build_context"
+  run_sourced_build_context
 
   assert_failure
   assert_output_contains "ALB listener rule capacity (80) is at or below the alert threshold (80)"

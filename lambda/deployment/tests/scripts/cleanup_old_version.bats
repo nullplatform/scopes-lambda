@@ -54,10 +54,17 @@ OUTERSCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+# These scripts are sourced by the workflow engine, so `return` is their exit
+# path. `run bash <script>` turns `return` into a warning and keeps going, so a
+# failure assertion could never observe the non-zero status.
+run_sourced() {
+  run bash -c "source '$1'"
+}
+
 @test "deployment/scripts/cleanup_old_version: fails when LAMBDA_FUNCTION_NAME is not set" {
   unset LAMBDA_FUNCTION_NAME
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ LAMBDA_FUNCTION_NAME is required"

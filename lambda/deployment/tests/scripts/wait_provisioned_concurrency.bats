@@ -23,6 +23,12 @@ setup() {
 exit 0
 SCRIPT
   chmod +x "$MOCK_BIN_DIR/sleep"
+
+  # The poll loop is bounded by wall-clock time, not by iteration count, so an
+  # instant sleep alone does not stop it: a test whose mocks never reach a
+  # terminal status would spin for the full default of 600 real seconds.
+  export PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS=2
+  export PROVISIONED_CONCURRENCY_POLL_INTERVAL=0
 }
 
 teardown() {
@@ -87,13 +93,20 @@ SCRIPT
 }
 
 # Skipping when not provisioned
+# These scripts are sourced by the workflow engine, so `return` is their exit
+# path. `run bash <script>` turns `return` into a warning and keeps going, so a
+# failure assertion could never observe the non-zero status.
+run_sourced() {
+  run bash -c "source '$1'"
+}
+
 @test "deployment/scripts/wait_provisioned_concurrency: skips when provisioned concurrency not enabled" {
   set_context "public"
   export LAMBDA_FUNCTION_NAME="my-function"
   export LAMBDA_MAIN_ALIAS_NAME="main"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_success
   assert_output_contains "Provisioned concurrency not enabled"
@@ -107,7 +120,7 @@ SCRIPT
   export LAMBDA_MAIN_ALIAS_NAME="main"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -122,7 +135,7 @@ SCRIPT
   create_aws_error_mock "ProvisionedConcurrencyConfigNotFoundException: No provisioned concurrency config"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_success
   assert_output_contains "No provisioned concurrency configuration found"
@@ -196,7 +209,7 @@ SCRIPT
   }'
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_success
   assert_output_contains "Provisioned concurrency is READY"
@@ -217,7 +230,7 @@ SCRIPT
     '{"RequestedProvisionedConcurrentExecutions": 5, "AllocatedProvisionedConcurrentExecutions": 5, "Status": "READY"}'
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_success
   assert_output_contains "IN_PROGRESS"
@@ -240,7 +253,7 @@ SCRIPT
   }'
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "Provisioned concurrency allocation FAILED"
@@ -359,7 +372,7 @@ SCRIPT
     '{"RequestedProvisionedConcurrentExecutions": 3, "AllocatedProvisionedConcurrentExecutions": 3, "Status": "READY"}'
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_success
   assert_output_contains "Provisioned concurrency is READY"

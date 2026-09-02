@@ -53,10 +53,17 @@ OUTERSCRIPT
   chmod +x "$MOCK_BIN_DIR/np"
 }
 
+# These scripts are sourced by the workflow engine, so `return` is their exit
+# path. `run bash <script>` turns `return` into a warning and keeps going, so a
+# failure assertion could never observe the non-zero status.
+run_sourced() {
+  run bash -c "source '$1'"
+}
+
 @test "deployment/scripts/store_nrn_metadata: fails when SCOPE_NRN is not set" {
   unset SCOPE_NRN
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ SCOPE_NRN is required"
@@ -112,7 +119,7 @@ OUTERSCRIPT
 
   create_np_error_mock "Connection refused"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ Failed to write NRN metadata to scope=organization=1:account=2:namespace=3:application=4:scope=5"

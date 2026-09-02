@@ -45,13 +45,20 @@ SCRIPT
 }
 
 # Input validation
+# These scripts are sourced by the workflow engine, so `return` is their exit
+# path. `run bash <script>` turns `return` into a warning and keeps going, so a
+# failure assertion could never observe the non-zero status.
+run_sourced() {
+  run bash -c "source '$1'"
+}
+
 @test "deployment/scripts/update_alias_full: fails when LAMBDA_FUNCTION_NAME is not set" {
   unset LAMBDA_FUNCTION_NAME
   export LAMBDA_MAIN_ALIAS_NAME="main"
   export LAMBDA_NEW_VERSION="2"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -64,7 +71,7 @@ SCRIPT
   unset LAMBDA_CURRENT_VERSION
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "No version specified"
@@ -162,7 +169,7 @@ SCRIPT
   create_aws_error_mock "ResourceNotFoundException: Function my-function not found"
 
   unset -f aws
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "Failed to update alias"
