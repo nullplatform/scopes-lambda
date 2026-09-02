@@ -19,6 +19,8 @@ setup() {
 
   export LAMBDA_FUNCTION_NAME="my-test-function"
   export LAMBDA_MAIN_ALIAS_NAME="main"
+  export SCOPE_SLUG="my-scope"
+  export SCOPE_ID="9001"
 }
 
 teardown() {
@@ -262,6 +264,76 @@ with_policy() {
 
   assert_success
   # add-permission grants one action, so restoring it would silently narrow it
+  assert_aws_cli_not_called "remove-permission"
+  assert_aws_cli_not_called "add-permission"
+}
+
+# The scope-configurations provider resolves against the scope NRN, so a value
+# set at the application level is inherited by every Lambda scope beneath it.
+@test "sync_invoke_permissions: skips entries belonging to another scope" {
+  context_with '[{"statement_id":"s3-uploads","principal":"s3.amazonaws.com","scope":"other-scope"}]'
+  no_policy
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_not_called "add-permission"
+  assert_output_contains "0 of 1 declared apply to this scope"
+}
+
+@test "sync_invoke_permissions: applies entries naming this scope by slug or id" {
+  context_with '[{"statement_id":"by-slug","principal":"events.amazonaws.com","scope":"my-scope"},{"statement_id":"by-id","principal":"s3.amazonaws.com","scope":"9001"}]'
+  no_policy
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_called "--statement-id np-ext-by-slug"
+  assert_aws_cli_called "--statement-id np-ext-by-id"
+}
+
+@test "sync_invoke_permissions: an entry for another scope does not prune this scope's grants" {
+  context_with '[{"statement_id":"mine","principal":"events.amazonaws.com"},{"statement_id":"theirs","principal":"s3.amazonaws.com","scope":"other-scope"}]'
+  with_policy '{"Statement":[{"Sid":"np-ext-mine","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_not_called "remove-permission"
+}
+
+# Validation must run before the prune loop: rejecting an entry after removing
+# the statement it replaces leaves a live trigger with no grant.
+@test "sync_invoke_permissions: an invalid statement_id aborts before any removal" {
+  context_with '[{"statement_id":"eventbridge.daily","principal":"events.amazonaws.com"}]'
+  with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "Invalid statement_id"
+  assert_aws_cli_not_called "remove-permission"
+}
+
+@test "sync_invoke_permissions: a too-long statement_id aborts before any removal" {
+  long_id=$(printf 'a%.0s' $(seq 1 100))
+  context_with "[{\"statement_id\":\"$long_id\",\"principal\":\"events.amazonaws.com\"}]"
+  with_policy '{"Statement":[{"Sid":"np-ext-stale","Effect":"Allow","Principal":{"Service":"s3.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "too long"
+  assert_aws_cli_not_called "remove-permission"
+}
+
+@test "sync_invoke_permissions: is idempotent for a bare account id principal" {
+  context_with '[{"statement_id":"acct","principal":"111122223333"}]'
+  with_policy '{"Statement":[{"Sid":"np-ext-acct","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:root"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_sourced
+
+  assert_success
   assert_aws_cli_not_called "remove-permission"
   assert_aws_cli_not_called "add-permission"
 }

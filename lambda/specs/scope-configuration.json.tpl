@@ -89,6 +89,11 @@
                   "title": "Action",
                   "description": "Lambda action to grant.",
                   "default": "lambda:InvokeFunction"
+                },
+                "scope": {
+                  "type": "string",
+                  "title": "Only for scope",
+                  "description": "Scope slug or id this grant belongs to. Leave empty only when the grant is meant for every Lambda scope under this NRN — a value set at the application or namespace level is inherited by all of them."
                 }
               }
             }
@@ -153,7 +158,7 @@
               "elements": [
                 {
                   "type": "Label",
-                  "text": "> **\u26a0\ufe0f This grants invoke rights**\n\nEach entry lets another AWS service call this scope's Lambda. Only needed when the function is triggered by something other than the scope's own HTTP endpoint \u2014 an API Gateway authorizer, an EventBridge rule or scheduler, or an S3 bucket notification.\n\nAlways set a **Source ARN** so the grant is limited to one caller; a principal without it lets *any* resource of that service in the account invoke the function. S3 additionally requires **Source account**, because bucket ARNs carry no account ID.\n\nPermissions are attached to the scope's `main` alias, so external triggers follow blue/green traffic weights.",
+                  "text": "> **\u26a0\ufe0f This grants invoke rights**\n\nEach entry lets another AWS service call this scope's Lambda. Only needed when the function is triggered by something other than the scope's own HTTP endpoint \u2014 an API Gateway authorizer, an EventBridge rule or scheduler, or an S3 bucket notification.\n\nAlways set a **Source ARN** so the grant is limited to one caller; a principal without it lets *any* resource of that service in the account invoke the function. S3 additionally requires **Source account**, because bucket ARNs carry no account ID.\n\nPermissions are attached to the scope's `main` alias, so external triggers follow blue/green traffic weights.\n\nThis provider resolves against the scope's NRN, so a value set at the application or namespace level applies to **every** Lambda scope beneath it. Set **Only for scope** on any grant that belongs to one function.",
                   "options": { "format": "markdown" }
                 },
                 {

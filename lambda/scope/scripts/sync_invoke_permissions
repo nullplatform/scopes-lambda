@@ -36,9 +36,22 @@ if ! desired=$(echo "$CONTEXT" | jq -ce '.providers["scope-configurations"].trig
   return 1
 fi
 
+declared_count=$(echo "$desired" | jq 'length')
+
+# Entries may name the scope they are for. Without that, a value inherited from
+# a higher NRN would grant the same principal on every lambda scope below it.
+desired=$(echo "$desired" | jq -c --arg slug "${SCOPE_SLUG:-}" --arg id "${SCOPE_ID:-}" \
+  '[ .[] | select((.scope // "") as $s | $s == "" or $s == $slug or $s == $id) ]')
+
 desired_count=$(echo "$desired" | jq 'length')
 
-# (6) add-permission would fail later with an opaque ResourceConflictException
+log debug "   📋 function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   📋 qualifier=$invoke_alias"
+log debug "   📋 declared_permissions=$declared_count (for this scope: $desired_count)"
+
+# ── Validate every entry before touching AWS ──────────────────────────────────
+# Rejecting an entry after the prune loop already removed the statement it was
+# meant to replace would leave a working trigger with no grant at all.
 duplicate_sid=$(echo "$desired" | jq -r 'group_by(.statement_id) | map(select(length > 1)) | first | first.statement_id // empty')
 if [ -n "$duplicate_sid" ]; then
   echo "❌ Duplicate statement_id '$duplicate_sid' in invoke_permissions" >&2
@@ -49,9 +62,41 @@ if [ -n "$duplicate_sid" ]; then
   return 1
 fi
 
-log debug "   📋 function_name=$LAMBDA_FUNCTION_NAME"
-log debug "   📋 qualifier=$invoke_alias"
-log debug "   📋 declared_permissions=$desired_count"
+while IFS= read -r perm; do
+  [ -z "$perm" ] && continue
+
+  statement_id=$(echo "$perm" | jq -r '.statement_id // ""')
+  principal=$(echo "$perm" | jq -r '.principal // ""')
+
+  if [ -z "$statement_id" ] || [ -z "$principal" ]; then
+    echo "❌ Invoke permission is missing 'statement_id' or 'principal': $perm" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The scope-configuration entry was saved with an incomplete object" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Set both statement_id and principal on every invoke_permissions entry" >&2
+    return 1
+  fi
+
+  # AWS restricts StatementId to [a-zA-Z0-9-_] and 100 characters, and our prefix
+  # eats part of that budget — fail here rather than on an opaque AWS error.
+  if ! [[ "$statement_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "❌ Invalid statement_id '$statement_id': only letters, digits, '-' and '_' are allowed" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The statement_id contains dots, colons or spaces (e.g. an ARN was pasted)" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Use a short symbolic name, e.g. 'apigw-authorizer' or 'eventbridge-daily'" >&2
+    return 1
+  fi
+
+  if [ ${#statement_id} -gt $((100 - ${#NP_INVOKE_SID_PREFIX})) ]; then
+    echo "❌ statement_id '$statement_id' is too long" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - AWS caps StatementId at 100 characters, and '$NP_INVOKE_SID_PREFIX' is prepended" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Shorten the statement_id to at most $((100 - ${#NP_INVOKE_SID_PREFIX})) characters" >&2
+    return 1
+  fi
+done < <(echo "$desired" | jq -c '.[]')
 
 # ── Current state ─────────────────────────────────────────────────────────────
 # Only "no policy yet" may be treated as empty. Swallowing every error would
@@ -118,37 +163,7 @@ while IFS= read -r perm; do
   source_arn=$(echo "$perm" | jq -r '.source_arn // ""')
   source_account=$(echo "$perm" | jq -r '.source_account // ""')
   action=$(echo "$perm" | jq -r '.action // "lambda:InvokeFunction"')
-
-  if [ -z "$statement_id" ] || [ -z "$principal" ]; then
-    echo "❌ Invoke permission is missing 'statement_id' or 'principal': $perm" >&2
-    echo "💡 Possible causes:" >&2
-    echo "   - The scope-configuration entry was saved with an incomplete object" >&2
-    echo "🔧 How to fix:" >&2
-    echo "   - Set both statement_id and principal on every invoke_permissions entry" >&2
-    return 1
-  fi
-
-  # AWS restricts StatementId to [a-zA-Z0-9-_] and 100 characters, and our prefix
-  # eats part of that budget — fail here rather than on an opaque AWS error.
-  if ! [[ "$statement_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-    echo "❌ Invalid statement_id '$statement_id': only letters, digits, '-' and '_' are allowed" >&2
-    echo "💡 Possible causes:" >&2
-    echo "   - The statement_id contains dots, colons or spaces (e.g. an ARN was pasted)" >&2
-    echo "🔧 How to fix:" >&2
-    echo "   - Use a short symbolic name, e.g. 'apigw-authorizer' or 'eventbridge-daily'" >&2
-    return 1
-  fi
-
   sid="${NP_INVOKE_SID_PREFIX}${statement_id}"
-
-  if [ ${#sid} -gt 100 ]; then
-    echo "❌ statement_id '$statement_id' is too long (Sid '$sid' exceeds 100 characters)" >&2
-    echo "💡 Possible causes:" >&2
-    echo "   - AWS caps StatementId at 100 characters, and '$NP_INVOKE_SID_PREFIX' is prepended" >&2
-    echo "🔧 How to fix:" >&2
-    echo "   - Shorten the statement_id to at most $((100 - ${#NP_INVOKE_SID_PREFIX})) characters" >&2
-    return 1
-  fi
 
   # add-permission cannot update in place, so a changed principal/source means
   # remove + add. Compare against the live statement to stay idempotent.
@@ -165,7 +180,13 @@ while IFS= read -r perm; do
     cur_source_arn=$(echo "$existing" | jq -r '.Condition.ArnLike."AWS:SourceArn" // ""')
     cur_source_account=$(echo "$existing" | jq -r '.Condition.StringEquals."AWS:SourceAccount" // ""')
 
-    if [ "$cur_principal" = "$principal" ] && [ "$cur_action" = "$action" ] && \
+    # AWS stores a bare account id as arn:aws:iam::<id>:root
+    declared_principal="$principal"
+    if [[ "$principal" =~ ^[0-9]{12}$ ]]; then
+      declared_principal="arn:aws:iam::${principal}:root"
+    fi
+
+    if [ "$cur_principal" = "$declared_principal" ] && [ "$cur_action" = "$action" ] && \
        [ "$cur_source_arn" = "$source_arn" ] && [ "$cur_source_account" = "$source_account" ]; then
       log debug "   ⏭️  $sid already up to date"
       continue
@@ -229,4 +250,8 @@ while IFS= read -r perm; do
 done < <(echo "$desired" | jq -c '.[]')
 
 echo ""
-log info "✨ External invoke permissions reconciled ($desired_count declared)"
+if [ "$desired_count" != "$declared_count" ]; then
+  log info "✨ External invoke permissions reconciled ($desired_count of $declared_count declared apply to this scope)"
+else
+  log info "✨ External invoke permissions reconciled ($desired_count declared)"
+fi
