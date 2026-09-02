@@ -247,32 +247,21 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 
 ### Event-driven scopes
 
-A scope's own API Gateway or ALB is not the only thing that can invoke its
-function. DynamoDB streams, SQS, API Gateway authorizers, EventBridge rules and
-schedulers, and S3 bucket notifications all invoke Lambda directly, and each
-needs two things the scope has to provide.
+A function triggered by something other than its own API Gateway or ALB needs
+an invoke permission (see [External invocation](#external-invocation)) and a way
+for the trigger to find it.
 
-**Invoke permissions.** DevOps declares the extra principals in the
-`triggers.invoke_permissions` key of the scope-configuration (see
-[External invocation](#external-invocation)). Each entry becomes a statement on
-the function's resource policy, attached to the **`main` alias** — so an external
-trigger follows the same blue/green traffic weights as HTTP traffic.
-
-**Scope identity.** `create-scope` and `update-scope` publish the function's
-identity to the scope's NRN under the `lambda.` namespace:
+`create-scope` and `update-scope` publish the function's identity to the scope's
+NRN, so an event source mapping can target the `main` alias without re-deriving
+names. Scopes created earlier are backfilled on the next `update-scope`.
 
 | NRN key | Value |
 |---------|-------|
 | `lambda.function_name` | Function name |
 | `lambda.function_arn` | Unqualified function ARN |
-| `lambda.alias_arn` | ARN of the `main` alias — the target for event source mappings |
+| `lambda.alias_arn` | `main` alias ARN — the event source mapping target |
 | `lambda.main_alias` | Alias name (`main`) |
 | `lambda.execution_role_arn` / `lambda.execution_role_name` | Execution role |
-
-A service that provisions an event source mapping (SQS, DynamoDB streams) reads
-`lambda.alias_arn` from the NRN instead of re-deriving the function name from
-slugs. Scopes created before this existed are backfilled on the next
-`update-scope`.
 
 ---
 
@@ -381,31 +370,19 @@ PLACEHOLDER_IMAGE_URI_DEFAULT: "123456789012.dkr.ecr.us-east-1.amazonaws.com/aws
 
 ### External invocation
 
-Set in the **scope-configuration** provider (`triggers.invoke_permissions`), not
-in the scope's own attributes: granting another AWS principal the right to invoke
-the function is a privilege grant, so it belongs to whoever operates the account
-rather than to the scope form. The key allows dimensions, so it can differ per
-environment.
+Set in the **scope-configuration** provider (`triggers.invoke_permissions`) — a
+privilege grant belongs to whoever operates the account, not to the scope form.
+Dimensions are allowed, so it can differ per environment.
 
 ```json
 {
   "triggers": {
     "invoke_permissions": [
       {
-        "statement_id": "apigw-authorizer",
-        "principal": "apigateway.amazonaws.com",
-        "source_arn": "arn:aws:execute-api:us-east-1:111122223333:abcd1234/authorizers/*"
-      },
-      {
         "statement_id": "eventbridge-daily",
         "principal": "events.amazonaws.com",
-        "source_arn": "arn:aws:events:us-east-1:111122223333:rule/daily-report"
-      },
-      {
-        "statement_id": "s3-uploads",
-        "principal": "s3.amazonaws.com",
-        "source_arn": "arn:aws:s3:::my-bucket",
-        "source_account": "111122223333"
+        "source_arn": "arn:aws:events:us-east-1:111122223333:rule/daily-report",
+        "scope": "my-scope"
       }
     ]
   }
@@ -414,45 +391,33 @@ environment.
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `statement_id` | yes | Short symbolic name, `[a-zA-Z0-9_-]` only. Stored as `np-ext-<statement_id>`. |
+| `statement_id` | yes | `[a-zA-Z0-9_-]` only. Stored as `np-ext-<statement_id>`. |
 | `principal` | yes | AWS service principal. |
-| `source_arn` | no, but recommended | Without it, *any* resource of that service in the account can invoke the function. |
+| `source_arn` | recommended | Without it, *any* resource of that service in the account can invoke the function. |
 | `source_account` | no | Required for S3, whose bucket ARNs carry no account ID. |
 | `action` | no | Defaults to `lambda:InvokeFunction`. |
+| `scope` | recommended | Scope slug or id. The provider resolves against the scope's NRN, so a value set higher up applies to every Lambda scope beneath it. |
 
-Reconciliation is idempotent and runs on both `create-scope` and `update-scope`:
-entries are added, changed entries are replaced, and entries you remove from the
-config are removed from AWS. Only statements carrying the `np-ext-` prefix are
-ever deleted — the scope's own `AllowAPIGatewayInvoke` / `AllowALBInvoke` and any
-statement added out of band are left alone.
+Reconciled idempotently on `create-scope` and `update-scope`. Only `np-ext-`
+statements are ever deleted, so `AllowAPIGatewayInvoke`, `AllowALBInvoke` and
+anything added out of band survive.
 
 ### Dead letter queue
 
-`dead_letter_target_arn` (a scope attribute) points at an SQS queue or SNS topic
-that receives events whose **asynchronous** invocation failed after all retries.
-This is the function's DLQ — unrelated to the redrive policy of a queue the
-function consumes from, which belongs to the SQS service.
+`dead_letter_target_arn` (a scope attribute) is the SQS queue or SNS topic that
+receives events whose **asynchronous** invocation failed after all retries — not
+the redrive policy of a queue the function consumes from.
 
-Setting it does two things: it enables `DeadLetterConfig` on the function, and it
-grants the execution role `sqs:SendMessage` or `sns:Publish` (derived from the
-ARN) on that ARN and nothing else. Without the grant Lambda drops the failed
-event silently, so the two always move together. Clearing the attribute reverts
-both.
+Setting it enables `DeadLetterConfig` and grants the execution role
+`sqs:SendMessage` or `sns:Publish` on that ARN alone; without the grant Lambda
+drops the event silently. Clearing it reverts both. A target encrypted with a
+customer-managed KMS key also needs `kms:GenerateDataKey` (plus `kms:Decrypt`
+for SQS) on the key, which the scope cannot derive — add it yourself.
 
-> **A target encrypted with a customer-managed KMS key needs one more grant.**
-> Lambda also requires `kms:GenerateDataKey` (plus `kms:Decrypt` for SQS) on the
-> key, which the scope cannot derive from the queue or topic ARN. Add it to the
-> execution role yourself, or the delivery is denied and the event is dropped —
-> with both the `DeadLetterConfig` and the send grant looking correctly applied.
-
-> **Why these two live outside Terraform.** The scope's OpenTofu run only happens
-> on `create-scope` / `delete-scope`. The per-scope state holds the *placeholder*
-> function, while deployments mutate the real function through the AWS CLI, so an
-> `apply` on update would see drift and roll the function back to the placeholder.
-> Invoke permissions and the DLQ are therefore reconciled with idempotent AWS CLI
-> scripts that run on both create and update, and touch only the field they own.
-> `delete-scope` removes the inline DLQ policy before the destroy, because IAM
-> refuses to delete a role that still carries policies Terraform does not manage.
+> **Why these two are not in Terraform.** The scope's tofu state holds the
+> *placeholder* function while deployments mutate the real one via the AWS CLI,
+> so an `apply` on update would roll the function back. Both are reconciled by
+> AWS CLI scripts instead, touching only the field they own.
 
 ### What `update-scope` reconciles
 
@@ -463,9 +428,7 @@ both.
 | `dead_letter_target_arn` | `layers`, environment variables, VPC config |
 | NRN identity metadata | |
 
-`reserved_concurrency` and `provisioned_concurrency` have their own actions and
-apply immediately. Making `update-scope` apply the remaining function
-configuration requires the OpenTofu-on-update work described above.
+`reserved_concurrency` and `provisioned_concurrency` have their own actions.
 
 ### Resource Naming
 
