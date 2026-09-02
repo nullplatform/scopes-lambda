@@ -15,7 +15,11 @@ log() {
 
   local -i msg_num threshold
 
-  case "${level,,}" in
+  # Lowercase via tr rather than ${var,,}: the latter needs bash 4, and macOS
+  # ships bash 3.2, which would break every script that sources this locally.
+  level=$(printf '%s' "$level" | tr '[:upper:]' '[:lower:]')
+
+  case "$level" in
     debug) msg_num=0 ;;
     info)  msg_num=1 ;;
     warn)  msg_num=2 ;;

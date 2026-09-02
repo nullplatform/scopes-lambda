@@ -103,7 +103,7 @@ OUTERSCRIPT
   export DEPLOYMENT_ID="deploy-123"
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ LAMBDA_ROLE_NAME is required"
@@ -120,7 +120,7 @@ OUTERSCRIPT
   unset DEPLOYMENT_ID
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ DEPLOYMENT_ID is required"
@@ -137,7 +137,7 @@ OUTERSCRIPT
   export DEPLOYMENT_ID="deploy-123"
   unset SCOPE_NRN
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ SCOPE_NRN is required"
@@ -223,7 +223,7 @@ OUTERSCRIPT
     '{"AWS_LAMBDA_DEDICATED_ROLE_POLICIES": "[{\"name\":\"sqs-access\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[]}\"}]"}'
   create_aws_error_mock "NoSuchEntityException: Role my-role does not exist"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ Failed to attach policy sqs-access-deploy-123 to role my-role"

@@ -57,7 +57,7 @@ OUTERSCRIPT
 @test "deployment/scripts/cleanup_old_version: fails when LAMBDA_FUNCTION_NAME is not set" {
   unset LAMBDA_FUNCTION_NAME
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ LAMBDA_FUNCTION_NAME is required"

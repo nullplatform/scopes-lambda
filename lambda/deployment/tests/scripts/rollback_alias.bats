@@ -70,7 +70,7 @@ OUTERSCRIPT
 @test "deployment/scripts/rollback_alias: fails when LAMBDA_FUNCTION_NAME is not set" {
   unset LAMBDA_FUNCTION_NAME
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_line "❌ LAMBDA_FUNCTION_NAME is required"
@@ -86,7 +86,7 @@ OUTERSCRIPT
   export LAMBDA_FUNCTION_NAME="my-function"
   unset SCOPE_NRN
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ No previous version found to rollback to"
@@ -102,7 +102,7 @@ OUTERSCRIPT
 
   create_np_mock '{"LAMBDA_FUNCTION_CURRENT_VERSION": ""}'
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ No previous version found to rollback to"
@@ -115,7 +115,7 @@ OUTERSCRIPT
 
   create_np_mock '{"LAMBDA_FUNCTION_CURRENT_VERSION": null}'
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ No previous version found to rollback to"
@@ -192,7 +192,7 @@ OUTERSCRIPT
   create_np_mock '{"LAMBDA_FUNCTION_CURRENT_VERSION": "4"}'
   create_aws_error_mock "ResourceNotFoundException: Alias main not found"
 
-  run bash "$SCRIPT"
+  run_sourced "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ Failed to rollback alias main to version 4 on function my-function"
