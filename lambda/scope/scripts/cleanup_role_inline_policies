@@ -1,14 +1,13 @@
 #!/bin/bash
 # Drop the inline policies this scope writes outside terraform, before destroy.
 #
-# IAM refuses DeleteRole while unmanaged inline policies remain. Two scripts
-# create them through the CLI: sync_dead_letter_queue (np-lambda-dlq-<scope_id>)
-# and merge_iam_policies (<name>-<deployment_id>, one per deployment), so the
-# scope's own role is cleared wholesale rather than from a static list.
+# IAM refuses DeleteRole while unmanaged inline policies remain; sync_dead_letter_queue
+# and merge_iam_policies both write some through the CLI. Terraform's own are left
+# alone — a failed destroy leaves the function running, and stripping them would
+# cost it logs, ECR and Secrets Manager access with nothing to restore them.
 #
-# On a role shared with other scopes only this scope's own policies can be
-# identified, so per-deployment ones are left behind and reported. Best-effort:
-# a missing role or policy is the normal case.
+# On a shared role only this scope's policies can be identified; the rest are
+# reported. Best-effort: a missing role or policy is the normal case.
 
 source "$SERVICE_PATH/utils/get_config_value"
 source "$SERVICE_PATH/utils/log"
@@ -56,9 +55,17 @@ fi
 # A role named after this function is dedicated to it and is about to be
 # destroyed, so every inline policy on it can go. A shared dedicated role
 # outlives the scope, so only this scope's own policies may be touched.
+# Names terraform owns on this role (iam/modules/main.tf), plus any custom ones
+# it attaches from the scope configuration.
+tf_managed="cloudwatch-logs
+ecr-image-pull
+secrets-manager-parameters-read
+$(echo "${CONTEXT:-\{\}}" | jq -r '.providers["scope-configurations"].lambda.role_policies // [] | if type == "array" then (.[] | .name // empty) else empty end' 2>/dev/null)"
+
 if [ "$cleanup_role_name" = "$scope_managed_role" ]; then
-  log debug "   📋 role is scope-managed — removing all inline policies"
-  policies_to_delete="$inline_policies"
+  log debug "   📋 role is scope-managed — removing every policy terraform does not own"
+  policies_to_delete=$(printf '%s' "$inline_policies" | tr '\t' '\n' \
+    | grep -vxF -f <(printf '%s\n' "$tf_managed") || echo "")
 else
   log debug "   📋 role is shared — removing only this scope's policies"
   # Per-deployment policy names carry no scope marker, so on a shared role they

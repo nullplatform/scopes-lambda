@@ -36,7 +36,7 @@ with_inline_policies() {
   aws_mock_response "iam list-role-policies" 0 "$1"
 }
 
-@test "cleanup_role_inline_policies: clears every policy on the scope's own role" {
+@test "cleanup_role_inline_policies: clears the out-of-band policies on the scope's own role" {
   on_role "$SCOPE_ROLE"
   # merge_iam_policies names its policies <name>-<deployment_id>, so a static
   # list would leave them behind and DeleteRole would fail.
@@ -47,6 +47,21 @@ with_inline_policies() {
   assert_success
   assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
   assert_aws_cli_called "--policy-name app-policy-4242"
+}
+
+@test "cleanup_role_inline_policies: leaves terraform's own policies in place" {
+  on_role "$SCOPE_ROLE"
+  with_inline_policies "cloudwatch-logs	ecr-image-pull	secrets-manager-parameters-read	np-lambda-dlq-9001"
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
+  # A destroy can fail and leave the function running; stripping these would
+  # cost it logs, ECR pulls and Secrets Manager access.
+  assert_aws_cli_not_called "--policy-name cloudwatch-logs"
+  assert_aws_cli_not_called "--policy-name ecr-image-pull"
+  assert_aws_cli_not_called "--policy-name secrets-manager-parameters-read"
 }
 
 @test "cleanup_role_inline_policies: touches only its own policy on a shared role" {
