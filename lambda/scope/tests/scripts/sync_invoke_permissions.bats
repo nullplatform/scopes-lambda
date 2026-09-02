@@ -179,3 +179,41 @@ with_policy() {
   assert_failure
   assert_output_contains "Failed to add invoke permission"
 }
+
+# principal is free text in the spec, so AWS may store {"AWS": ...} rather than
+# {"Service": ...}. Reading only .Principal.Service made every run churn the
+# statement: remove + add on something that never changed.
+@test "sync_invoke_permissions: is idempotent for an account principal" {
+  context_with '[{"statement_id":"cross-account","principal":"arn:aws:iam::111122223333:role/caller"}]'
+  with_policy '{"Statement":[{"Sid":"np-ext-cross-account","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:role/caller"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_not_called "remove-permission"
+  assert_aws_cli_not_called "add-permission"
+}
+
+@test "sync_invoke_permissions: fails instead of pruning when the policy cannot be read" {
+  context_with '[]'
+  aws_mock_response "lambda get-policy" 254 "AccessDeniedException: not authorized to perform lambda:GetPolicy"
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "Failed to read the resource policy"
+  assert_aws_cli_not_called "remove-permission"
+}
+
+@test "sync_invoke_permissions: restores the previous statement when the update fails" {
+  context_with '[{"statement_id":"eventbridge-daily","principal":"events.amazonaws.com","source_arn":"arn:aws:events:us-east-1:111122223333:rule/NEW"}]'
+  with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction","Condition":{"ArnLike":{"AWS:SourceArn":"arn:aws:events:us-east-1:111122223333:rule/OLD"}}}]}'
+  aws_mock_response "lambda add-permission" 254 "InvalidParameterValueException"
+
+  run_sourced
+
+  assert_failure
+  # The old grant was working a moment ago; it must not be left removed.
+  assert_aws_cli_called "--source-arn arn:aws:events:us-east-1:111122223333:rule/OLD"
+  assert_output_contains "Restoring the previous"
+}

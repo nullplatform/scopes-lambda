@@ -32,18 +32,32 @@ log debug "   📋 qualifier=$invoke_alias"
 log debug "   📋 declared_permissions=$desired_count"
 
 # ── Current state ─────────────────────────────────────────────────────────────
-# A function with no resource policy returns ResourceNotFoundException; that is
-# the normal first-run case, not an error.
-policy_json=$(aws lambda get-policy \
+# Only "no policy yet" may be treated as empty. Swallowing every error would
+# make an AccessDenied look like a fresh function: nothing gets pruned, and
+# every add-permission then fails with ResourceConflictException.
+if policy_json=$(aws lambda get-policy \
   --function-name "$LAMBDA_FUNCTION_NAME" \
   --qualifier "$invoke_alias" \
   --query 'Policy' \
-  --output text 2>/dev/null)
-
-if [ -z "$policy_json" ] || [ "$policy_json" = "None" ]; then
+  --output text 2>&1); then
+  if [ -z "$policy_json" ] || [ "$policy_json" = "None" ]; then
+    current_statements="[]"
+  else
+    current_statements=$(echo "$policy_json" | jq -c '.Statement // []')
+  fi
+elif [[ "$policy_json" == *ResourceNotFoundException* ]]; then
+  log debug "   ⏭️  No resource policy yet on $LAMBDA_FUNCTION_NAME:$invoke_alias"
   current_statements="[]"
 else
-  current_statements=$(echo "$policy_json" | jq -c '.Statement // []')
+  echo "❌ Failed to read the resource policy of '$LAMBDA_FUNCTION_NAME'" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Permission denied (missing lambda:GetPolicy)" >&2
+  echo "   - Throttling, or the '$invoke_alias' alias does not exist" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Check the assume role has lambda:GetPolicy on the function" >&2
+  echo "   - Run diagnose-scope to confirm the function and alias are healthy" >&2
+  echo "   📋 AWS error: $policy_json" >&2
+  return 1
 fi
 
 managed_sids=$(echo "$current_statements" | jq -r --arg p "$NP_INVOKE_SID_PREFIX" \
@@ -119,7 +133,7 @@ while IFS= read -r perm; do
   existing=$(echo "$current_statements" | jq -c --arg sid "$sid" 'map(select(.Sid == $sid)) | first // empty')
 
   if [ -n "$existing" ]; then
-    cur_principal=$(echo "$existing" | jq -r '.Principal.Service // .Principal // ""')
+    cur_principal=$(echo "$existing" | jq -r '.Principal | if type == "string" then . else (.Service // .AWS // tostring) end')
     cur_action=$(echo "$existing" | jq -r 'if (.Action | type) == "array" then .Action[0] else .Action end // ""')
     cur_source_arn=$(echo "$existing" | jq -r '.Condition.ArnLike."AWS:SourceArn" // ""')
     cur_source_account=$(echo "$existing" | jq -r '.Condition.StringEquals."AWS:SourceAccount" // ""')
@@ -143,8 +157,10 @@ while IFS= read -r perm; do
       echo "   📋 AWS error: $aws_output" >&2
       return 1
     fi
+    replaced="$existing"
   else
     log info "   📝 Adding permission: $sid ($principal)"
+    replaced=""
   fi
 
   add_args=(--function-name "$LAMBDA_FUNCTION_NAME"
@@ -156,6 +172,21 @@ while IFS= read -r perm; do
   [ -n "$source_account" ] && add_args+=(--source-account "$source_account")
 
   if ! aws_output=$(aws lambda add-permission "${add_args[@]}" 2>&1); then
+    # A refresh already removed the old statement. Put it back, or a typo in the
+    # config would silently break a trigger that was working a moment ago.
+    if [ -n "$replaced" ]; then
+      log warn "   ⚠️  Restoring the previous $sid statement after the failed update"
+      restore_args=(--function-name "$LAMBDA_FUNCTION_NAME"
+                    --qualifier "$invoke_alias"
+                    --statement-id "$sid"
+                    --action "$cur_action"
+                    --principal "$cur_principal")
+      [ -n "$cur_source_arn" ] && restore_args+=(--source-arn "$cur_source_arn")
+      [ -n "$cur_source_account" ] && restore_args+=(--source-account "$cur_source_account")
+      aws lambda add-permission "${restore_args[@]}" >/dev/null 2>&1 \
+        || log warn "   ⚠️  Could not restore $sid — the trigger is left without a grant"
+    fi
+
     echo "❌ Failed to add invoke permission '$sid' to '$LAMBDA_FUNCTION_NAME'" >&2
     echo "💡 Possible causes:" >&2
     echo "   - Permission denied (missing lambda:AddPermission)" >&2
