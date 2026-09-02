@@ -212,3 +212,27 @@ function_with_dlq() {
   assert_failure
   assert_output_contains "did not complete"
 }
+
+@test "sync_dead_letter_queue: removes the grant when enabling fails" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  aws_mock_response "lambda update-function-configuration" 254 "InvalidParameterValueException"
+
+  run_sourced
+
+  assert_failure
+  # Otherwise the role keeps send access to an arbitrary ARN with no DLQ enabled
+  assert_aws_cli_called "iam delete-role-policy"
+}
+
+@test "sync_dead_letter_queue: restores the previous grant when a change fails" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:new-dlq"
+  function_with_dlq "arn:aws:sqs:us-east-1:111122223333:old-dlq"
+  aws_mock_response "lambda update-function-configuration" 254 "InvalidParameterValueException"
+
+  run_sourced
+
+  assert_failure
+  assert_aws_cli_called "old-dlq"
+  assert_aws_cli_not_called "iam delete-role-policy"
+}

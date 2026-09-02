@@ -6,6 +6,34 @@
 
 source "$SERVICE_PATH/utils/log"
 
+# The grant is written before the config update, so it has to be undone when
+# that update fails — otherwise the role keeps send access to an arbitrary,
+# possibly cross-account ARN with no DLQ ever enabled.
+revert_dlq_grant() {
+  if [ -n "${current_dlq:-}" ]; then
+    log warn "   ⚠️  Restoring the grant for the previous target $current_dlq"
+    aws iam put-role-policy \
+      --role-name "$role_name" \
+      --policy-name "$DLQ_POLICY_NAME" \
+      --policy-document "$(dlq_policy_document "$current_dlq")" >/dev/null 2>&1 || true
+  else
+    log warn "   ⚠️  Removing the grant written for the failed update"
+    aws iam delete-role-policy \
+      --role-name "$role_name" \
+      --policy-name "$DLQ_POLICY_NAME" >/dev/null 2>&1 || true
+  fi
+}
+
+dlq_policy_document() {
+  case "$1" in
+    arn:*:sqs:*) local grant="sqs:SendMessage" ;;
+    arn:*:sns:*) local grant="sns:Publish" ;;
+    *) return 1 ;;
+  esac
+  jq -n --arg action "$grant" --arg resource "$1" \
+    '{Version: "2012-10-17", Statement: [{Effect: "Allow", Action: [$action], Resource: $resource}]}'
+}
+
 wait_for_function_update() {
   if aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
     return 0
@@ -143,13 +171,10 @@ fi
 # Grant first, then enable: the other order leaves a window where Lambda drops
 # failed events because the role cannot write to the target yet.
 log info "   📝 Granting $dlq_action on the dead letter target to $role_name..."
-dlq_policy=$(jq -n --arg action "$dlq_action" --arg resource "$dlq_target_arn" \
-  '{Version: "2012-10-17", Statement: [{Effect: "Allow", Action: [$action], Resource: $resource}]}')
-
 if ! aws_output=$(aws iam put-role-policy \
   --role-name "$role_name" \
   --policy-name "$DLQ_POLICY_NAME" \
-  --policy-document "$dlq_policy" 2>&1); then
+  --policy-document "$(dlq_policy_document "$dlq_target_arn")" 2>&1); then
   echo "❌ Failed to grant dead letter access to role '$role_name'" >&2
   echo "💡 Possible causes:" >&2
   echo "   - Permission denied (missing iam:PutRolePolicy)" >&2
@@ -180,10 +205,11 @@ if ! aws_output=$(aws lambda update-function-configuration \
   echo "   - Verify the ARN exists in the same region as the function" >&2
   echo "   - Wait for the running deployment to finish and re-run the action" >&2
   echo "   📋 AWS error: $aws_output" >&2
+  revert_dlq_grant
   return 1
 fi
 
-wait_for_function_update || return 1
+wait_for_function_update || { revert_dlq_grant; return 1; }
 
 echo ""
 log info "✨ Dead letter queue set to $dlq_target_arn for $LAMBDA_FUNCTION_NAME"
