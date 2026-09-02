@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/nullplatform/scopes-lambda/compare/v0.3.2...v0.4.0) (2026-09-02)
+
+
+### Features
+
+* add terraform module to install the lambda scope ([0020bd1](https://github.com/nullplatform/scopes-lambda/commit/0020bd133a61047dd21ed1713756670cee7d6af1))
+* add terraform module to install the lambda scope ([9ea41c3](https://github.com/nullplatform/scopes-lambda/commit/9ea41c3514ed7d3f5ad1339c0931ec0500892ddf))
+
 ## [0.3.2](https://github.com/nullplatform/scopes-lambda/compare/v0.3.1...v0.3.2) (2026-08-26)
 
 
