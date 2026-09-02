@@ -592,8 +592,8 @@ We use **three types of tests** to ensure quality at different levels:
 
 | Test Type | What it Tests | Location | Command |
 |-----------|---------------|----------|---------|
-| **Unit Tests (BATS)** | Bash scripts (build_context, scope scripts, deployment scripts) | `lambda/scope/tests/scripts/`, `lambda/deployment/tests/scripts/` | `make -C testing test-unit` |
-| **Tofu Tests** | Terraform modules (IAM, Lambda, API Gateway, ALB, Route53) | `lambda/scope/tofu/*/modules/*.tftest.hcl` | `make -C testing test-tofu` |
+| **Unit Tests (BATS)** | Bash scripts (build_context, scope scripts, deployment scripts) | `lambda/scope/tests/scripts/`, `lambda/deployment/tests/scripts/` | `make test-unit` |
+| **Tofu Tests** | Terraform modules (IAM, Lambda, API Gateway, ALB, Route53) | `lambda/scope/tofu/*/modules/*.tftest.hcl` | `make test-tofu` |
 
 ### Unit Tests (BATS)
 
@@ -632,15 +632,19 @@ Test Terraform modules using `tofu test` with mock providers.
 
 ```bash
 # Run all tests
-make -C testing test-all
+make test-all
 
 # Run specific test types
-make -C testing test-unit              # BATS unit tests
-make -C testing test-tofu              # OpenTofu module tests
+make test-unit                         # BATS unit tests
+make test-tofu                         # OpenTofu module tests
 
 # Run tests for this module only
-make -C testing test-unit MODULE=lambda
-make -C testing test-tofu MODULE=lambda
+make test-unit MODULE=lambda
+make test-tofu MODULE=lambda
+
+# The make targets shell out to ./testing/, which is not committed. Until the
+# submodule is added, run a suite directly:
+bats lambda/scope/tests/scripts/*.bats
 ```
 
 ---
