@@ -22,6 +22,20 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; t
   return 1
 fi
 
+# Entries may name their scope by slug or id. Missing either would filter such
+# an entry out and then prune the statement it created — revoking a live
+# trigger. Fail instead.
+for required in SCOPE_ID SCOPE_SLUG; do
+  if [ -z "${!required:-}" ] || [ "${!required}" = "null" ]; then
+    echo "❌ $required is required but not set" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The step was added to a workflow without declaring $required as a build_context output" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Add $required to the build_context step outputs of that workflow" >&2
+    return 1
+  fi
+done
+
 invoke_alias="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
 if ! desired=$(echo "$CONTEXT" | jq -ce '.providers["scope-configurations"].triggers.invoke_permissions // [] | if type == "array" then . else error("not an array") end' 2>&1); then

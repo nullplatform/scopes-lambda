@@ -17,6 +17,8 @@ steps:
     output:
       - name: SCOPE_ID
         type: environment
+      - name: SCOPE_SLUG
+        type: environment
       - name: SCOPE_NRN
         type: environment
       - name: LAMBDA_FUNCTION_NAME

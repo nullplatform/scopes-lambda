@@ -337,3 +337,17 @@ with_policy() {
   assert_aws_cli_not_called "remove-permission"
   assert_aws_cli_not_called "add-permission"
 }
+
+# SCOPE_SLUG has to reach the script, or a slug-scoped entry is filtered out and
+# then pruned — revoking a live trigger while reporting success.
+@test "sync_invoke_permissions: fails when SCOPE_SLUG is not set" {
+  unset SCOPE_SLUG
+  context_with '[{"statement_id":"mine","principal":"events.amazonaws.com","scope":"my-scope"}]'
+  with_policy '{"Statement":[{"Sid":"np-ext-mine","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "SCOPE_SLUG is required"
+  assert_aws_cli_not_called "remove-permission"
+}
