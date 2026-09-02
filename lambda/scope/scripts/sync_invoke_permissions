@@ -24,8 +24,30 @@ fi
 
 invoke_alias="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
-desired=$(echo "$CONTEXT" | jq -c '.providers["scope-configurations"].lambda.triggers.invoke_permissions // []')
+if ! desired=$(echo "$CONTEXT" | jq -ce '.providers["scope-configurations"].triggers.invoke_permissions // [] | if type == "array" then . else error("not an array") end' 2>&1); then
+  echo "❌ Could not read triggers.invoke_permissions from the scope configuration" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - CONTEXT is empty or malformed, so the declared set is unknown" >&2
+  echo "   - invoke_permissions was saved as something other than a list" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Re-run the action; treating an unreadable config as empty would" >&2
+  echo "     remove every external trigger this scope has" >&2
+  echo "   📋 jq error: $desired" >&2
+  return 1
+fi
+
 desired_count=$(echo "$desired" | jq 'length')
+
+# (6) add-permission would fail later with an opaque ResourceConflictException
+duplicate_sid=$(echo "$desired" | jq -r 'group_by(.statement_id) | map(select(length > 1)) | first | first.statement_id // empty')
+if [ -n "$duplicate_sid" ]; then
+  echo "❌ Duplicate statement_id '$duplicate_sid' in invoke_permissions" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Two entries were given the same name" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Give every entry a distinct statement_id" >&2
+  return 1
+fi
 
 log debug "   📋 function_name=$LAMBDA_FUNCTION_NAME"
 log debug "   📋 qualifier=$invoke_alias"
@@ -133,6 +155,11 @@ while IFS= read -r perm; do
   existing=$(echo "$current_statements" | jq -c --arg sid "$sid" 'map(select(.Sid == $sid)) | first // empty')
 
   if [ -n "$existing" ]; then
+    if [ "$(echo "$existing" | jq -r 'if (.Action | type) == "array" and (.Action | length) > 1 then "multi" else "single" end')" = "multi" ]; then
+      log warn "   ⚠️  Leaving $sid untouched: it grants several actions, which add-permission cannot recreate"
+      continue
+    fi
+
     cur_principal=$(echo "$existing" | jq -r '.Principal | if type == "string" then . else (.Service // .AWS // tostring) end')
     cur_action=$(echo "$existing" | jq -r 'if (.Action | type) == "array" then .Action[0] else .Action end // ""')
     cur_source_arn=$(echo "$existing" | jq -r '.Condition.ArnLike."AWS:SourceArn" // ""')

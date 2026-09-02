@@ -27,7 +27,7 @@ teardown() {
 }
 
 context_with() {
-  export CONTEXT="{\"providers\":{\"scope-configurations\":{\"lambda\":{\"triggers\":{\"invoke_permissions\":$1}}}}}"
+  export CONTEXT="{\"providers\":{\"scope-configurations\":{\"triggers\":{\"invoke_permissions\":$1}}}}"
 }
 
 no_policy() {
@@ -216,4 +216,52 @@ with_policy() {
   # The old grant was working a moment ago; it must not be left removed.
   assert_aws_cli_called "--source-arn arn:aws:events:us-east-1:111122223333:rule/OLD"
   assert_output_contains "Restoring the previous"
+}
+
+# providers.<category> is the provider's attributes object and `triggers` is a
+# top-level schema group. An extra nesting level made the whole feature a
+# silent no-op, and a self-built fixture could not catch it.
+@test "sync_invoke_permissions: reads the path the scope-configuration schema declares" {
+  export CONTEXT='{"providers":{"scope-configurations":{"state":{"tofu_state_bucket":"b"},"triggers":{"invoke_permissions":[{"statement_id":"apigw","principal":"apigateway.amazonaws.com"}]}}}}'
+  no_policy
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_called "--statement-id np-ext-apigw"
+  assert_output_contains "1 declared"
+}
+
+@test "sync_invoke_permissions: does not prune when CONTEXT is unreadable" {
+  export CONTEXT=''
+  with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "Could not read triggers.invoke_permissions"
+  assert_aws_cli_not_called "remove-permission"
+}
+
+@test "sync_invoke_permissions: rejects duplicate statement_ids up front" {
+  context_with '[{"statement_id":"dup","principal":"events.amazonaws.com"},{"statement_id":"dup","principal":"s3.amazonaws.com"}]'
+  no_policy
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "Duplicate statement_id 'dup'"
+  assert_aws_cli_not_called "add-permission"
+}
+
+@test "sync_invoke_permissions: leaves a multi-action statement alone" {
+  context_with '[{"statement_id":"multi","principal":"events.amazonaws.com"}]'
+  with_policy '{"Statement":[{"Sid":"np-ext-multi","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":["lambda:InvokeFunction","lambda:InvokeFunctionUrl"]}]}'
+
+  run_sourced
+
+  assert_success
+  # add-permission grants one action, so restoring it would silently narrow it
+  assert_aws_cli_not_called "remove-permission"
+  assert_aws_cli_not_called "add-permission"
 }
