@@ -232,8 +232,8 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 
 | Capability | Options | Default |
 |------------|---------|---------|
-| **Runtime** | Node.js 20/18, Python 3.12/3.11/3.10, Java 21/17/11, .NET 8/6, Ruby 3.3/3.2, Custom (AL2023/AL2) | `nodejs20.x` |
-| **Memory** | 128 MB, 256 MB, 512 MB, 1 GB, 2 GB, 4 GB, 8 GB, 10 GB | `256 MB` |
+| **Runtime** | Node.js 24/22/20, Python 3.14/3.13/3.12/3.11/3.10, Java 25/21/17/11, .NET 10/8, Ruby 4.0/3.4/3.3, Custom (AL2023/AL2) | `nodejs22.x` |
+| **Memory** | 128 MB - 10 GB | `256 MB` |
 | **Timeout** | 3 - 900 seconds | `30` |
 | **Architecture** | ARM64 (Graviton2), x86_64 | `arm64` |
 | **Visibility** | Public (API Gateway), Private (ALB) | — |
@@ -242,7 +242,37 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 | **Provisioned Concurrency** | Unprovisioned, Custom value | `unprovisioned` |
 | **VPC** | Optional private networking | Disabled |
 | **Layers** | Custom Lambda layers (ARN-based) | None |
+| **Dead Letter Queue** | SQS queue or SNS topic ARN for failed async invocations | None |
 | **Continuous Delivery** | Git branch-based auto-deployment | — |
+
+### Event-driven scopes
+
+A scope's own API Gateway or ALB is not the only thing that can invoke its
+function. DynamoDB streams, SQS, API Gateway authorizers, EventBridge rules and
+schedulers, and S3 bucket notifications all invoke Lambda directly, and each
+needs two things the scope has to provide.
+
+**Invoke permissions.** DevOps declares the extra principals in the
+`triggers.invoke_permissions` key of the scope-configuration (see
+[External invocation](#external-invocation)). Each entry becomes a statement on
+the function's resource policy, attached to the **`main` alias** — so an external
+trigger follows the same blue/green traffic weights as HTTP traffic.
+
+**Scope identity.** `create-scope` and `update-scope` publish the function's
+identity to the scope's NRN under the `lambda.` namespace:
+
+| NRN key | Value |
+|---------|-------|
+| `lambda.function_name` | Function name |
+| `lambda.function_arn` | Unqualified function ARN |
+| `lambda.alias_arn` | ARN of the `main` alias — the target for event source mappings |
+| `lambda.main_alias` | Alias name (`main`) |
+| `lambda.execution_role_arn` / `lambda.execution_role_name` | Execution role |
+
+A service that provisions an event source mapping (SQS, DynamoDB streams) reads
+`lambda.alias_arn` from the NRN instead of re-deriving the function name from
+slugs. Scopes created before this existed are backfilled on the next
+`update-scope`.
 
 ---
 
@@ -348,6 +378,88 @@ Then set the URI (matching your scope architecture) in `values.yaml` or the agen
 ```yaml
 PLACEHOLDER_IMAGE_URI_DEFAULT: "123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-arm64"
 ```
+
+### External invocation
+
+Set in the **scope-configuration** provider (`triggers.invoke_permissions`), not
+in the scope's own attributes: granting another AWS principal the right to invoke
+the function is a privilege grant, so it belongs to whoever operates the account
+rather than to the scope form. The key allows dimensions, so it can differ per
+environment.
+
+```json
+{
+  "triggers": {
+    "invoke_permissions": [
+      {
+        "statement_id": "apigw-authorizer",
+        "principal": "apigateway.amazonaws.com",
+        "source_arn": "arn:aws:execute-api:us-east-1:111122223333:abcd1234/authorizers/*"
+      },
+      {
+        "statement_id": "eventbridge-daily",
+        "principal": "events.amazonaws.com",
+        "source_arn": "arn:aws:events:us-east-1:111122223333:rule/daily-report"
+      },
+      {
+        "statement_id": "s3-uploads",
+        "principal": "s3.amazonaws.com",
+        "source_arn": "arn:aws:s3:::my-bucket",
+        "source_account": "111122223333"
+      }
+    ]
+  }
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `statement_id` | yes | Short symbolic name, `[a-zA-Z0-9_-]` only. Stored as `np-ext-<statement_id>`. |
+| `principal` | yes | AWS service principal. |
+| `source_arn` | no, but recommended | Without it, *any* resource of that service in the account can invoke the function. |
+| `source_account` | no | Required for S3, whose bucket ARNs carry no account ID. |
+| `action` | no | Defaults to `lambda:InvokeFunction`. |
+
+Reconciliation is idempotent and runs on both `create-scope` and `update-scope`:
+entries are added, changed entries are replaced, and entries you remove from the
+config are removed from AWS. Only statements carrying the `np-ext-` prefix are
+ever deleted — the scope's own `AllowAPIGatewayInvoke` / `AllowALBInvoke` and any
+statement added out of band are left alone.
+
+### Dead letter queue
+
+`dead_letter_target_arn` (a scope attribute) points at an SQS queue or SNS topic
+that receives events whose **asynchronous** invocation failed after all retries.
+This is the function's DLQ — unrelated to the redrive policy of a queue the
+function consumes from, which belongs to the SQS service.
+
+Setting it does two things: it enables `DeadLetterConfig` on the function, and it
+grants the execution role `sqs:SendMessage` or `sns:Publish` (derived from the
+ARN) on that ARN and nothing else. Without the grant Lambda drops the failed
+event silently, so the two always move together. Clearing the attribute reverts
+both.
+
+> **Why these two live outside Terraform.** The scope's OpenTofu run only happens
+> on `create-scope` / `delete-scope`. The per-scope state holds the *placeholder*
+> function, while deployments mutate the real function through the AWS CLI, so an
+> `apply` on update would see drift and roll the function back to the placeholder.
+> Invoke permissions and the DLQ are therefore reconciled with idempotent AWS CLI
+> scripts that run on both create and update, and touch only the field they own.
+> `delete-scope` removes the inline DLQ policy before the destroy, because IAM
+> refuses to delete a role that still carries policies Terraform does not manage.
+
+### What `update-scope` reconciles
+
+| Reconciled by `update-scope` | Applied on the next deployment |
+|------------------------------|--------------------------------|
+| `vpc_enabled` (execution role policy) | `memory`, `timeout`, `ephemeral_storage` |
+| `triggers.invoke_permissions` | `runtime`, `handler` (Zip only) |
+| `dead_letter_target_arn` | `layers`, environment variables, VPC config |
+| NRN identity metadata | |
+
+`reserved_concurrency` and `provisioned_concurrency` have their own actions and
+apply immediately. Making `update-scope` apply the remaining function
+configuration requires the OpenTofu-on-update work described above.
 
 ### Resource Naming
 
@@ -480,29 +592,41 @@ We use **three types of tests** to ensure quality at different levels:
 
 | Test Type | What it Tests | Location | Command |
 |-----------|---------------|----------|---------|
-| **Unit Tests (BATS)** | Bash scripts (build_context, scope scripts, deployment scripts) | `lambda/tests/scripts/` | `make -C testing test-unit` |
-| **Tofu Tests** | Terraform modules (IAM, Lambda, API Gateway, ALB, Route53) | `lambda/deployment/*/modules/*.tftest.hcl` | `make -C testing test-tofu` |
-| **Integration Tests** | Full workflow execution with mocked AWS | `lambda/tests/integration/` | `make -C testing test-integration` |
+| **Unit Tests (BATS)** | Bash scripts (build_context, scope scripts, deployment scripts) | `lambda/scope/tests/scripts/`, `lambda/deployment/tests/scripts/` | `make -C testing test-unit` |
+| **Tofu Tests** | Terraform modules (IAM, Lambda, API Gateway, ALB, Route53) | `lambda/scope/tofu/*/modules/*.tftest.hcl` | `make -C testing test-tofu` |
 
 ### Unit Tests (BATS)
 
 Test bash scripts in isolation using mocked AWS CLI and nullplatform API commands.
 
 **Example test files:**
-- `tests/scripts/build_context.bats` - Deployment context extraction
-- `tests/scripts/create_iam_role.bats` - IAM role creation
-- `tests/scripts/update_alias_weights.bats` - Traffic splitting logic
+- `scope/tests/scripts/scope_build_context.bats` - Scope context extraction
+- `scope/tests/scripts/sync_invoke_permissions.bats` - External invoke permission reconciliation
+- `deployment/tests/scripts/update_alias_weights.bats` - Traffic splitting logic
+
+Two mocking styles live in `scope/tests/scripts/helpers/`:
+
+- `test_helper.bash` — a sequential queue that answers every AWS call in order.
+  Fine for a script that makes one or two calls.
+- `aws_cli_mock.bash` — keys responses by `<service> <subcommand>` and records
+  every invocation. Use it for scripts that branch on what AWS returns, and to
+  assert on calls that must *not* happen.
+
+**Scripts that use `return` instead of `exit`** — the workflow engine sources
+them — must be tested with `run bash -c "source '<script>'"`. Running them with
+`run bash <script>` makes `return` a warning that does not stop the script, so
+every failure assertion silently passes.
 
 ### Tofu Tests (OpenTofu)
 
 Test Terraform modules using `tofu test` with mock providers.
 
 **Example test files:**
-- `deployment/iam/modules/iam.tftest.hcl`
-- `deployment/compute/lambda/modules/lambda.tftest.hcl`
-- `deployment/networking/api_gateway/modules/api_gateway.tftest.hcl`
-- `deployment/networking/alb/modules/alb.tftest.hcl`
-- `deployment/dns/route53/modules/route53.tftest.hcl`
+- `scope/tofu/iam/modules/iam.tftest.hcl`
+- `scope/tofu/compute/lambda/modules/lambda.tftest.hcl`
+- `scope/tofu/networking/api_gateway/modules/api_gateway.tftest.hcl`
+- `scope/tofu/networking/alb/modules/alb.tftest.hcl`
+- `scope/tofu/dns/route53/modules/route53.tftest.hcl`
 
 ### Running Tests
 
@@ -513,15 +637,10 @@ make -C testing test-all
 # Run specific test types
 make -C testing test-unit              # BATS unit tests
 make -C testing test-tofu              # OpenTofu module tests
-make -C testing test-integration       # Full workflow integration tests
 
 # Run tests for this module only
 make -C testing test-unit MODULE=lambda
 make -C testing test-tofu MODULE=lambda
-make -C testing test-integration MODULE=lambda
-
-# Verbose output (integration only)
-make -C testing test-integration VERBOSE=1
 ```
 
 ---
