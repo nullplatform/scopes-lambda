@@ -7,12 +7,19 @@
 source "$SERVICE_PATH/utils/get_config_value"
 source "$SERVICE_PATH/utils/log"
 
-SCOPE_INLINE_POLICIES=("np-lambda-dlq")
+# Must match the names sync_dead_letter_queue writes (scoped by id, since a
+# dedicated execution role can be shared between scopes).
+SCOPE_INLINE_POLICIES=("np-lambda-dlq-${SCOPE_ID:-}")
 
 log info "🔍 Cleaning up scope-managed inline role policies..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
   log debug "   ⏭️  LAMBDA_FUNCTION_NAME not set — nothing to clean up"
+  return 0
+fi
+
+if [ -z "${SCOPE_ID:-}" ] || [ "$SCOPE_ID" = "null" ]; then
+  log debug "   ⏭️  SCOPE_ID not set — cannot resolve the scoped policy names"
   return 0
 fi
 

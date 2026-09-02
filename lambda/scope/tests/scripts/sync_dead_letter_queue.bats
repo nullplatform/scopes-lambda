@@ -18,6 +18,7 @@ setup() {
   setup_aws_cli_mock
 
   export LAMBDA_FUNCTION_NAME="my-test-function"
+  export SCOPE_ID="9001"
   ROLE_ARN="arn:aws:iam::111122223333:role/np-lambda-my-test-function-role"
 }
 
@@ -98,7 +99,7 @@ function_with_dlq() {
   assert_success
   assert_aws_cli_called "--dead-letter-config {}"
   assert_aws_cli_called "iam delete-role-policy"
-  assert_aws_cli_called "--policy-name np-lambda-dlq"
+  assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
   assert_output_contains "Dead letter queue disabled"
 }
 
@@ -176,4 +177,38 @@ function_with_dlq() {
   assert_failure
   assert_output_contains "Failed to grant dead letter access"
   assert_aws_cli_not_called "update-function-configuration"
+}
+
+@test "sync_dead_letter_queue: scopes the policy name so shared roles do not collide" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+
+  run_sourced
+
+  assert_success
+  # A dedicated execution role can be shared between scopes; an unscoped name
+  # would let one scope overwrite or delete another's grant.
+  assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
+}
+
+@test "sync_dead_letter_queue: fails when SCOPE_ID is not set" {
+  unset SCOPE_ID
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "SCOPE_ID is required"
+}
+
+@test "sync_dead_letter_queue: fails when the update does not complete" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  aws_mock_response "lambda wait" 255 "Waiter FunctionUpdated failed"
+
+  run_sourced
+
+  assert_failure
+  assert_output_contains "did not complete"
 }

@@ -19,6 +19,7 @@ setup() {
 
   export CONTEXT='{}'
   export LAMBDA_FUNCTION_NAME="my-test-function"
+  export SCOPE_ID="9001"
 }
 
 teardown() {
@@ -35,7 +36,7 @@ teardown() {
   assert_success
   assert_aws_cli_called "iam delete-role-policy"
   assert_aws_cli_called "--role-name np-lambda-my-test-function-role"
-  assert_aws_cli_called "--policy-name np-lambda-dlq"
+  assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
 }
 
 @test "cleanup_role_inline_policies: derives the role name when the function is already gone" {

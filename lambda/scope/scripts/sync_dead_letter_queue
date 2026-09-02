@@ -6,7 +6,25 @@
 
 source "$SERVICE_PATH/utils/log"
 
-DLQ_POLICY_NAME="np-lambda-dlq"
+wait_for_function_update() {
+  if aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local last_status
+  last_status=$(aws lambda get-function-configuration \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --query 'LastUpdateStatus' --output text 2>/dev/null || echo "Unknown")
+
+  echo "❌ The dead letter queue update did not complete (status: $last_status)" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The target queue or topic is in another region or does not exist" >&2
+  echo "   - A concurrent deployment is updating the same function" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Check LastUpdateStatusReason on the function" >&2
+  echo "   - Wait for the running deployment to finish and re-run the action" >&2
+  return 1
+}
 
 log info "🔍 Reconciling function dead letter queue..."
 
@@ -20,6 +38,20 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; t
   echo "   - Re-run the diagnose-scope action to check scope health" >&2
   return 1
 fi
+
+if [ -z "${SCOPE_ID:-}" ] || [ "$SCOPE_ID" = "null" ]; then
+  echo "❌ SCOPE_ID is required but not set" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The step was added to the workflow without declaring SCOPE_ID as an output" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Verify SCOPE_ID is listed in the build_context step outputs" >&2
+  return 1
+fi
+
+# Scoped by id: a dedicated execution role can be shared between scopes (its
+# name template need not include the scope), and an unscoped policy name would
+# let one scope overwrite or delete another's grant.
+DLQ_POLICY_NAME="np-lambda-dlq-${SCOPE_ID}"
 
 dlq_target_arn=$(echo "$CONTEXT" | jq -r '.scope.capabilities.dead_letter_target_arn // ""')
 [ "$dlq_target_arn" = "null" ] && dlq_target_arn=""
@@ -66,7 +98,7 @@ if [ -z "$dlq_target_arn" ]; then
       echo "   📋 AWS error: $aws_output" >&2
       return 1
     fi
-    aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME" 2>&1
+    wait_for_function_update || return 1
   else
     log debug "   ⏭️  No dead letter queue configured — nothing to remove"
   fi
@@ -151,7 +183,7 @@ if ! aws_output=$(aws lambda update-function-configuration \
   return 1
 fi
 
-aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME" 2>&1
+wait_for_function_update || return 1
 
 echo ""
 log info "✨ Dead letter queue set to $dlq_target_arn for $LAMBDA_FUNCTION_NAME"
