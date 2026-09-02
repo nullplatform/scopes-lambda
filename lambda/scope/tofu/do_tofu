@@ -216,6 +216,27 @@ if [ "$TOFU_ACTION" = "apply" ]; then
       log debug "   ✅ alb_listener_rule_arn=$ALB_RULE_ARN"
       export ALB_RULE_ARN
     fi
+
+    # Identity of the scope's function, published to the NRN by store_nrn_metadata
+    # so that services and links can attach event source mappings to the alias
+    # instead of re-deriving the name from slugs.
+    LAMBDA_ALIAS_ARN=$(echo "$outputs" | jq -r '.lambda_alias_arn.value // empty')
+    if [ -n "$LAMBDA_ALIAS_ARN" ]; then
+      log debug "   ✅ alias_arn=$LAMBDA_ALIAS_ARN"
+      export LAMBDA_ALIAS_ARN
+    fi
+
+    LAMBDA_EXECUTION_ROLE_ARN=$(echo "$outputs" | jq -r '.iam_role_arn.value // empty')
+    if [ -n "$LAMBDA_EXECUTION_ROLE_ARN" ]; then
+      log debug "   ✅ execution_role_arn=$LAMBDA_EXECUTION_ROLE_ARN"
+      export LAMBDA_EXECUTION_ROLE_ARN
+    fi
+
+    LAMBDA_EXECUTION_ROLE_NAME=$(echo "$outputs" | jq -r '.iam_role_name.value // empty')
+    if [ -n "$LAMBDA_EXECUTION_ROLE_NAME" ]; then
+      log debug "   ✅ execution_role_name=$LAMBDA_EXECUTION_ROLE_NAME"
+      export LAMBDA_EXECUTION_ROLE_NAME
+    fi
   fi
 
   # Tofu manages the alias with lifecycle.ignore_changes on function_version, so it
