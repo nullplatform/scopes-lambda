@@ -6,6 +6,9 @@ map_custom_action() {
   local action="$1"
 
   case "$action" in
+    "update-scope")
+      echo "update"
+      ;;
     "delete-scope")
       echo "delete"
       ;;
