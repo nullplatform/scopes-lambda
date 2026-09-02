@@ -97,7 +97,7 @@ function_with_dlq() {
   run_sourced
 
   assert_success
-  assert_aws_cli_called "--dead-letter-config {}"
+  assert_aws_cli_called '--dead-letter-config {"TargetArn":""}'
   assert_aws_cli_called "iam delete-role-policy"
   assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
   assert_output_contains "Dead letter queue disabled"

@@ -87,7 +87,7 @@ if [ -z "$dlq_target_arn" ]; then
     log info "   📝 Removing dead letter queue..."
     if ! aws_output=$(aws lambda update-function-configuration \
       --function-name "$LAMBDA_FUNCTION_NAME" \
-      --dead-letter-config '{}' 2>&1); then
+      --dead-letter-config '{"TargetArn":""}' 2>&1); then
       echo "❌ Failed to remove the dead letter queue from '$LAMBDA_FUNCTION_NAME'" >&2
       echo "💡 Possible causes:" >&2
       echo "   - Permission denied (missing lambda:UpdateFunctionConfiguration)" >&2
