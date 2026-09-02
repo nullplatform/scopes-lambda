@@ -1,0 +1,157 @@
+#!/bin/bash
+# Reconcile the DLQ for failed async invocations (not an SQS redrive policy).
+#
+# DeadLetterConfig and the role's send grant must move together: without the
+# grant Lambda drops the failed event silently.
+
+source "$SERVICE_PATH/utils/log"
+
+DLQ_POLICY_NAME="np-lambda-dlq"
+
+log info "🔍 Reconciling function dead letter queue..."
+
+if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
+  echo "❌ LAMBDA_FUNCTION_NAME is required but not set" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - build_context step failed to resolve the function name" >&2
+  echo "   - The step was added to the workflow without declaring the variable as an output" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Verify LAMBDA_FUNCTION_NAME is listed in the build_context step outputs" >&2
+  echo "   - Re-run the diagnose-scope action to check scope health" >&2
+  return 1
+fi
+
+dlq_target_arn=$(echo "$CONTEXT" | jq -r '.scope.capabilities.dead_letter_target_arn // ""')
+[ "$dlq_target_arn" = "null" ] && dlq_target_arn=""
+
+# Read the role off the function rather than re-deriving its name: the scope
+# truncates role names to 64 chars and a scope may run on a dedicated role.
+if ! function_config=$(aws lambda get-function-configuration \
+  --function-name "$LAMBDA_FUNCTION_NAME" \
+  --output json 2>&1); then
+  echo "❌ Failed to read configuration of '$LAMBDA_FUNCTION_NAME'" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The function does not exist yet" >&2
+  echo "   - Permission denied (missing lambda:GetFunctionConfiguration)" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Run diagnose-scope to confirm the function exists" >&2
+  echo "   - Check the assume role permissions" >&2
+  echo "   📋 AWS error: $function_config" >&2
+  return 1
+fi
+
+current_dlq=$(echo "$function_config" | jq -r '.DeadLetterConfig.TargetArn // ""')
+role_arn=$(echo "$function_config" | jq -r '.Role // ""')
+role_name="${role_arn##*/}"
+
+log debug "   📋 function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   📋 execution_role=$role_name"
+log debug "   📋 current_dlq=${current_dlq:-<none>}"
+log debug "   📋 desired_dlq=${dlq_target_arn:-<none>}"
+
+# ── Disable ───────────────────────────────────────────────────────────────────
+if [ -z "$dlq_target_arn" ]; then
+  if [ -n "$current_dlq" ]; then
+    log info "   📝 Removing dead letter queue..."
+    if ! aws_output=$(aws lambda update-function-configuration \
+      --function-name "$LAMBDA_FUNCTION_NAME" \
+      --dead-letter-config '{}' 2>&1); then
+      echo "❌ Failed to remove the dead letter queue from '$LAMBDA_FUNCTION_NAME'" >&2
+      echo "💡 Possible causes:" >&2
+      echo "   - Permission denied (missing lambda:UpdateFunctionConfiguration)" >&2
+      echo "   - Another update is still in progress on the function" >&2
+      echo "🔧 How to fix:" >&2
+      echo "   - Check the assume role permissions" >&2
+      echo "   - Wait for the running deployment to finish and re-run the action" >&2
+      echo "   📋 AWS error: $aws_output" >&2
+      return 1
+    fi
+    aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME" 2>&1
+  else
+    log debug "   ⏭️  No dead letter queue configured — nothing to remove"
+  fi
+
+  if [ -n "$role_name" ]; then
+    aws iam delete-role-policy \
+      --role-name "$role_name" \
+      --policy-name "$DLQ_POLICY_NAME" >/dev/null 2>&1 \
+      && log debug "   ✅ Removed inline policy $DLQ_POLICY_NAME from $role_name"
+  fi
+
+  echo ""
+  log info "✨ Dead letter queue disabled for $LAMBDA_FUNCTION_NAME"
+  return 0
+fi
+
+# ── Enable ────────────────────────────────────────────────────────────────────
+case "$dlq_target_arn" in
+  arn:*:sqs:*) dlq_action="sqs:SendMessage" ;;
+  arn:*:sns:*) dlq_action="sns:Publish" ;;
+  *)
+    echo "❌ Unsupported dead letter target '$dlq_target_arn'" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - Lambda only accepts an SQS queue or an SNS topic as a dead letter target" >&2
+    echo "   - The value is not an ARN (e.g. a queue name or URL was entered)" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Use a full ARN, e.g. arn:aws:sqs:us-east-1:123456789012:my-dlq" >&2
+    echo "   - Leave the field empty to disable the dead letter queue" >&2
+    return 1
+    ;;
+esac
+
+if [ -z "$role_name" ]; then
+  echo "❌ Could not resolve the execution role of '$LAMBDA_FUNCTION_NAME'" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The function configuration returned an empty Role field" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Run diagnose-scope to check the function and its execution role" >&2
+  return 1
+fi
+
+# Grant first, then enable: the other order leaves a window where Lambda drops
+# failed events because the role cannot write to the target yet.
+log info "   📝 Granting $dlq_action on the dead letter target to $role_name..."
+dlq_policy=$(jq -n --arg action "$dlq_action" --arg resource "$dlq_target_arn" \
+  '{Version: "2012-10-17", Statement: [{Effect: "Allow", Action: [$action], Resource: $resource}]}')
+
+if ! aws_output=$(aws iam put-role-policy \
+  --role-name "$role_name" \
+  --policy-name "$DLQ_POLICY_NAME" \
+  --policy-document "$dlq_policy" 2>&1); then
+  echo "❌ Failed to grant dead letter access to role '$role_name'" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - Permission denied (missing iam:PutRolePolicy)" >&2
+  echo "   - The assume role's permissions boundary blocks writing to this role" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Check the assume role has iam:PutRolePolicy on the scope's execution roles" >&2
+  echo "   📋 AWS error: $aws_output" >&2
+  return 1
+fi
+
+if [ "$current_dlq" = "$dlq_target_arn" ]; then
+  log debug "   ⏭️  Dead letter queue already set to $dlq_target_arn"
+  echo ""
+  log info "✨ Dead letter queue up to date for $LAMBDA_FUNCTION_NAME"
+  return 0
+fi
+
+log info "   📡 Setting dead letter queue to $dlq_target_arn..."
+if ! aws_output=$(aws lambda update-function-configuration \
+  --function-name "$LAMBDA_FUNCTION_NAME" \
+  --dead-letter-config "TargetArn=$dlq_target_arn" 2>&1); then
+  echo "❌ Failed to set the dead letter queue on '$LAMBDA_FUNCTION_NAME'" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The target queue or topic does not exist, or lives in another region" >&2
+  echo "   - Permission denied (missing lambda:UpdateFunctionConfiguration)" >&2
+  echo "   - Another update is still in progress on the function" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Verify the ARN exists in the same region as the function" >&2
+  echo "   - Wait for the running deployment to finish and re-run the action" >&2
+  echo "   📋 AWS error: $aws_output" >&2
+  return 1
+fi
+
+aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME" 2>&1
+
+echo ""
+log info "✨ Dead letter queue set to $dlq_target_arn for $LAMBDA_FUNCTION_NAME"
