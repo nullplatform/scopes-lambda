@@ -34,6 +34,20 @@ tags_selectors = {
 # service_path             = "lambda"
 
 ################################################################################
+# Worker model (defaults to on)
+################################################################################
+
+# Set false to keep the git-clone exec channel instead.
+# worker_orchestrator = true
+
+# Digest from the Artifact table of the release you want to run. The worker image
+# carries the scope code, so github_branch above only affects the spec templates.
+# worker_image_digest = "sha256:..."
+
+# Bump when pinning a newer image.
+# package_version = "0.0.1"
+
+################################################################################
 # Overrides (optional — appends --overrides-path to the agent cmdline)
 ################################################################################
 

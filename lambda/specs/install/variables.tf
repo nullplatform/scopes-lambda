@@ -75,6 +75,39 @@ variable "service_path" {
 }
 
 ################################################################################
+# Worker model
+#
+# The agent spawns the released worker image per action instead of git-cloning
+# this repo. Requires a worker-orchestrator agent listening on tags_selectors,
+# allowing public.ecr.aws/nullplatform/scopes*.
+################################################################################
+
+variable "worker_orchestrator" {
+  description = "Publish the scope as a package and emit a package-exec channel. False keeps the git-clone exec channel."
+  type        = bool
+  default     = true
+}
+
+variable "package_slug" {
+  description = "Slug of the scope package"
+  type        = string
+  default     = "scopes-lambda"
+}
+
+variable "package_version" {
+  description = "Semver of the package revision to publish. Bump when pinning a newer worker image."
+  type        = string
+  default     = "0.0.1"
+}
+
+variable "worker_image_digest" {
+  description = "Digest of the worker image to pin. Taken from the Artifact table of the matching GitHub release."
+  type        = string
+  # v0.3.2
+  default = "sha256:4151e8005a6ad7de44b82411cf4f04cf197cf52d4a399e403ffdcd111e083482"
+}
+
+################################################################################
 # Overrides
 ################################################################################
 
