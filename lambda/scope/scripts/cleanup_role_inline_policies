@@ -3,9 +3,12 @@
 #
 # IAM refuses DeleteRole while unmanaged inline policies remain. Two scripts
 # create them through the CLI: sync_dead_letter_queue (np-lambda-dlq-<scope_id>)
-# and merge_iam_policies (<name>-<deployment_id>, one per deployment), so a
-# static list would miss the latter. Best-effort: a missing role or policy is
-# the normal case.
+# and merge_iam_policies (<name>-<deployment_id>, one per deployment), so the
+# scope's own role is cleared wholesale rather than from a static list.
+#
+# On a role shared with other scopes only this scope's own policies can be
+# identified, so per-deployment ones are left behind and reported. Best-effort:
+# a missing role or policy is the normal case.
 
 source "$SERVICE_PATH/utils/get_config_value"
 source "$SERVICE_PATH/utils/log"
@@ -58,6 +61,14 @@ if [ "$cleanup_role_name" = "$scope_managed_role" ]; then
   policies_to_delete="$inline_policies"
 else
   log debug "   📋 role is shared — removing only this scope's policies"
+  # Per-deployment policy names carry no scope marker, so on a shared role they
+  # cannot be attributed. Report them: they count against the role's inline
+  # policy quota and will need removing by hand.
+  leftovers=$(printf '%s' "$inline_policies" | tr '\t' '\n' \
+    | grep -vEx "np-lambda-dlq-[0-9]+" || echo "")
+  if [ -n "$leftovers" ]; then
+    log warn "   ⚠️  Left on shared role $cleanup_role_name (cannot attribute to a scope): $(echo "$leftovers" | tr '\n' ' ')"
+  fi
   # --output text returns the names tab-separated
   policies_to_delete=$(printf '%s' "$inline_policies" | tr '\t' '\n' \
     | grep -Ex "np-lambda-dlq-${SCOPE_ID:-__unset__}" || echo "")
