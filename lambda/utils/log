@@ -27,7 +27,7 @@ log() {
     *)     msg_num=1 ;;
   esac
 
-  case "${LOG_LEVEL:-info}" in
+  case "$(printf '%s' "${LOG_LEVEL:-info}" | tr '[:upper:]' '[:lower:]')" in
     debug) threshold=0 ;;
     info)  threshold=1 ;;
     warn)  threshold=2 ;;
