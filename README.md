@@ -439,6 +439,12 @@ ARN) on that ARN and nothing else. Without the grant Lambda drops the failed
 event silently, so the two always move together. Clearing the attribute reverts
 both.
 
+> **A target encrypted with a customer-managed KMS key needs one more grant.**
+> Lambda also requires `kms:GenerateDataKey` (plus `kms:Decrypt` for SQS) on the
+> key, which the scope cannot derive from the queue or topic ARN. Add it to the
+> execution role yourself, or the delivery is denied and the event is dropped —
+> with both the `DeadLetterConfig` and the send grant looking correctly applied.
+
 > **Why these two live outside Terraform.** The scope's OpenTofu run only happens
 > on `create-scope` / `delete-scope`. The per-scope state holds the *placeholder*
 > function, while deployments mutate the real function through the AWS CLI, so an
