@@ -20,6 +20,7 @@ setup() {
   export CONTEXT='{}'
   export LAMBDA_FUNCTION_NAME="my-test-function"
   export SCOPE_ID="9001"
+  SCOPE_ROLE="np-lambda-my-test-function-role"
 }
 
 teardown() {
@@ -27,30 +28,54 @@ teardown() {
   [ -d "$MOCK_BIN_DIR" ] && rm -rf "$MOCK_BIN_DIR"
 }
 
-@test "cleanup_role_inline_policies: removes the DLQ policy from the function's role" {
-  aws_mock_response "lambda get-function-configuration" 0 \
-    "arn:aws:iam::111122223333:role/np-lambda-my-test-function-role"
-
-  run_sourced
-
-  assert_success
-  assert_aws_cli_called "iam delete-role-policy"
-  assert_aws_cli_called "--role-name np-lambda-my-test-function-role"
-  assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
+on_role() {
+  aws_mock_response "lambda get-function-configuration" 0 "arn:aws:iam::111122223333:role/$1"
 }
 
-@test "cleanup_role_inline_policies: derives the role name when the function is already gone" {
-  aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
+with_inline_policies() {
+  aws_mock_response "iam list-role-policies" 0 "$1"
+}
+
+@test "cleanup_role_inline_policies: clears every policy on the scope's own role" {
+  on_role "$SCOPE_ROLE"
+  # merge_iam_policies names its policies <name>-<deployment_id>, so a static
+  # list would leave them behind and DeleteRole would fail.
+  with_inline_policies "np-lambda-dlq-9001	app-policy-4242"
 
   run_sourced
 
   assert_success
-  assert_aws_cli_called "--role-name np-lambda-my-test-function-role"
+  assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
+  assert_aws_cli_called "--policy-name app-policy-4242"
+}
+
+@test "cleanup_role_inline_policies: touches only its own policy on a shared role" {
+  on_role "shared-lambda-role"
+  with_inline_policies "np-lambda-dlq-9001	np-lambda-dlq-7777	someone-elses-policy"
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
+  # Another scope's grant and unrelated policies must survive
+  assert_aws_cli_not_called "--policy-name np-lambda-dlq-7777"
+  assert_aws_cli_not_called "--policy-name someone-elses-policy"
+}
+
+@test "cleanup_role_inline_policies: derives the role name when the function is gone" {
+  aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
+  with_inline_policies "np-lambda-dlq-9001"
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_called "--role-name $SCOPE_ROLE"
 }
 
 @test "cleanup_role_inline_policies: honours a custom execution role prefix" {
   export LAMBDA_EXECUTION_ROLE_PREFIX="nullplatform-"
   aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
+  with_inline_policies "np-lambda-dlq-9001"
 
   run_sourced
 
@@ -58,9 +83,19 @@ teardown() {
   assert_aws_cli_called "--role-name nullplatform-my-test-function-role"
 }
 
-@test "cleanup_role_inline_policies: a missing policy is not an error" {
-  aws_mock_response "lambda get-function-configuration" 0 \
-    "arn:aws:iam::111122223333:role/np-lambda-my-test-function-role"
+@test "cleanup_role_inline_policies: no-op when the role has no inline policies" {
+  on_role "$SCOPE_ROLE"
+  with_inline_policies ""
+
+  run_sourced
+
+  assert_success
+  assert_aws_cli_not_called "delete-role-policy"
+}
+
+@test "cleanup_role_inline_policies: a failed delete is reported, not fatal" {
+  on_role "$SCOPE_ROLE"
+  with_inline_policies "np-lambda-dlq-9001"
   aws_mock_response "iam delete-role-policy" 254 "NoSuchEntity"
 
   run_sourced
