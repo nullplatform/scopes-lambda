@@ -24,3 +24,12 @@ steps:
   - name: update_iam
     type: script
     file: "$SERVICE_PATH/scope/scripts/update_iam_role"
+  - name: sync_invoke_permissions
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/sync_invoke_permissions"
+  - name: sync_dead_letter_queue
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/sync_dead_letter_queue"
+  - name: store_metadata
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/store_nrn_metadata"

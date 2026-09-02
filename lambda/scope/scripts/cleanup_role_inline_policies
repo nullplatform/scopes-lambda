@@ -1,0 +1,48 @@
+#!/bin/bash
+# Drop the inline policies this scope writes outside terraform, before destroy.
+#
+# IAM refuses DeleteRole while unmanaged inline policies remain. Best-effort:
+# a missing role or policy is the normal case.
+
+source "$SERVICE_PATH/utils/get_config_value"
+source "$SERVICE_PATH/utils/log"
+
+SCOPE_INLINE_POLICIES=("np-lambda-dlq")
+
+log info "🔍 Cleaning up scope-managed inline role policies..."
+
+if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
+  log debug "   ⏭️  LAMBDA_FUNCTION_NAME not set — nothing to clean up"
+  return 0
+fi
+
+# Prefer the role the function actually runs on; fall back to the name the iam
+# setup derives, for the case where the function is already gone.
+cleanup_role_name=$(aws lambda get-function-configuration \
+  --function-name "$LAMBDA_FUNCTION_NAME" \
+  --query 'Role' --output text 2>/dev/null || echo "")
+cleanup_role_name="${cleanup_role_name##*/}"
+
+if [ -z "$cleanup_role_name" ] || [ "$cleanup_role_name" = "None" ]; then
+  cleanup_role_prefix=$(get_config_value \
+    --provider '.providers["scope-configurations"].lambda.execution_role_prefix' \
+    --env LAMBDA_EXECUTION_ROLE_PREFIX \
+    --default 'np-lambda-')
+  cleanup_role_name="${cleanup_role_prefix}${LAMBDA_FUNCTION_NAME}-role"
+  cleanup_role_name="${cleanup_role_name:0:64}"
+fi
+
+log debug "   📋 execution_role=$cleanup_role_name"
+
+for policy_name in "${SCOPE_INLINE_POLICIES[@]}"; do
+  if aws iam delete-role-policy \
+    --role-name "$cleanup_role_name" \
+    --policy-name "$policy_name" >/dev/null 2>&1; then
+    log info "   📝 Removed inline policy $policy_name from $cleanup_role_name"
+  else
+    log debug "   ⏭️  $policy_name not present on $cleanup_role_name"
+  fi
+done
+
+echo ""
+log info "✨ Inline role policies cleaned up"

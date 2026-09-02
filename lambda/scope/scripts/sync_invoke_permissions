@@ -1,0 +1,174 @@
+#!/bin/bash
+# Reconcile lambda.triggers.invoke_permissions from the scope-configuration.
+#
+# Grants target the main alias, so external triggers respect blue/green weights.
+# Only Sids carrying our prefix are removed — never AllowAPIGatewayInvoke,
+# AllowALBInvoke, or anything added out of band.
+
+source "$SERVICE_PATH/utils/log"
+
+NP_INVOKE_SID_PREFIX="np-ext-"
+
+log info "🔍 Reconciling external invoke permissions..."
+
+if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
+  echo "❌ LAMBDA_FUNCTION_NAME is required but not set" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - build_context step failed to resolve the function name" >&2
+  echo "   - The step was added to the workflow without declaring the variable as an output" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   - Verify LAMBDA_FUNCTION_NAME is listed in the build_context step outputs" >&2
+  echo "   - Re-run the diagnose-scope action to check scope health" >&2
+  return 1
+fi
+
+invoke_alias="${LAMBDA_MAIN_ALIAS_NAME:-main}"
+
+desired=$(echo "$CONTEXT" | jq -c '.providers["scope-configurations"].lambda.triggers.invoke_permissions // []')
+desired_count=$(echo "$desired" | jq 'length')
+
+log debug "   📋 function_name=$LAMBDA_FUNCTION_NAME"
+log debug "   📋 qualifier=$invoke_alias"
+log debug "   📋 declared_permissions=$desired_count"
+
+# ── Current state ─────────────────────────────────────────────────────────────
+# A function with no resource policy returns ResourceNotFoundException; that is
+# the normal first-run case, not an error.
+policy_json=$(aws lambda get-policy \
+  --function-name "$LAMBDA_FUNCTION_NAME" \
+  --qualifier "$invoke_alias" \
+  --query 'Policy' \
+  --output text 2>/dev/null)
+
+if [ -z "$policy_json" ] || [ "$policy_json" = "None" ]; then
+  current_statements="[]"
+else
+  current_statements=$(echo "$policy_json" | jq -c '.Statement // []')
+fi
+
+managed_sids=$(echo "$current_statements" | jq -r --arg p "$NP_INVOKE_SID_PREFIX" \
+  '.[] | select(.Sid | startswith($p)) | .Sid')
+
+# ── Remove managed statements that are no longer declared ─────────────────────
+desired_sids=$(echo "$desired" | jq -r --arg p "$NP_INVOKE_SID_PREFIX" '.[] | $p + .statement_id')
+
+while IFS= read -r sid; do
+  [ -z "$sid" ] && continue
+  if ! echo "$desired_sids" | grep -qxF "$sid"; then
+    log info "   📝 Removing permission no longer declared: $sid"
+    if ! aws_output=$(aws lambda remove-permission \
+      --function-name "$LAMBDA_FUNCTION_NAME" \
+      --qualifier "$invoke_alias" \
+      --statement-id "$sid" 2>&1); then
+      echo "❌ Failed to remove invoke permission '$sid' from '$LAMBDA_FUNCTION_NAME'" >&2
+      echo "💡 Possible causes:" >&2
+      echo "   - Permission denied (missing lambda:RemovePermission)" >&2
+      echo "   - The statement was removed concurrently by another process" >&2
+      echo "🔧 How to fix:" >&2
+      echo "   - Check the assume role has lambda:RemovePermission on the function" >&2
+      echo "   - Re-run the action; removal is idempotent" >&2
+      echo "   📋 AWS error: $aws_output" >&2
+      return 1
+    fi
+  fi
+done <<< "$managed_sids"
+
+# ── Add or refresh declared statements ────────────────────────────────────────
+while IFS= read -r perm; do
+  [ -z "$perm" ] && continue
+
+  statement_id=$(echo "$perm" | jq -r '.statement_id // ""')
+  principal=$(echo "$perm" | jq -r '.principal // ""')
+  source_arn=$(echo "$perm" | jq -r '.source_arn // ""')
+  source_account=$(echo "$perm" | jq -r '.source_account // ""')
+  action=$(echo "$perm" | jq -r '.action // "lambda:InvokeFunction"')
+
+  if [ -z "$statement_id" ] || [ -z "$principal" ]; then
+    echo "❌ Invoke permission is missing 'statement_id' or 'principal': $perm" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The scope-configuration entry was saved with an incomplete object" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Set both statement_id and principal on every invoke_permissions entry" >&2
+    return 1
+  fi
+
+  # AWS restricts StatementId to [a-zA-Z0-9-_] and 100 characters, and our prefix
+  # eats part of that budget — fail here rather than on an opaque AWS error.
+  if ! [[ "$statement_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "❌ Invalid statement_id '$statement_id': only letters, digits, '-' and '_' are allowed" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The statement_id contains dots, colons or spaces (e.g. an ARN was pasted)" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Use a short symbolic name, e.g. 'apigw-authorizer' or 'eventbridge-daily'" >&2
+    return 1
+  fi
+
+  sid="${NP_INVOKE_SID_PREFIX}${statement_id}"
+
+  if [ ${#sid} -gt 100 ]; then
+    echo "❌ statement_id '$statement_id' is too long (Sid '$sid' exceeds 100 characters)" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - AWS caps StatementId at 100 characters, and '$NP_INVOKE_SID_PREFIX' is prepended" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Shorten the statement_id to at most $((100 - ${#NP_INVOKE_SID_PREFIX})) characters" >&2
+    return 1
+  fi
+
+  # add-permission cannot update in place, so a changed principal/source means
+  # remove + add. Compare against the live statement to stay idempotent.
+  existing=$(echo "$current_statements" | jq -c --arg sid "$sid" 'map(select(.Sid == $sid)) | first // empty')
+
+  if [ -n "$existing" ]; then
+    cur_principal=$(echo "$existing" | jq -r '.Principal.Service // .Principal // ""')
+    cur_action=$(echo "$existing" | jq -r 'if (.Action | type) == "array" then .Action[0] else .Action end // ""')
+    cur_source_arn=$(echo "$existing" | jq -r '.Condition.ArnLike."AWS:SourceArn" // ""')
+    cur_source_account=$(echo "$existing" | jq -r '.Condition.StringEquals."AWS:SourceAccount" // ""')
+
+    if [ "$cur_principal" = "$principal" ] && [ "$cur_action" = "$action" ] && \
+       [ "$cur_source_arn" = "$source_arn" ] && [ "$cur_source_account" = "$source_account" ]; then
+      log debug "   ⏭️  $sid already up to date"
+      continue
+    fi
+
+    log info "   📝 Refreshing changed permission: $sid"
+    if ! aws_output=$(aws lambda remove-permission \
+      --function-name "$LAMBDA_FUNCTION_NAME" \
+      --qualifier "$invoke_alias" \
+      --statement-id "$sid" 2>&1); then
+      echo "❌ Failed to replace invoke permission '$sid' on '$LAMBDA_FUNCTION_NAME'" >&2
+      echo "💡 Possible causes:" >&2
+      echo "   - Permission denied (missing lambda:RemovePermission)" >&2
+      echo "🔧 How to fix:" >&2
+      echo "   - Check the assume role has lambda:RemovePermission on the function" >&2
+      echo "   📋 AWS error: $aws_output" >&2
+      return 1
+    fi
+  else
+    log info "   📝 Adding permission: $sid ($principal)"
+  fi
+
+  add_args=(--function-name "$LAMBDA_FUNCTION_NAME"
+            --qualifier "$invoke_alias"
+            --statement-id "$sid"
+            --action "$action"
+            --principal "$principal")
+  [ -n "$source_arn" ] && add_args+=(--source-arn "$source_arn")
+  [ -n "$source_account" ] && add_args+=(--source-account "$source_account")
+
+  if ! aws_output=$(aws lambda add-permission "${add_args[@]}" 2>&1); then
+    echo "❌ Failed to add invoke permission '$sid' to '$LAMBDA_FUNCTION_NAME'" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - Permission denied (missing lambda:AddPermission)" >&2
+    echo "   - Invalid principal '$principal' or malformed source_arn" >&2
+    echo "   - The '$invoke_alias' alias does not exist on the function" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Verify the principal is an AWS service principal (e.g. events.amazonaws.com)" >&2
+    echo "   - Verify source_arn belongs to the same account and region as the function" >&2
+    echo "   - Run diagnose-scope to confirm the function and alias are healthy" >&2
+    echo "   📋 AWS error: $aws_output" >&2
+    return 1
+  fi
+done < <(echo "$desired" | jq -c '.[]')
+
+echo ""
+log info "✨ External invoke permissions reconciled ($desired_count declared)"
