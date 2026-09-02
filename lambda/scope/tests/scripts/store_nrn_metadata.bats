@@ -170,3 +170,17 @@ with_tofu_outputs() {
   assert_failure
   assert_output_contains "Failed to write NRN metadata"
 }
+
+@test "store_nrn_metadata: a bad ALB priority does not take the identity down with it" {
+  with_tofu_outputs
+  export ALB_RULE_PRIORITY="not-a-number"
+
+  run_sourced
+
+  assert_success
+  # jq --argjson would fail on this and blank the whole payload, dropping the
+  # keys other services read — while still reporting success.
+  assert_np_body_contains "lambda.alias_arn"
+  run bash -c "grep -qF 'alb_rule_priority' '$MOCK_BIN_DIR/np_calls'"
+  assert_failure
+}

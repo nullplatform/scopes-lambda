@@ -71,8 +71,14 @@ add_metadata "execution_role_name" "${LAMBDA_EXECUTION_ROLE_NAME:-}"
 
 # Non-HTTP (event-driven) scopes skip ALB setup entirely and won't have this set.
 if [ -n "${ALB_RULE_PRIORITY:-}" ]; then
-  metadata=$(echo "$metadata" | jq --argjson p "$ALB_RULE_PRIORITY" '. + {alb_rule_priority: $p}')
-  log debug "   ✅ alb_rule_priority=$ALB_RULE_PRIORITY"
+  # Validate before --argjson: invalid JSON makes jq fail and would wipe the
+  # identity keys other services read, while still reporting success.
+  if [[ "$ALB_RULE_PRIORITY" =~ ^[0-9]+$ ]]; then
+    metadata=$(echo "$metadata" | jq --argjson p "$ALB_RULE_PRIORITY" '. + {alb_rule_priority: $p}')
+    log debug "   ✅ alb_rule_priority=$ALB_RULE_PRIORITY"
+  else
+    log warn "   ⚠️  Ignoring non-numeric ALB_RULE_PRIORITY='$ALB_RULE_PRIORITY'"
+  fi
 fi
 
 if [ "$(echo "$metadata" | jq 'length')" -eq 0 ]; then
