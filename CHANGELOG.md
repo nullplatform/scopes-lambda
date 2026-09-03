@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/nullplatform/scopes-lambda/compare/v0.4.0...v0.5.0) (2026-09-03)
+
+
+### Features
+
+* add terraform module to install the lambda scope ([0020bd1](https://github.com/nullplatform/scopes-lambda/commit/0020bd133a61047dd21ed1713756670cee7d6af1))
+* add terraform module to install the lambda scope ([9ea41c3](https://github.com/nullplatform/scopes-lambda/commit/9ea41c3514ed7d3f5ad1339c0931ec0500892ddf))
+* build lambda worker image on worker-bridge base + register artifact ([4f15889](https://github.com/nullplatform/scopes-lambda/commit/4f15889dfc0fc2fdc94aceb6373f502f810a94bd))
+* build lambda worker image on worker-bridge base + register artifact ([7e57fa5](https://github.com/nullplatform/scopes-lambda/commit/7e57fa5179c28a970f7cd56a65ab28452a5aaaf5))
+
+
+### Bug Fixes
+
+* **docker:** bump tofu to 1.10.10 and retry its download ([#42](https://github.com/nullplatform/scopes-lambda/issues/42)) ([fda68df](https://github.com/nullplatform/scopes-lambda/commit/fda68df107a9f3aa655b5f56f1fcdca0c6684cb2))
+* **docker:** install OpenTofu &gt;= 1.10 instead of alpine's 1.7.2 ([b10067b](https://github.com/nullplatform/scopes-lambda/commit/b10067b5e461889ac62411bb623e569ec4e6b81d))
+* **docker:** install OpenTofu &gt;= 1.10 instead of alpine's 1.7.2 ([055b7ed](https://github.com/nullplatform/scopes-lambda/commit/055b7ed6377c2d365a905e612eb85e5df9c07473))
+
 ## [0.4.0](https://github.com/nullplatform/scopes-lambda/compare/v0.3.2...v0.4.0) (2026-09-02)
 
 
