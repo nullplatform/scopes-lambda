@@ -32,9 +32,11 @@ provider_arn_for_selector() {
   [ -n "$selector" ] || return 0
 
   local pid data
+  # Filter by category: the API ignores --specification_slug and returns every
+  # provider under the nrn, so "first" would pick an unrelated one.
   pid=$(np provider list --nrn "$nrn" \
-          --specification_slug aws-iam-configuration \
-          --format json --limit 100 2>/dev/null \
+          --categories identity-access-control \
+          --format json 2>/dev/null \
         | jq -r '[ (.results // [])[] ] | first | .id // ""' 2>/dev/null)
   [ -n "$pid" ] && [ "$pid" != "null" ] || return 0
 
