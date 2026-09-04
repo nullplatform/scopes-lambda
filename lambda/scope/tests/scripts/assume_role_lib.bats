@@ -129,7 +129,7 @@ JSON='{"attributes":{"iam_role_arns":{"arns":[{"selector":"s3","arn":"arn:aws:ia
 @test "resolve_assume_role_arn: IAM provider when no env override" {
   np() {
     case "$*" in
-      *"--specification_slug aws-iam-configuration"*) echo '{"results":[{"id":"iam-1"}]}' ;;
+      *"--categories identity-access-control"*) echo '{"results":[{"id":"iam-1"}]}' ;;
       *"provider read"*) echo '{"attributes":{"iam_role_arns":{"arns":[{"selector":"lambda","arn":"arn:provider:lambda"}]}}}' ;;
       *) echo '{}' ;;
     esac
@@ -143,7 +143,7 @@ JSON='{"attributes":{"iam_role_arns":{"arns":[{"selector":"s3","arn":"arn:aws:ia
 @test "resolve_assume_role_arn: scope-config fallback when provider misses" {
   np() {
     case "$*" in
-      *"--specification_slug aws-iam-configuration"*) echo '{"results":[]}' ;;
+      *"--categories identity-access-control"*) echo '{"results":[]}' ;;
       *"--categories scope-configurations"*) echo '{"results":[{"attributes":{"assume_role":{"arn":"arn:scopecfg:legacy"}}}]}' ;;
       *) echo '{}' ;;
     esac
