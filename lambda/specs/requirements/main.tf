@@ -100,6 +100,7 @@ resource "aws_iam_policy" "nullplatform_lambda_iam_policy" {
           "iam:CreateRole",
           "iam:GetRole",
           "iam:DeleteRole",
+          "iam:ListInstanceProfilesForRole",
           "iam:PutRolePolicy",
           "iam:GetRolePolicy",
           "iam:DeleteRolePolicy",
