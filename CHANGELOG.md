@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/nullplatform/scopes-lambda/compare/v0.5.0...v0.5.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **deps:** bump OpenTofu to 1.12.6 ([#51](https://github.com/nullplatform/scopes-lambda/issues/51)) ([0dc177a](https://github.com/nullplatform/scopes-lambda/commit/0dc177a606519a0c31a485276a793932448de49b))
+
 ## [0.5.0](https://github.com/nullplatform/scopes-lambda/compare/v0.4.0...v0.5.0) (2026-09-05)
 
 
