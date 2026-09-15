@@ -88,6 +88,10 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+run_sourced() {
+  source "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+}
+
 @test "adjust_reserved: sets concurrency value" {
   export CONTEXT='{"parameters":{"value":"10"}}'
 
@@ -99,7 +103,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"ReservedConcurrentExecutions": 10}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "Reserved concurrency set to 10"
@@ -116,7 +120,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "reservation removed"
@@ -125,7 +129,7 @@ MOCK_SCRIPT
 @test "adjust_reserved: fails when value not provided" {
   export CONTEXT='{"parameters":{}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_failure
 }
@@ -133,7 +137,7 @@ MOCK_SCRIPT
 @test "adjust_reserved: fails when value is not a number" {
   export CONTEXT='{"parameters":{"value":"abc"}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_failure
   assert_output_contains "must be a non-negative integer"
@@ -143,7 +147,7 @@ MOCK_SCRIPT
   unset LAMBDA_FUNCTION_NAME
   export CONTEXT='{"parameters":{"value":"10"}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"

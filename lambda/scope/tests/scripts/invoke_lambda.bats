@@ -144,6 +144,10 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+run_sourced() {
+  source "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+}
+
 @test "invoke: succeeds with default payload" {
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main"}'
@@ -151,7 +155,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_success
   assert_output_contains "Lambda invoked successfully"
@@ -160,7 +164,7 @@ MOCK_SCRIPT
 @test "invoke: fails when LAMBDA_FUNCTION_NAME not set" {
   unset LAMBDA_FUNCTION_NAME
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -174,7 +178,7 @@ MOCK_SCRIPT
     '{"errorMessage":"Runtime.HandlerNotFound","errorType":"Runtime.HandlerNotFound"}' \
     '0:{"StatusCode": 200, "FunctionError": "Unhandled"}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_failure
   assert_output_contains "Lambda function returned an error"
@@ -189,7 +193,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_success
   assert_output_contains "lambda invoke" || assert_output_contains "Invoking my-test-function:main"
