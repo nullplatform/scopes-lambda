@@ -48,6 +48,57 @@
             "description": "Optional ARN of the nullplatform agent Lambda layer (e.g. arn:aws:lambda:us-east-1:123456789012:layer:nullplatform-agent:1)."
           }
         }
+      },
+      "triggers": {
+        "type": "object",
+        "title": "External invocation (optional)",
+        "description": "Extra AWS principals allowed to invoke the scope's Lambda, beyond the API Gateway or ALB the scope provisions itself.",
+        "properties": {
+          "invoke_permissions": {
+            "type": "array",
+            "title": "Invoke permissions",
+            "description": "Each entry becomes a Lambda resource policy statement on the scope's main alias, so external triggers respect blue/green traffic weights.",
+            "default": [],
+            "items": {
+              "type": "object",
+              "required": ["statement_id", "principal"],
+              "properties": {
+                "statement_id": {
+                  "type": "string",
+                  "title": "Statement ID",
+                  "description": "Short symbolic name, unique within the scope (letters, digits, '-' and '_'). Example: apigw-authorizer.",
+                  "pattern": "^[a-zA-Z0-9_-]+$"
+                },
+                "principal": {
+                  "type": "string",
+                  "title": "Principal",
+                  "description": "AWS service principal allowed to invoke. Example: apigateway.amazonaws.com, events.amazonaws.com, s3.amazonaws.com."
+                },
+                "source_arn": {
+                  "type": "string",
+                  "title": "Source ARN",
+                  "description": "Optional but strongly recommended: restricts the grant to a single caller. Example: arn:aws:execute-api:us-east-1:123456789012:abcd1234/authorizers/*."
+                },
+                "source_account": {
+                  "type": "string",
+                  "title": "Source account",
+                  "description": "Optional. Required by S3, whose bucket ARNs carry no account ID."
+                },
+                "action": {
+                  "type": "string",
+                  "title": "Action",
+                  "description": "Lambda action to grant.",
+                  "default": "lambda:InvokeFunction"
+                },
+                "scope": {
+                  "type": "string",
+                  "title": "Only for scope",
+                  "description": "Scope slug or id this grant belongs to. Leave empty only when the grant is meant for every Lambda scope under this NRN — a value set at the application or namespace level is inherited by all of them."
+                }
+              }
+            }
+          }
+        }
       }
     },
     "uiSchema": {
@@ -98,6 +149,21 @@
                 {
                   "type": "Control",
                   "scope": "#/properties/agent/properties/null_agent_layer_arn"
+                }
+              ]
+            },
+            {
+              "type": "Category",
+              "label": "External invocation (optional)",
+              "elements": [
+                {
+                  "type": "Label",
+                  "text": "> **\u26a0\ufe0f This grants invoke rights**\n\nEach entry lets another AWS service call this scope's Lambda. Only needed when the function is triggered by something other than the scope's own HTTP endpoint \u2014 an API Gateway authorizer, an EventBridge rule or scheduler, or an S3 bucket notification.\n\nAlways set a **Source ARN** so the grant is limited to one caller; a principal without it lets *any* resource of that service in the account invoke the function. S3 additionally requires **Source account**, because bucket ARNs carry no account ID.\n\nPermissions are attached to the scope's `main` alias, so external triggers follow blue/green traffic weights.\n\nThis provider resolves against the scope's NRN, so a value set at the application or namespace level applies to **every** Lambda scope beneath it. Set **Only for scope** on any grant that belongs to one function.",
+                  "options": { "format": "markdown" }
+                },
+                {
+                  "type": "Control",
+                  "scope": "#/properties/triggers/properties/invoke_permissions"
                 }
               ]
             }

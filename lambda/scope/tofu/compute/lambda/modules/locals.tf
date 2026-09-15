@@ -35,7 +35,6 @@ locals {
   lambda_function_invoke_arn = aws_lambda_function.main.invoke_arn
   lambda_alias_arn           = aws_lambda_alias.main.arn
   lambda_alias_invoke_arn    = aws_lambda_alias.main.invoke_arn
-  lambda_qualified_arn       = aws_lambda_alias.main.arn
   lambda_current_version     = aws_lambda_function.main.version
   lambda_main_alias_name     = aws_lambda_alias.main.name
 }

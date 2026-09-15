@@ -312,10 +312,16 @@ assert_output_not_contains() {
   fi
 }
 
+# Run a script the way the workflow engine does. These scripts use `return` as
+# their exit path, which `bash <script>` turns into a warning instead of an exit.
+run_sourced() {
+  run bash -c "source '${1:-$SCRIPT}'"
+}
+
 # Export all functions for use in tests
 export -f mock_aws mock_aws_error aws assert_aws_called assert_aws_called_with assert_aws_not_called get_aws_call get_aws_call_count reset_aws_mocks
 export -f mock_np mock_np_error np assert_np_called get_np_call get_np_call_count reset_np_mocks
 export -f assert_json_path_equal assert_json_has_key assert_json_array_length
 export -f setup_test_env teardown_test_env
-export -f run_script
+export -f run_script run_sourced
 export -f assert_success assert_failure assert_line assert_output_contains assert_output_not_contains

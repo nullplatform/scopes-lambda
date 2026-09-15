@@ -232,8 +232,8 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 
 | Capability | Options | Default |
 |------------|---------|---------|
-| **Runtime** | Node.js 20/18, Python 3.12/3.11/3.10, Java 21/17/11, .NET 8/6, Ruby 3.3/3.2, Custom (AL2023/AL2) | `nodejs20.x` |
-| **Memory** | 128 MB, 256 MB, 512 MB, 1 GB, 2 GB, 4 GB, 8 GB, 10 GB | `256 MB` |
+| **Runtime** | Node.js 24/22/20, Python 3.14/3.13/3.12/3.11/3.10, Java 25/21/17/11, .NET 10/8, Ruby 4.0/3.4/3.3, Custom (AL2023/AL2) | `nodejs22.x` |
+| **Memory** | 128 MB - 10 GB | `256 MB` |
 | **Timeout** | 3 - 900 seconds | `30` |
 | **Architecture** | ARM64 (Graviton2), x86_64 | `arm64` |
 | **Visibility** | Public (API Gateway), Private (ALB) | — |
@@ -242,7 +242,26 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 | **Provisioned Concurrency** | Unprovisioned, Custom value | `unprovisioned` |
 | **VPC** | Optional private networking | Disabled |
 | **Layers** | Custom Lambda layers (ARN-based) | None |
+| **Dead Letter Queue** | SQS queue or SNS topic ARN for failed async invocations | None |
 | **Continuous Delivery** | Git branch-based auto-deployment | — |
+
+### Event-driven scopes
+
+A function triggered by something other than its own API Gateway or ALB needs
+an invoke permission (see [External invocation](#external-invocation)) and a way
+for the trigger to find it.
+
+`create-scope` and `update-scope` publish the function's identity to the scope's
+NRN, so an event source mapping can target the `main` alias without re-deriving
+names. Scopes created earlier are backfilled on the next `update-scope`.
+
+| NRN key | Value |
+|---------|-------|
+| `lambda.function_name` | Function name |
+| `lambda.function_arn` | Unqualified function ARN |
+| `lambda.alias_arn` | `main` alias ARN — the event source mapping target |
+| `lambda.main_alias` | Alias name (`main`) |
+| `lambda.execution_role_arn` / `lambda.execution_role_name` | Execution role |
 
 ---
 
@@ -348,6 +367,68 @@ Then set the URI (matching your scope architecture) in `values.yaml` or the agen
 ```yaml
 PLACEHOLDER_IMAGE_URI_DEFAULT: "123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-arm64"
 ```
+
+### External invocation
+
+Set in the **scope-configuration** provider (`triggers.invoke_permissions`) — a
+privilege grant belongs to whoever operates the account, not to the scope form.
+Dimensions are allowed, so it can differ per environment.
+
+```json
+{
+  "triggers": {
+    "invoke_permissions": [
+      {
+        "statement_id": "eventbridge-daily",
+        "principal": "events.amazonaws.com",
+        "source_arn": "arn:aws:events:us-east-1:111122223333:rule/daily-report",
+        "scope": "my-scope"
+      }
+    ]
+  }
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `statement_id` | yes | `[a-zA-Z0-9_-]` only. Stored as `np-ext-<statement_id>`. |
+| `principal` | yes | AWS service principal. |
+| `source_arn` | recommended | Without it, *any* resource of that service in the account can invoke the function. |
+| `source_account` | no | Required for S3, whose bucket ARNs carry no account ID. |
+| `action` | no | Defaults to `lambda:InvokeFunction`. |
+| `scope` | recommended | Scope slug or id. The provider resolves against the scope's NRN, so a value set higher up applies to every Lambda scope beneath it. |
+
+Reconciled idempotently on `create-scope` and `update-scope`. Only `np-ext-`
+statements are ever deleted, so `AllowAPIGatewayInvoke`, `AllowALBInvoke` and
+anything added out of band survive.
+
+### Dead letter queue
+
+`dead_letter_target_arn` (a scope attribute) is the SQS queue or SNS topic that
+receives events whose **asynchronous** invocation failed after all retries — not
+the redrive policy of a queue the function consumes from.
+
+Setting it enables `DeadLetterConfig` and grants the execution role
+`sqs:SendMessage` or `sns:Publish` on that ARN alone; without the grant Lambda
+drops the event silently. Clearing it reverts both. A target encrypted with a
+customer-managed KMS key also needs `kms:GenerateDataKey` (plus `kms:Decrypt`
+for SQS) on the key, which the scope cannot derive — add it yourself.
+
+> **Why these two are not in Terraform.** The scope's tofu state holds the
+> *placeholder* function while deployments mutate the real one via the AWS CLI,
+> so an `apply` on update would roll the function back. Both are reconciled by
+> AWS CLI scripts instead, touching only the field they own.
+
+### What `update-scope` reconciles
+
+| Reconciled by `update-scope` | Applied on the next deployment |
+|------------------------------|--------------------------------|
+| `vpc_enabled` (execution role policy) | `memory`, `timeout`, `ephemeral_storage` |
+| `triggers.invoke_permissions` | `runtime`, `handler` (Zip only) |
+| `dead_letter_target_arn` | `layers`, environment variables, VPC config |
+| NRN identity metadata | |
+
+`reserved_concurrency` and `provisioned_concurrency` have their own actions.
 
 ### Resource Naming
 
@@ -480,48 +561,59 @@ We use **three types of tests** to ensure quality at different levels:
 
 | Test Type | What it Tests | Location | Command |
 |-----------|---------------|----------|---------|
-| **Unit Tests (BATS)** | Bash scripts (build_context, scope scripts, deployment scripts) | `lambda/tests/scripts/` | `make -C testing test-unit` |
-| **Tofu Tests** | Terraform modules (IAM, Lambda, API Gateway, ALB, Route53) | `lambda/deployment/*/modules/*.tftest.hcl` | `make -C testing test-tofu` |
-| **Integration Tests** | Full workflow execution with mocked AWS | `lambda/tests/integration/` | `make -C testing test-integration` |
+| **Unit Tests (BATS)** | Bash scripts (build_context, scope scripts, deployment scripts) | `lambda/scope/tests/scripts/`, `lambda/deployment/tests/scripts/` | `make test-unit` |
+| **Tofu Tests** | Terraform modules (IAM, Lambda, API Gateway, ALB, Route53) | `lambda/scope/tofu/*/modules/*.tftest.hcl` | `make test-tofu` |
 
 ### Unit Tests (BATS)
 
 Test bash scripts in isolation using mocked AWS CLI and nullplatform API commands.
 
 **Example test files:**
-- `tests/scripts/build_context.bats` - Deployment context extraction
-- `tests/scripts/create_iam_role.bats` - IAM role creation
-- `tests/scripts/update_alias_weights.bats` - Traffic splitting logic
+- `scope/tests/scripts/scope_build_context.bats` - Scope context extraction
+- `scope/tests/scripts/sync_invoke_permissions.bats` - External invoke permission reconciliation
+- `deployment/tests/scripts/update_alias_weights.bats` - Traffic splitting logic
+
+Two mocking styles live in `scope/tests/scripts/helpers/`:
+
+- `test_helper.bash` — a sequential queue that answers every AWS call in order.
+  Fine for a script that makes one or two calls.
+- `aws_cli_mock.bash` — keys responses by `<service> <subcommand>` and records
+  every invocation. Use it for scripts that branch on what AWS returns, and to
+  assert on calls that must *not* happen.
+
+**Scripts that use `return` instead of `exit`** — the workflow engine sources
+them — must be tested with `run bash -c "source '<script>'"`. Running them with
+`run bash <script>` makes `return` a warning that does not stop the script, so
+every failure assertion silently passes.
 
 ### Tofu Tests (OpenTofu)
 
 Test Terraform modules using `tofu test` with mock providers.
 
 **Example test files:**
-- `deployment/iam/modules/iam.tftest.hcl`
-- `deployment/compute/lambda/modules/lambda.tftest.hcl`
-- `deployment/networking/api_gateway/modules/api_gateway.tftest.hcl`
-- `deployment/networking/alb/modules/alb.tftest.hcl`
-- `deployment/dns/route53/modules/route53.tftest.hcl`
+- `scope/tofu/iam/modules/iam.tftest.hcl`
+- `scope/tofu/compute/lambda/modules/lambda.tftest.hcl`
+- `scope/tofu/networking/api_gateway/modules/api_gateway.tftest.hcl`
+- `scope/tofu/networking/alb/modules/alb.tftest.hcl`
+- `scope/tofu/dns/route53/modules/route53.tftest.hcl`
 
 ### Running Tests
 
 ```bash
 # Run all tests
-make -C testing test-all
+make test-all
 
 # Run specific test types
-make -C testing test-unit              # BATS unit tests
-make -C testing test-tofu              # OpenTofu module tests
-make -C testing test-integration       # Full workflow integration tests
+make test-unit                         # BATS unit tests
+make test-tofu                         # OpenTofu module tests
 
 # Run tests for this module only
-make -C testing test-unit MODULE=lambda
-make -C testing test-tofu MODULE=lambda
-make -C testing test-integration MODULE=lambda
+make test-unit MODULE=lambda
+make test-tofu MODULE=lambda
 
-# Verbose output (integration only)
-make -C testing test-integration VERBOSE=1
+# The make targets shell out to ./testing/, which is not committed. Until the
+# submodule is added, run a suite directly:
+bats lambda/scope/tests/scripts/*.bats
 ```
 
 ---
