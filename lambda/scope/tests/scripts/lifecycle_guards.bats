@@ -89,6 +89,16 @@ run_assume_role_step() {
   assert_output_not_contains "Scope configuration fetched successfully"
 }
 
+# Proves the `return N 2>/dev/null || exit N` idiom: sourced it returns, executed it exits.
+@test "assume_role_step: still fails non-zero when executed instead of sourced" {
+  export ASSUME_ROLE_ARN="arn:aws:iam::111122223333:role/np-lambda"
+
+  run bash "$LAMBDA_DIR/utils/assume_role_step"
+
+  assert_failure
+  assert_output_contains "assume_role step failed"
+}
+
 @test "assume_role_step: a failed assume-role returns instead of killing the worker" {
   export ASSUME_ROLE_ARN="arn:aws:iam::111122223333:role/np-lambda"
   mock_aws_error "AccessDenied: User is not authorized to perform sts:AssumeRole"

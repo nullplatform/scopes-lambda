@@ -27,6 +27,8 @@ log info "   📡 Looking up Lambda function..."
 # Fallback path: an empty one makes the redirect ambiguous and skips the lookup.
 lambda_stderr=$(mktemp) || lambda_stderr="$TF_WORKING_DIR/get-function.err"
 lambda_info=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --output json 2>"$lambda_stderr") || lambda_info=""
+aws_error=$(tr '\n' ' ' < "$lambda_stderr" 2>/dev/null)
+rm -f "$lambda_stderr"
 
 if [ -n "$lambda_info" ]; then
   PACKAGE_TYPE=$(echo "$lambda_info" | jq -r '.Configuration.PackageType // "Zip"')
@@ -46,21 +48,39 @@ if [ -n "$lambda_info" ]; then
     S3_BUCKET="destroy-placeholder"
     S3_KEY="destroy-placeholder"
   fi
-else
-  if grep -q "ResourceNotFoundException" "$lambda_stderr" 2>/dev/null; then
-    log warn "   ⚠️  Lambda function not found in AWS — Tofu will destroy resources from state"
-  else
-    log warn "   ⚠️  Could not read the Lambda function — Tofu will destroy resources from state"
-    log warn "   ⚠️  $(tr '\n' ' ' < "$lambda_stderr")"
-  fi
+elif echo "$aws_error" | grep -q "ResourceNotFoundException"; then
+  log warn "   ⚠️  Lambda function not found in AWS — Tofu will destroy resources from state"
   # The function is gone: do not inherit PACKAGE_TYPE=Image from scope/build_context.
   PACKAGE_TYPE="Zip"
   IMAGE_URI=""
   S3_BUCKET="destroy-placeholder"
   S3_KEY="destroy-placeholder"
-fi
+else
+  # Anything other than "not found" means we cannot see the real state of AWS.
+  # Destroying anyway risks Tofu dropping resources from state without deleting them.
+  echo "" >&2
+  echo "   ❌ Failed to read the Lambda function '$LAMBDA_FUNCTION_NAME'" >&2
+  echo "" >&2
 
-rm -f "$lambda_stderr"
+  if echo "$aws_error" | grep -q "AccessDenied\|not authorized"; then
+    echo "  🔒 Permission denied calling lambda:GetFunction" >&2
+    echo "" >&2
+    echo "  💡 Possible causes:" >&2
+    echo "    • The assumed role is missing lambda:GetFunction" >&2
+    echo "    • A permissions boundary or SCP is blocking the call" >&2
+    echo "" >&2
+    echo "  🔧 How to fix:" >&2
+    echo "    • Review the role's policy (see lambda/prerequisites.md)" >&2
+  else
+    echo "  📋 Error details:" >&2
+    echo "    $aws_error" >&2
+  fi
+
+  echo "" >&2
+  echo "   Aborting: destroying without reading AWS could orphan resources." >&2
+  echo "" >&2
+  return 1 2>/dev/null || exit 1
+fi
 
 # Convert VPC env vars to JSON arrays (set by fetch_scope_configuration)
 SUBNET_IDS=$(echo "${AWS_SUBNET_IDS:-}" | jq -Rc 'split(",") | map(select(length > 0))')

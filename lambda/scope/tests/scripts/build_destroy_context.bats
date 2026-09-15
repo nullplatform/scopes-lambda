@@ -24,7 +24,7 @@ teardown() {
 
 # Sourced, as the runner does — it also keeps the aws mock visible to the script.
 run_build_destroy_context() {
-  source "$LAMBDA_DIR/scope/scripts/build_destroy_context"
+  source "$LAMBDA_DIR/scope/scripts/build_destroy_context" || return $?
   echo "RESULT package_type=$PACKAGE_TYPE image_uri=$IMAGE_URI s3_bucket=$S3_BUCKET s3_key=$S3_KEY"
 }
 
@@ -75,15 +75,26 @@ run_setup_compute() {
   assert_output_contains "s3_bucket=destroy-placeholder"
 }
 
-@test "build_destroy_context: an unexpected AWS error is logged and the destroy still proceeds" {
+@test "build_destroy_context: an AccessDenied on the lookup aborts the destroy" {
   mock_aws_error "An error occurred (AccessDeniedException) when calling the GetFunction operation"
 
   run run_build_destroy_context
 
-  assert_success
-  assert_output_contains "Could not read the Lambda function"
-  assert_output_contains "AccessDeniedException"
-  assert_output_contains "package_type=Zip"
+  assert_failure
+  assert_output_contains "Failed to read the Lambda function"
+  assert_output_contains "Permission denied"
+  assert_output_not_contains "RESULT"
+}
+
+@test "build_destroy_context: any other AWS error also aborts the destroy" {
+  mock_aws_error "An error occurred (ThrottlingException) when calling the GetFunction operation"
+
+  run run_build_destroy_context
+
+  assert_failure
+  assert_output_contains "Failed to read the Lambda function"
+  assert_output_contains "ThrottlingException"
+  assert_output_not_contains "RESULT"
 }
 
 @test "compute/lambda/setup: destroy skips asset validation" {

@@ -17,7 +17,7 @@ log debug "   📋 use_dedicated_role=$use_dedicated_role, role_name=$role_name"
 
 if [ "$use_dedicated_role" = "true" ] || [ -z "$role_name" ] || [ "$role_name" = "null" ]; then
   log info "   ✅ No scope-managed role to update"
-  return 0
+  return 0 2>/dev/null || exit 0
 fi
 
 # Check if VPC status changed
@@ -50,7 +50,7 @@ if [ "$vpc_enabled" = "true" ] && [ -z "$vpc_policy_attached" ]; then
     echo "   - Verify the agent has iam:AttachRolePolicy permission" >&2
     echo "   - Check that role '$role_name' exists in IAM" >&2
     echo "   - AWS error: $attach_output" >&2
-    return 1
+    return 1 2>/dev/null || exit 1
   fi
 
   log info "   ✅ VPC access policy attached to '$role_name'"
@@ -72,7 +72,7 @@ elif [ "$vpc_enabled" = "false" ] && [ -n "$vpc_policy_attached" ]; then
     echo "🔧 How to fix:" >&2
     echo "   - Verify the agent has iam:DetachRolePolicy permission" >&2
     echo "   - AWS error: $detach_output" >&2
-    return 1
+    return 1 2>/dev/null || exit 1
   fi
 
   log info "   ✅ VPC access policy detached from '$role_name'"
