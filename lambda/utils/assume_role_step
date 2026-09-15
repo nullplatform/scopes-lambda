@@ -34,5 +34,5 @@ if ! source "$SERVICE_PATH/utils/assume_role"; then
   echo "   - The agent's pod role is not allowed to sts:AssumeRole the target role" >&2
   echo "   - The target role's trust policy does not trust the agent role" >&2
   echo "   - The resolved ARN is wrong (check the IAM provider selector=$ASSUME_ROLE_SELECTOR)" >&2
-  exit 1
+  return 1
 fi

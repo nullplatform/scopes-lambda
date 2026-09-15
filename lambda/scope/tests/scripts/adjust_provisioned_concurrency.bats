@@ -88,6 +88,10 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+run_sourced() {
+  source "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+}
+
 @test "adjust_provisioned: sets concurrency on alias" {
   export CONTEXT='{"parameters":{"value":"5"}}'
 
@@ -99,7 +103,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"RequestedProvisionedConcurrentExecutions": 5, "StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "Provisioned concurrency set to 5"
@@ -116,7 +120,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "Provisioned concurrency configuration removed successfully"
@@ -133,7 +137,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"RequestedProvisionedConcurrentExecutions": 3, "StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "alias=live"
@@ -150,7 +154,7 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"RequestedProvisionedConcurrentExecutions": 3, "StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "alias=main"
@@ -159,7 +163,7 @@ MOCK_SCRIPT
 @test "adjust_provisioned: fails when value not provided" {
   export CONTEXT='{"parameters":{}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_failure
   assert_output_contains "'value' parameter is required"
