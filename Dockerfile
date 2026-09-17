@@ -4,7 +4,7 @@
 # worker bridge. The bridge dials over gRPC and runs the bash entrypoint on each
 # package-exec action; this image adds the cloud tooling the lambda steps need
 # and bakes the scope in, so the package-exec channel needs no cmdline.
-FROM public.ecr.aws/nullplatform/scopes/worker-bridge:1.0.0
+FROM public.ecr.aws/nullplatform/scopes/worker-bridge:1.1.1
 
 # Cloud tooling the lambda steps call (the bridge base stays minimal on purpose):
 # aws + gomplate from apk. bash, jq, np, base64 and curl ship in the base.
