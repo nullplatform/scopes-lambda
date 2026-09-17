@@ -13,8 +13,6 @@ DIMENSION_FILTER=$(echo "$CONTEXT" | jq -r '
   (.scope.dimensions // {}) | to_entries | map("\(.key):\(.value)") | join(",")
 ')
 
-# Keep stderr out of PROVIDER_RESPONSE: a warning on stderr would corrupt the JSON.
-# NP_OUTPUT_DIR is created and removed by the CLI, so the file goes with the run.
 np_stderr=$(mktemp "${NP_OUTPUT_DIR:-${TMPDIR:-/tmp}}/np_provider_list.XXXXXX") || np_stderr="${TMPDIR:-/tmp}/np_provider_list.$$.err"
 np_exit_code=0
 

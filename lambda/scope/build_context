@@ -88,8 +88,7 @@ HANDLER=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler
 log debug "   ✅ package_type=$PACKAGE_TYPE"
 log debug "   ✅ architecture=$ARCHITECTURE"
 
-#ALB listener rule capacity validation (private scopes use internal ALB).
-#Provisioning only: a capacity limit must not block a teardown or a runtime action.
+#ALB listener rule capacity validation (private scopes use internal ALB)
 if [ "$VISIBILITY" = "private" ] && [ "${TOFU_ACTION:-}" = "apply" ]; then
   ALB_LISTENER_RULE_CAPACITY=$(get_config_value \
     --provider '.providers["scope-configurations"].networking.alb_listener_rule_capacity' \

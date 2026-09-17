@@ -20,8 +20,7 @@ LAMBDA_FUNCTION_MAIN_ALIAS="main"
 
 alias="$LAMBDA_FUNCTION_MAIN_ALIAS"
 
-# The action parameters live in the raw notification: the built CONTEXT carries the
-# application parameters, not these.
+# Action parameters live in the raw notification; CONTEXT holds the app parameters.
 payload=$(echo "$NP_ACTION_CONTEXT" | jq -r '.notification.parameters.payload // "{}"')
 
 if [ -z "$payload" ] || [ "$payload" = "null" ]; then

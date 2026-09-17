@@ -66,7 +66,6 @@ if ! tofu -chdir="$TF_WORKING_DIR" init -input=false $TOFU_INIT_VARIABLES; then
   return 1
 fi
 
-# Aborts the run: continuing would make Tofu create a resource that already exists.
 import_or_fail() {
   local address="$1" id="$2"
   if ! tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" "$address" "$id"; then
