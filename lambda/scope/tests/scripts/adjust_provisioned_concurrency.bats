@@ -93,7 +93,7 @@ run_sourced() {
 }
 
 @test "adjust_provisioned: sets concurrency on alias" {
-  export CONTEXT='{"parameters":{"value":"5"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":5}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main","LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"0"}' \
@@ -110,7 +110,7 @@ run_sourced() {
 }
 
 @test "adjust_provisioned: removes provisioned concurrency when value is 0" {
-  export CONTEXT='{"parameters":{"value":"0"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":0}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main","LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"5"}' \
@@ -127,7 +127,7 @@ run_sourced() {
 }
 
 @test "adjust_provisioned: uses alias from NRN" {
-  export CONTEXT='{"parameters":{"value":"3"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":3}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"live","LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"0"}' \
@@ -144,7 +144,7 @@ run_sourced() {
 }
 
 @test "adjust_provisioned: defaults alias to main" {
-  export CONTEXT='{"parameters":{"value":"3"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":3}}}'
 
   create_np_mock \
     '0:{"LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"0"}' \
@@ -161,7 +161,7 @@ run_sourced() {
 }
 
 @test "adjust_provisioned: fails when value not provided" {
-  export CONTEXT='{"parameters":{}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{}}}'
 
   run run_sourced
 

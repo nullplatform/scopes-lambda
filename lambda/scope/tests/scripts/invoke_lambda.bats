@@ -19,7 +19,7 @@ setup() {
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
   export LAMBDA_FUNCTION_NAME="my-test-function"
   export OUTPUT_DIR="$BATS_TEST_TMPDIR"
-  export CONTEXT='{"parameters":{}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{}}}'
 
   # Unset exported shell functions so file-based mocks on PATH take precedence
   unset -f aws np
@@ -158,6 +158,7 @@ run_sourced() {
   run run_sourced
 
   assert_success
+  assert_line "   📋 function_name=my-test-function | alias=main | payload_size=2"
   assert_output_contains "Lambda invoked successfully"
 }
 
@@ -184,8 +185,8 @@ run_sourced() {
   assert_output_contains "Lambda function returned an error"
 }
 
-@test "invoke: uses custom payload from CONTEXT" {
-  export CONTEXT='{"parameters":{"payload":"{\"key\":\"value\"}"}}'
+@test "invoke: uses the payload from the action notification" {
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"payload":"{\"key\":\"value\"}"}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main"}'
@@ -196,5 +197,6 @@ run_sourced() {
   run run_sourced
 
   assert_success
-  assert_output_contains "lambda invoke" || assert_output_contains "Invoking my-test-function:main"
+  assert_line "   📋 function_name=my-test-function | alias=main | payload_size=15"
+  assert_line "   📡 Invoking my-test-function:main..."
 }
