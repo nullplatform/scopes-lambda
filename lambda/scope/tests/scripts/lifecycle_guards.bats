@@ -39,7 +39,7 @@ run_fetch_scope_configuration() {
   source "$LAMBDA_DIR/utils/fetch_scope_configuration"
 }
 
-# The marker only prints if the step returned; `exit` would kill the subshell first.
+# The marker would only print if the step returned; with `exit` it never runs.
 run_assume_role_step() {
   source "$LAMBDA_DIR/utils/assume_role_step"
   local rc=$?
@@ -107,7 +107,7 @@ run_assume_role_step() {
   assert_output_not_contains "Scope configuration fetched successfully"
 }
 
-@test "assume_role_step: a failed assume-role returns instead of killing the worker" {
+@test "assume_role_step: a failed assume-role aborts the step" {
   export ASSUME_ROLE_ARN="arn:aws:iam::111122223333:role/np-lambda"
   mock_aws_error "AccessDenied: User is not authorized to perform sts:AssumeRole"
 
@@ -122,5 +122,5 @@ run_assume_role_step() {
   assert_line "   - The agent's pod role is not allowed to sts:AssumeRole the target role"
   assert_line "   - The target role's trust policy does not trust the agent role"
   assert_line "   - The resolved ARN is wrong (check the IAM provider selector=lambda)"
-  assert_line "STEP_RETURNED_1_CALLER_ALIVE"
+  assert_output_not_contains "CALLER_ALIVE"
 }

@@ -35,11 +35,7 @@ if [ -n "$lambda_info" ]; then
   log debug "   ✅ package_type=$PACKAGE_TYPE"
 
   if [ "$PACKAGE_TYPE" = "Image" ]; then
-    IMAGE_URI=$(echo "$lambda_info" | jq -r '.Code.ImageUri // ""')
-    if [ -z "$IMAGE_URI" ]; then
-      log warn "   ⚠️  Lambda function has no readable image URI — using a placeholder for destroy"
-      IMAGE_URI="destroy-placeholder"
-    fi
+    IMAGE_URI=$(echo "$lambda_info" | jq -r '.Code.ImageUri // "destroy-placeholder"')
     S3_BUCKET=""
     S3_KEY=""
     log debug "   ✅ image_uri=$IMAGE_URI"
@@ -79,7 +75,7 @@ else
   echo "" >&2
   echo "   Aborting: destroying without reading AWS could orphan resources." >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 # Convert VPC env vars to JSON arrays (set by fetch_scope_configuration)

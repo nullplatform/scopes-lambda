@@ -93,7 +93,7 @@ run_sourced() {
 }
 
 @test "adjust_reserved: sets concurrency value" {
-  export CONTEXT='{"parameters":{"value":"10"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":10}}}'
 
   create_np_mock \
     '0:{"LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE":"5"}' \
@@ -110,7 +110,7 @@ run_sourced() {
 }
 
 @test "adjust_reserved: removes reservation when value is 0" {
-  export CONTEXT='{"parameters":{"value":"0"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":0}}}'
 
   create_np_mock \
     '0:{"LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE":"5"}' \
@@ -127,7 +127,7 @@ run_sourced() {
 }
 
 @test "adjust_reserved: fails when value not provided" {
-  export CONTEXT='{"parameters":{}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{}}}'
 
   run run_sourced
 
@@ -135,7 +135,7 @@ run_sourced() {
 }
 
 @test "adjust_reserved: fails when value is not a number" {
-  export CONTEXT='{"parameters":{"value":"abc"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":"abc"}}}'
 
   run run_sourced
 
@@ -145,7 +145,7 @@ run_sourced() {
 
 @test "adjust_reserved: fails when LAMBDA_FUNCTION_NAME not set" {
   unset LAMBDA_FUNCTION_NAME
-  export CONTEXT='{"parameters":{"value":"10"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":10}}}'
 
   run run_sourced
 

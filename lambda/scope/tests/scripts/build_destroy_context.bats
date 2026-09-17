@@ -62,7 +62,6 @@ run_setup_compute() {
   run run_build_destroy_context
 
   assert_success
-  assert_line "   ⚠️  Lambda function has no readable image URI — using a placeholder for destroy"
   assert_line "RESULT package_type=Image image_uri=destroy-placeholder s3_bucket= s3_key="
 }
 
