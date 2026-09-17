@@ -39,10 +39,11 @@ run_setup_compute() {
   run run_build_destroy_context
 
   assert_success
-  assert_output_contains "Lambda function not found in AWS"
-  assert_output_contains "package_type=Zip"
-  assert_output_contains "s3_bucket=destroy-placeholder"
-  assert_output_contains "s3_key=destroy-placeholder"
+  assert_line "🔍 Building Tofu destroy context..."
+  assert_line "   📡 Looking up Lambda function..."
+  assert_line "   ⚠️  Lambda function not found in AWS — Tofu will destroy resources from state"
+  assert_line "✨ Destroy context built: function=np-lambda-test-fn, package_type=Zip"
+  assert_line "RESULT package_type=Zip image_uri= s3_bucket=destroy-placeholder s3_key=destroy-placeholder"
 }
 
 @test "build_destroy_context: image function passes its image URI through" {
@@ -51,8 +52,8 @@ run_setup_compute() {
   run run_build_destroy_context
 
   assert_success
-  assert_output_contains "package_type=Image"
-  assert_output_contains "image_uri=1234.dkr.ecr.us-east-1.amazonaws.com/app:v1"
+  assert_line "✨ Destroy context built: function=np-lambda-test-fn, package_type=Image"
+  assert_line "RESULT package_type=Image image_uri=1234.dkr.ecr.us-east-1.amazonaws.com/app:v1 s3_bucket= s3_key="
 }
 
 @test "build_destroy_context: image function without an image URI falls back to a sentinel" {
@@ -61,8 +62,8 @@ run_setup_compute() {
   run run_build_destroy_context
 
   assert_success
-  assert_output_contains "package_type=Image"
-  assert_output_contains "image_uri=destroy-placeholder"
+  assert_line "   ⚠️  Lambda function has no readable image URI — using a placeholder for destroy"
+  assert_line "RESULT package_type=Image image_uri=destroy-placeholder s3_bucket= s3_key="
 }
 
 @test "build_destroy_context: zip function exports the zip placeholders" {
@@ -71,8 +72,8 @@ run_setup_compute() {
   run run_build_destroy_context
 
   assert_success
-  assert_output_contains "package_type=Zip"
-  assert_output_contains "s3_bucket=destroy-placeholder"
+  assert_line "✨ Destroy context built: function=np-lambda-test-fn, package_type=Zip"
+  assert_line "RESULT package_type=Zip image_uri= s3_bucket=destroy-placeholder s3_key=destroy-placeholder"
 }
 
 @test "build_destroy_context: an AccessDenied on the lookup aborts the destroy" {
@@ -81,8 +82,14 @@ run_setup_compute() {
   run run_build_destroy_context
 
   assert_failure
-  assert_output_contains "Failed to read the Lambda function"
-  assert_output_contains "Permission denied"
+  assert_line "   ❌ Failed to read the Lambda function 'np-lambda-test-fn'"
+  assert_line "  🔒 Permission denied calling lambda:GetFunction"
+  assert_line "  💡 Possible causes:"
+  assert_line "    • The assumed role is missing lambda:GetFunction"
+  assert_line "    • A permissions boundary or SCP is blocking the call"
+  assert_line "  🔧 How to fix:"
+  assert_line "    • Review the role's policy (see lambda/prerequisites.md)"
+  assert_line "   Aborting: destroying without reading AWS could orphan resources."
   assert_output_not_contains "RESULT"
 }
 
@@ -92,8 +99,11 @@ run_setup_compute() {
   run run_build_destroy_context
 
   assert_failure
-  assert_output_contains "Failed to read the Lambda function"
-  assert_output_contains "ThrottlingException"
+  assert_line "   ❌ Failed to read the Lambda function 'np-lambda-test-fn'"
+  assert_line "  📋 Error details:"
+  assert_line "    An error occurred (ThrottlingException) when calling the GetFunction operation "
+  assert_line "   Aborting: destroying without reading AWS could orphan resources."
+  assert_output_not_contains "🔒 Permission denied calling lambda:GetFunction"
   assert_output_not_contains "RESULT"
 }
 
@@ -108,7 +118,10 @@ run_setup_compute() {
   run run_setup_compute
 
   assert_success
-  assert_output_contains "Lambda compute configured successfully"
+  assert_line "🔍 Validating Lambda compute configuration..."
+  assert_line "   ✅ asset validation skipped (tofu destroy reads resources from state)"
+  assert_line "   📡 Building Lambda configuration..."
+  assert_line "✨ Lambda compute configured successfully"
 }
 
 @test "compute/lambda/setup: apply still rejects an empty image URI" {
@@ -122,5 +135,12 @@ run_setup_compute() {
   run run_setup_compute
 
   assert_failure
-  assert_output_contains "PACKAGE_TYPE=Image but IMAGE_URI is empty"
+  assert_line "   ❌ Image URI not found (PACKAGE_TYPE=Image but IMAGE_URI is empty)" 
+  assert_line "  💡 Possible causes:"
+  assert_line "    • No placeholder image is configured for this account"
+  assert_line "    • The scope's Lambda function could not be read from AWS"
+  assert_line "  🔧 How to fix:"
+  assert_line "    • Set deployment.placeholder_image_uri in the scope-configurations provider"
+  assert_line "    • Or set PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)"
+  assert_output_not_contains "Lambda compute configured successfully"
 }

@@ -13,7 +13,7 @@ if [ -z "$LAMBDA_FUNCTION_NAME" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Verify the scope has a valid Lambda function associated" >&2
   echo "   - Re-run the diagnose-scope action to check scope health" >&2
-  return 1 2>/dev/null || exit 1
+  return 1
 fi
 
 # Read value from CONTEXT
@@ -26,7 +26,7 @@ if [ -z "$value" ] || [ "$value" = "null" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Provide a 'value' parameter (integer >= 0)" >&2
   echo "   - Use 0 to remove the reserved concurrency reservation" >&2
-  return 1 2>/dev/null || exit 1
+  return 1
 fi
 
 # Validate value is a number
@@ -36,7 +36,7 @@ if ! [[ "$value" =~ ^[0-9]+$ ]]; then
   echo "   - A non-numeric value was provided" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Provide an integer >= 0 for the 'value' parameter" >&2
-  return 1 2>/dev/null || exit 1
+  return 1
 fi
 
 echo "   📋 function_name=$LAMBDA_FUNCTION_NAME"
@@ -61,7 +61,7 @@ if [ "$value" -eq 0 ]; then
     echo "   - Verify the function exists and the agent has proper permissions" >&2
     echo "   - Run diagnose-scope to check the function health" >&2
     echo "   - AWS error: $aws_output" >&2
-    return 1 2>/dev/null || exit 1
+    return 1
   fi
 
   echo ""
@@ -87,7 +87,7 @@ else
     echo "   - Check the account's total concurrency limit and current reservations" >&2
     echo "   - Try a lower value" >&2
     echo "   - AWS error: $aws_output" >&2
-    return 1 2>/dev/null || exit 1
+    return 1
   fi
 
   echo ""

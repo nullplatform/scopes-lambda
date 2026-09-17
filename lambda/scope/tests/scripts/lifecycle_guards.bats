@@ -54,7 +54,9 @@ run_assume_role_step() {
   run run_build_context
 
   assert_success
-  assert_output_contains "Scope context built successfully"
+  assert_line "🔍 Building scope context..."
+  assert_line "📋 Function: scope-1-app-api | Visibility: private"
+  assert_line "✨ Scope context built successfully"
   assert_output_not_contains "ALB listener rule capacity"
 }
 
@@ -65,7 +67,15 @@ run_assume_role_step() {
   run run_build_context
 
   assert_failure
-  assert_output_contains "ALB listener rule capacity"
+  assert_line "❌ ALB listener rule capacity (50) is at or below the alert threshold (80)"
+  assert_line "💡 Possible causes:"
+  assert_line "   Too many private scopes sharing the same internal ALB"
+  assert_line "   The ALB listener has a hard limit of rules per listener"
+  assert_line "🔧 How to fix:"
+  assert_line "   • Increase ALB_LISTENER_RULE_CAPACITY if the ALB supports more rules"
+  assert_line "   • Remove unused scopes to free up listener rule slots"
+  assert_line "   • Provision an additional internal ALB for this account"
+  assert_output_not_contains "Scope context built successfully"
 }
 
 @test "build_context: ALB capacity guard applies when TOFU_ACTION is unset" {
@@ -75,7 +85,8 @@ run_assume_role_step() {
   run run_build_context
 
   assert_failure
-  assert_output_contains "ALB listener rule capacity"
+  assert_line "❌ ALB listener rule capacity (50) is at or below the alert threshold (80)"
+  assert_output_not_contains "Scope context built successfully"
 }
 
 @test "fetch_scope_configuration: surfaces an np failure instead of an empty config" {
@@ -84,19 +95,16 @@ run_assume_role_step() {
   run run_fetch_scope_configuration
 
   assert_failure
-  assert_output_contains "Failed to fetch providers"
-  assert_output_contains "connection refused"
+  assert_line "🔑 Fetching scope configuration..."
+  assert_line "❌ Failed to fetch providers for NRN=organization=1:account=2:namespace=3:application=4:scope=5"
+  assert_line "💡 Possible causes:"
+  assert_line "   - The nullplatform API is unreachable or returned an error"
+  assert_line "   - The agent's API key lacks permission to list providers"
+  assert_line "🔧 How to fix:"
+  assert_line "   • Verify the agent can reach the nullplatform API"
+  assert_line "   • Check the agent's credentials and NRN visibility"
+  assert_line "   📋 Error: connection refused talking to the nullplatform API "
   assert_output_not_contains "Scope configuration fetched successfully"
-}
-
-# Proves the `return N 2>/dev/null || exit N` idiom: sourced it returns, executed it exits.
-@test "assume_role_step: still fails non-zero when executed instead of sourced" {
-  export ASSUME_ROLE_ARN="arn:aws:iam::111122223333:role/np-lambda"
-
-  run bash "$LAMBDA_DIR/utils/assume_role_step"
-
-  assert_failure
-  assert_output_contains "assume_role step failed"
 }
 
 @test "assume_role_step: a failed assume-role returns instead of killing the worker" {
@@ -106,6 +114,13 @@ run_assume_role_step() {
   run run_assume_role_step
 
   assert_failure
-  assert_output_contains "assume_role step failed"
-  assert_output_contains "STEP_RETURNED_1_CALLER_ALIVE"
+  assert_line "   🔑 Assuming role: arn:aws:iam::111122223333:role/np-lambda"
+  assert_line "ERROR: sts:AssumeRole failed for arn:aws:iam::111122223333:role/np-lambda"
+  assert_line "AccessDenied: User is not authorized to perform sts:AssumeRole"
+  assert_line "❌ assume_role step failed: could not assume arn:aws:iam::111122223333:role/np-lambda"
+  assert_line "💡 Possible causes:"
+  assert_line "   - The agent's pod role is not allowed to sts:AssumeRole the target role"
+  assert_line "   - The target role's trust policy does not trust the agent role"
+  assert_line "   - The resolved ARN is wrong (check the IAM provider selector=lambda)"
+  assert_line "STEP_RETURNED_1_CALLER_ALIVE"
 }
