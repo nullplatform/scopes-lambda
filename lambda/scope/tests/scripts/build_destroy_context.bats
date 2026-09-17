@@ -88,7 +88,7 @@ run_setup_compute() {
   assert_line "    • A permissions boundary or SCP is blocking the call"
   assert_line "  🔧 How to fix:"
   assert_line "    • Review the role's policy (see lambda/prerequisites.md)"
-  assert_line "   Aborting: destroying without reading AWS could orphan resources."
+  assert_line "   Aborting: cannot confirm the function state in AWS."
   assert_output_not_contains "RESULT"
 }
 
@@ -101,7 +101,7 @@ run_setup_compute() {
   assert_line "   ❌ Failed to read the Lambda function 'np-lambda-test-fn'"
   assert_line "  📋 Error details:"
   assert_line "    An error occurred (ThrottlingException) when calling the GetFunction operation "
-  assert_line "   Aborting: destroying without reading AWS could orphan resources."
+  assert_line "   Aborting: cannot confirm the function state in AWS."
   assert_output_not_contains "🔒 Permission denied calling lambda:GetFunction"
   assert_output_not_contains "RESULT"
 }
