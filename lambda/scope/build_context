@@ -3,7 +3,7 @@
 # Source utility functions
 source "$SERVICE_PATH/utils/get_config_value"
 source "$SERVICE_PATH/utils/log"
-source "$SERVICE_PATH/utils/fetch_scope_configuration" || return 1
+source "$SERVICE_PATH/utils/fetch_scope_configuration"
 
 log info "🔍 Building scope context..."
 
