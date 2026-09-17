@@ -131,6 +131,7 @@ teardown() {
 
 @test "scope/build_context: fails when ALB capacity is at or below threshold for private scopes" {
   set_context "private"
+  export TOFU_ACTION="apply"
   export ALB_LISTENER_RULE_CAPACITY=80
   export ALB_LISTENER_RULE_ALERT_THRESHOLD=80
   export NP_OUTPUT_DIR="$(mktemp -d)"

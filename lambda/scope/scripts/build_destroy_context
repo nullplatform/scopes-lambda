@@ -25,7 +25,7 @@ MODULES_TO_USE=""
 # Tofu destroys from state: these values are never used, only their shape matters.
 log info "   📡 Looking up Lambda function..."
 # NP_OUTPUT_DIR is created and removed by the CLI, so the file goes with the run.
-lambda_stderr="${NP_OUTPUT_DIR:-${OUTPUT_DIR:-${TMPDIR:-/tmp}}}/get-function.$$.err"
+lambda_stderr=$(mktemp "${NP_OUTPUT_DIR:-${OUTPUT_DIR:-${TMPDIR:-/tmp}}}/get-function.XXXXXX") || lambda_stderr="${TMPDIR:-/tmp}/get-function.$$.err"
 lambda_info=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --output json 2>"$lambda_stderr") || lambda_info=""
 aws_error=$(tr '\n' ' ' < "$lambda_stderr" 2>/dev/null)
 rm -f "$lambda_stderr"
@@ -52,8 +52,8 @@ elif echo "$aws_error" | grep -q "ResourceNotFoundException"; then
   S3_BUCKET="destroy-placeholder"
   S3_KEY="destroy-placeholder"
 else
-  # Anything other than "not found" means we cannot see the real state of AWS.
-  # Destroying anyway risks Tofu dropping resources from state without deleting them.
+  # Anything other than "not found" means we cannot tell what is actually in AWS.
+  # Fail loudly rather than run a destroy blind.
   echo "" >&2
   echo "   ❌ Failed to read the Lambda function '$LAMBDA_FUNCTION_NAME'" >&2
   echo "" >&2
@@ -73,8 +73,9 @@ else
   fi
 
   echo "" >&2
-  echo "   Aborting: destroying without reading AWS could orphan resources." >&2
+  echo "   Aborting: cannot confirm the function state in AWS." >&2
   echo "" >&2
+  # exit, not return: matches how the other action step scripts abort.
   exit 1
 fi
 
