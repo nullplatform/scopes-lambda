@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# Guards that must behave differently per lifecycle phase, plus steps that must fail
-# without killing the worker. Scripts are sourced here, as the engine does.
+# Guards that must behave differently per lifecycle phase, plus step failure paths.
+# Scripts are sourced here, as the engine does.
 
 setup() {
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -78,15 +78,15 @@ run_assume_role_step() {
   assert_output_not_contains "Scope context built successfully"
 }
 
-@test "build_context: ALB capacity guard applies when TOFU_ACTION is unset" {
+@test "build_context: ALB capacity guard does not run for workflows without TOFU_ACTION" {
   mock_np "$PROVIDERS_JSON"
   unset TOFU_ACTION
 
   run run_build_context
 
-  assert_failure
-  assert_line "❌ ALB listener rule capacity (50) is at or below the alert threshold (80)"
-  assert_output_not_contains "Scope context built successfully"
+  assert_success
+  assert_line "✨ Scope context built successfully"
+  assert_output_not_contains "ALB listener rule capacity"
 }
 
 @test "fetch_scope_configuration: surfaces an np failure instead of an empty config" {
