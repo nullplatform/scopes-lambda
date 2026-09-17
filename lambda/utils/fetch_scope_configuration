@@ -38,7 +38,7 @@ if [ "$np_exit_code" -ne 0 ] || [ -z "$PROVIDER_RESPONSE" ]; then
   echo "   📋 Error: $(tr '\n' ' ' < "$np_stderr")" >&2
   echo "" >&2
   rm -f "$np_stderr"
-  return 1
+  exit 1
 fi
 
 rm -f "$np_stderr"

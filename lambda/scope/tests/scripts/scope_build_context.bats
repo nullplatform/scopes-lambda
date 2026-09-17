@@ -15,6 +15,16 @@ setup() {
   MOCK_BIN_DIR="$(mktemp -d)"
   export PATH="$MOCK_BIN_DIR:$PATH"
   _TEST_CLEANUP_DIRS=("$MOCK_BIN_DIR")
+
+  # build_context runs in a subprocess here, where the exported np shell function has
+  # no mock state, so the provider lookup needs a real mock on PATH.
+  cat > "$MOCK_BIN_DIR/np" <<'NP_MOCK'
+#!/bin/bash
+echo '{"results":[{"category":"cloud-providers","attributes":{"account":{"id":"111122223333","region":"us-east-1"}}},{"category":"scope-configurations","attributes":{"state":{"tofu_state_bucket":"np-state"}}}]}'
+NP_MOCK
+  chmod +x "$MOCK_BIN_DIR/np"
+  # Exported shell functions win over PATH, so drop it and let the file mock answer.
+  unset -f np
 }
 
 teardown() {
