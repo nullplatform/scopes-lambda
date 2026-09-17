@@ -16,8 +16,7 @@ if [ -z "$LAMBDA_FUNCTION_NAME" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
   exit 1
 fi
 
-# The action parameters live in the raw notification: the built CONTEXT carries the
-# application parameters, not these.
+# Action parameters live in the raw notification; CONTEXT holds the app parameters.
 value=$(echo "$NP_ACTION_CONTEXT" | jq -r '.notification.parameters.value // ""')
 
 if [ -z "$value" ] || [ "$value" = "null" ]; then
