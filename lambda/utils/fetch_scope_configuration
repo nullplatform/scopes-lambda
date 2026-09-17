@@ -13,15 +13,14 @@ DIMENSION_FILTER=$(echo "$CONTEXT" | jq -r '
   (.scope.dimensions // {}) | to_entries | map("\(.key):\(.value)") | join(",")
 ')
 
-np_stderr=$(mktemp "$NP_OUTPUT_DIR/np_provider_list.XXXXXX")
 np_exit_code=0
 
 if [ -z "$DIMENSION_FILTER" ] || [ "$DIMENSION_FILTER" = "" ]; then
   log debug "   ✅ dimensions=none"
-  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --format json 2>"$np_stderr") || np_exit_code=$?
+  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --format json) || np_exit_code=$?
 else
   log debug "   ✅ dimensions=$DIMENSION_FILTER"
-  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --dimensions "$DIMENSION_FILTER" --format json 2>"$np_stderr") || np_exit_code=$?
+  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --dimensions "$DIMENSION_FILTER" --format json) || np_exit_code=$?
 fi
 
 # Fail here: an empty response surfaces downstream as a misleading "AWS_REGION is missing".
@@ -35,13 +34,10 @@ if [ "$np_exit_code" -ne 0 ] || [ -z "$PROVIDER_RESPONSE" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Verify the agent can reach the nullplatform API" >&2
   echo "   • Check the agent's credentials and NRN visibility" >&2
-  echo "   📋 Error: $(tr '\n' ' ' < "$np_stderr")" >&2
+  echo "   📋 Error: $(echo "$PROVIDER_RESPONSE" | tr '\n' ' ')" >&2
   echo "" >&2
-  rm -f "$np_stderr"
   exit 1
 fi
-
-rm -f "$np_stderr"
 
 for CATEGORY in vpc cloud-providers scope-configurations; do
   while IFS= read -r collision_key; do

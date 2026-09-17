@@ -52,58 +52,40 @@ fi
 log debug "   📋 architecture=$architecture"
 log debug "   📋 placeholder_image_uri=$placeholder_image_uri"
 
+# Lambda only pulls from a private ECR repo in the same account and region, so a public
+# image passes validation here and then fails at function creation.
+if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
+  echo "" >&2
+  echo "❌ Placeholder image is public, and Lambda cannot pull it: $placeholder_image_uri" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   • No placeholder was configured, so the public default was used" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Publish one to your private ECR: lambda/scope/placeholder/publish" >&2
+  echo "   • Set deployment.placeholder_image_uri in the scope-configurations provider," >&2
+  echo "     or PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)" >&2
+  echo "" >&2
+  return 1
+fi
+
 # Validate image exists before committing to a Tofu run
 log info "   📡 Validating placeholder image..."
 
 image_found=false
 
-if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
-  image_ref="${placeholder_image_uri#public.ecr.aws/}"
-  image_tag="${image_ref##*:}"
-  image_path="${image_ref%:*}"
-  [[ "$image_ref" != *":"* ]] && { image_tag="latest"; image_path="$image_ref"; }
+ecr_registry="${placeholder_image_uri%%/*}"
+ecr_region=$(echo "$ecr_registry" | cut -d. -f4)
+ecr_rest="${placeholder_image_uri#*/}"
+ecr_repo="${ecr_rest%:*}"
+ecr_tag="${ecr_rest##*:}"
+[[ "$ecr_rest" != *":"* ]] && ecr_tag="latest"
 
-  token_response=$(curl -sfL \
-    "https://public.ecr.aws/token/?scope=repository:${image_path}:pull&service=public.ecr.aws" \
-    2>/dev/null || echo "")
-
-  token=""
-  [ -n "$token_response" ] && token=$(echo "$token_response" | jq -r '.token // empty' 2>/dev/null || echo "")
-
-  if [ -z "$token" ]; then
-    echo "" >&2
-    echo "❌ Cannot reach public ECR to validate placeholder image" >&2
-    echo "" >&2
-    echo "💡 Possible causes:" >&2
-    echo "   • The agent has no outbound internet access" >&2
-    echo "   • public.ecr.aws is temporarily unavailable" >&2
-    echo "" >&2
-    echo "🔧 How to fix:" >&2
-    echo "   • Verify outbound connectivity: curl -s https://public.ecr.aws" >&2
-    return 1
-  fi
-
-  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "Authorization: Bearer $token" \
-    -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-    "https://public.ecr.aws/v2/${image_path}/manifests/${image_tag}")
-
-  [ "$http_code" = "200" ] && image_found=true
-else
-  # Private ECR
-  ecr_registry="${placeholder_image_uri%%/*}"
-  ecr_region=$(echo "$ecr_registry" | cut -d. -f4)
-  ecr_rest="${placeholder_image_uri#*/}"
-  ecr_repo="${ecr_rest%:*}"
-  ecr_tag="${ecr_rest##*:}"
-  [[ "$ecr_rest" != *":"* ]] && ecr_tag="latest"
-
-  if aws ecr describe-images \
-      --repository-name "$ecr_repo" \
-      --image-ids "imageTag=$ecr_tag" \
-      --region "$ecr_region" &>/dev/null 2>&1; then
-    image_found=true
-  fi
+if aws ecr describe-images \
+    --repository-name "$ecr_repo" \
+    --image-ids "imageTag=$ecr_tag" \
+    --region "$ecr_region" &>/dev/null 2>&1; then
+  image_found=true
 fi
 
 if [ "$image_found" = "false" ]; then

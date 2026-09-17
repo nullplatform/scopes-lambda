@@ -34,6 +34,11 @@ run_build_context() {
   source "$LAMBDA_DIR/scope/build_context"
 }
 
+run_resolve_placeholder_image() {
+  source "$LAMBDA_DIR/utils/log"
+  source "$LAMBDA_DIR/scope/scripts/resolve_placeholder_image"
+}
+
 run_fetch_scope_configuration() {
   source "$LAMBDA_DIR/utils/log"
   source "$LAMBDA_DIR/utils/fetch_scope_configuration"
@@ -90,7 +95,8 @@ run_assume_role_step() {
 }
 
 @test "fetch_scope_configuration: surfaces an np failure instead of an empty config" {
-  mock_np_error "connection refused talking to the nullplatform API"
+  # np prints its errors to stdout, not stderr, and exits non-zero.
+  np() { echo '{ "error": "connection refused" }'; return 1; }
 
   run run_fetch_scope_configuration
 
@@ -103,8 +109,23 @@ run_assume_role_step() {
   assert_line "🔧 How to fix:"
   assert_line "   • Verify the agent can reach the nullplatform API"
   assert_line "   • Check the agent's credentials and NRN visibility"
-  assert_line "   📋 Error: connection refused talking to the nullplatform API "
+  assert_line '   📋 Error: { "error": "connection refused" } '
   assert_output_not_contains "Scope configuration fetched successfully"
+}
+
+@test "resolve_placeholder_image: a public placeholder aborts an Image scope" {
+  export PACKAGE_TYPE="Image"
+  unset PLACEHOLDER_IMAGE_URI
+
+  run run_resolve_placeholder_image
+
+  assert_failure
+  assert_line "❌ Placeholder image is public, and Lambda cannot pull it: public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest"
+  assert_line "💡 Possible causes:"
+  assert_line "   • No placeholder was configured, so the public default was used"
+  assert_line "🔧 How to fix:"
+  assert_line "   • Publish one to your private ECR: lambda/scope/placeholder/publish"
+  assert_output_not_contains "Placeholder image resolved"
 }
 
 @test "assume_role_step: a failed assume-role aborts the step" {
