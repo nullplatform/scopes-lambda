@@ -12,6 +12,7 @@ setup() {
 
   TMP_OUTPUT_DIR="$(mktemp -d)"
   export OUTPUT_DIR="$TMP_OUTPUT_DIR"
+  export NP_OUTPUT_DIR="$TMP_OUTPUT_DIR"
   export SCOPE_ID="scope-123"
   export LAMBDA_FUNCTION_NAME="np-lambda-test-fn"
   export CONTEXT='{}'

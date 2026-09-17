@@ -13,7 +13,7 @@ DIMENSION_FILTER=$(echo "$CONTEXT" | jq -r '
   (.scope.dimensions // {}) | to_entries | map("\(.key):\(.value)") | join(",")
 ')
 
-np_stderr=$(mktemp "${NP_OUTPUT_DIR:-${TMPDIR:-/tmp}}/np_provider_list.XXXXXX") || np_stderr="${TMPDIR:-/tmp}/np_provider_list.$$.err"
+np_stderr=$(mktemp "$NP_OUTPUT_DIR/np_provider_list.XXXXXX")
 np_exit_code=0
 
 if [ -z "$DIMENSION_FILTER" ] || [ "$DIMENSION_FILTER" = "" ]; then
