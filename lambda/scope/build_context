@@ -89,8 +89,8 @@ log debug "   ✅ package_type=$PACKAGE_TYPE"
 log debug "   ✅ architecture=$ARCHITECTURE"
 
 #ALB listener rule capacity validation (private scopes use internal ALB).
-#Provisioning only: blocking a teardown would leave the scope undeletable.
-if [ "$VISIBILITY" = "private" ] && [ "${TOFU_ACTION:-apply}" != "destroy" ]; then
+#Provisioning only: a capacity limit must not block a teardown or a runtime action.
+if [ "$VISIBILITY" = "private" ] && [ "${TOFU_ACTION:-}" = "apply" ]; then
   ALB_LISTENER_RULE_CAPACITY=$(get_config_value \
     --provider '.providers["scope-configurations"].networking.alb_listener_rule_capacity' \
     --env ALB_LISTENER_RULE_CAPACITY \
