@@ -111,6 +111,8 @@ if [ "$vpc_enabled" = "true" ]; then
       --argjson security_group_ids "$security_group_ids" \
       '{subnet_ids: $subnet_ids, security_group_ids: $security_group_ids}')
     log debug "   ✅ vpc_enabled=true"
+  elif [ "$tofu_action" = "destroy" ]; then
+    log info "   ✅ vpc validation skipped (tofu destroy reads the config from state)"
   else
     echo ""
     echo "   ❌ VPC enabled but subnet_ids or security_group_ids not configured" >&2
