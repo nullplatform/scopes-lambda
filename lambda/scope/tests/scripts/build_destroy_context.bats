@@ -142,3 +142,35 @@ run_setup_compute() {
   assert_line "    • Or set PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)"
   assert_output_not_contains "Lambda compute configured successfully"
 }
+
+@test "compute/lambda/setup: destroy skips the VPC guard" {
+  export CONTEXT='{"lambda":{"function_name":"np-lambda-test-fn"},"scope":{"id":"scope-123","capabilities":{"vpc_enabled":true}},"deployment":{"id":"deploy-1"}}'
+  export TOFU_VARIABLES='{}'
+  export MODULES_TO_USE=""
+  export TOFU_ACTION="destroy"
+  export PACKAGE_TYPE="Zip"
+
+  run run_setup_compute
+
+  assert_success
+  assert_line "   ✅ vpc validation skipped (tofu destroy reads the config from state)"
+  assert_line "✨ Lambda compute configured successfully"
+}
+
+@test "compute/lambda/setup: apply still rejects a vpc_enabled scope without subnets" {
+  export CONTEXT='{"lambda":{"function_name":"np-lambda-test-fn"},"scope":{"id":"scope-123","capabilities":{"vpc_enabled":true}},"deployment":{"id":"deploy-1"}}'
+  export TOFU_VARIABLES='{}'
+  export MODULES_TO_USE=""
+  export TOFU_ACTION="apply"
+  export PACKAGE_TYPE="Zip"
+  export LAMBDA_FILENAME="placeholder.zip"
+
+  run run_setup_compute
+
+  assert_failure
+  assert_line "   ❌ VPC enabled but subnet_ids or security_group_ids not configured"
+  assert_line "  🔧 How to fix:"
+  assert_line "    • Set networking.aws_subnet_ids (comma-separated) in the scope-configurations provider"
+  assert_line "    • Set SECURITY_GROUP_IDS (comma-separated) in the scope values configuration"
+  assert_output_not_contains "Lambda compute configured successfully"
+}

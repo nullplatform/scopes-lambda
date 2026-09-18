@@ -111,19 +111,65 @@ run_assume_role_step() {
   assert_output_not_contains "Scope configuration fetched successfully"
 }
 
-@test "resolve_placeholder_image: a public placeholder aborts an Image scope" {
+@test "resolve_placeholder_image: an unconfigured placeholder aborts an Image scope" {
   export PACKAGE_TYPE="Image"
   unset PLACEHOLDER_IMAGE_URI
 
   run run_resolve_placeholder_image
 
   assert_failure
-  assert_line "❌ Placeholder image is public, and Lambda cannot pull it: public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest"
+  assert_line "❌ No placeholder image is configured for this scope"
   assert_line "💡 Possible causes:"
-  assert_line "   • No placeholder was configured, so the public default was used"
+  assert_line "   • deployment.placeholder_image_uri is unset on the scope-configurations provider"
+  assert_line "   • PLACEHOLDER_IMAGE_URI_DEFAULT is unset on the agent"
   assert_line "🔧 How to fix:"
   assert_line "   • Publish one to your private ECR: lambda/scope/placeholder/publish"
   assert_output_not_contains "Placeholder image resolved"
+}
+
+@test "resolve_placeholder_image: a public placeholder aborts an Image scope" {
+  export PACKAGE_TYPE="Image"
+  export PLACEHOLDER_IMAGE_URI="public.ecr.aws/nullplatform/aws-lambda/placeholder:latest"
+
+  run run_resolve_placeholder_image
+
+  assert_failure
+  assert_line "❌ Placeholder image is public, and Lambda cannot pull it: public.ecr.aws/nullplatform/aws-lambda/placeholder:latest"
+  assert_line "💡 Possible causes:"
+  assert_line "   • PLACEHOLDER_IMAGE_URI points at a public ECR registry"
+  assert_line "🔧 How to fix:"
+  assert_line "   • Publish one to your private ECR: lambda/scope/placeholder/publish"
+  assert_output_not_contains "Placeholder image resolved"
+}
+
+@test "fetch_scope_configuration: an empty result set names the missing providers" {
+  np() { echo '{"results":[]}'; }
+
+  run run_fetch_scope_configuration
+
+  assert_failure
+  assert_line "❌ No providers found for NRN=organization=1:account=2:namespace=3:application=4:scope=5"
+  assert_line "💡 Possible causes:"
+  assert_line "   - The NRN has no vpc, cloud-providers or scope-configurations provider configured"
+  assert_line "   - The scope dimensions match no provider: dimensions=none"
+  assert_line "🔧 How to fix:"
+  assert_line "   • Configure the providers on the NRN or a parent of it"
+  assert_output_not_contains "Scope configuration fetched successfully"
+}
+
+@test "build_context: a missing CONTEXT reports itself, not a failed provider fetch" {
+  unset CONTEXT
+
+  run run_build_context
+
+  assert_failure
+  assert_line "❌ CONTEXT variable is not set or empty"
+  assert_line "💡 Possible causes:"
+  assert_line "   The agent was invoked without the required CONTEXT payload"
+  assert_line "🔧 How to fix:"
+  assert_line "   • Ensure the scope event includes a valid CONTEXT JSON"
+  assert_line "   • Verify the agent trigger is passing CONTEXT correctly"
+  assert_output_not_contains "Failed to fetch providers"
 }
 
 @test "assume_role_step: a failed assume-role aborts the step" {

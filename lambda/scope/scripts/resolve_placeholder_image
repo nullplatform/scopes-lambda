@@ -2,10 +2,6 @@
 # Resolve the placeholder code for scope provisioning.
 # For Image deployments: resolves the placeholder container image URI from ECR.
 # For Zip deployments: generates a minimal placeholder zip and uploads it to S3.
-#
-# Image tags follow the Docker convention for architecture:
-#   arm64  → suffix "-arm64"
-#   x86_64 → suffix "-amd64"
 
 source "$SERVICE_PATH/utils/log"
 
@@ -35,21 +31,33 @@ fi
 # ── Image placeholder path ────────────────────────────────────────────────────
 log info "🔍 Resolving placeholder image URI..."
 
-placeholder_image_base="${PLACEHOLDER_IMAGE_URI:-public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest}"
 architecture="${ARCHITECTURE:-arm64}"
-
 log debug "   📋 architecture=$architecture"
 
-# Use the image URI as-is. If PLACEHOLDER_IMAGE_URI is not set, the default
-# :latest tag is used without any architecture suffix — publish arch-specific
-# tags and set PLACEHOLDER_IMAGE_URI explicitly if needed.
-if [[ "$placeholder_image_base" == *":"* ]]; then
-  placeholder_image_uri="$placeholder_image_base"
-else
-  placeholder_image_uri="${placeholder_image_base}:latest"
+if [ -z "${PLACEHOLDER_IMAGE_URI:-}" ]; then
+  echo "" >&2
+  echo "❌ No placeholder image is configured for this scope" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   • deployment.placeholder_image_uri is unset on the scope-configurations provider" >&2
+  echo "   • PLACEHOLDER_IMAGE_URI_DEFAULT is unset on the agent" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Publish one to your private ECR: lambda/scope/placeholder/publish" >&2
+  echo "   • Set deployment.placeholder_image_uri in the scope-configurations provider," >&2
+  echo "     or PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)" >&2
+  echo "" >&2
+  exit 1
 fi
 
-log debug "   📋 architecture=$architecture"
+# No architecture suffix is appended: publish arch-specific tags and point
+# PLACEHOLDER_IMAGE_URI at the exact one.
+if [[ "$PLACEHOLDER_IMAGE_URI" == *":"* ]]; then
+  placeholder_image_uri="$PLACEHOLDER_IMAGE_URI"
+else
+  placeholder_image_uri="${PLACEHOLDER_IMAGE_URI}:latest"
+fi
+
 log debug "   📋 placeholder_image_uri=$placeholder_image_uri"
 
 # Lambda only pulls from a private ECR repo in the same account and region, so a public
@@ -59,7 +67,7 @@ if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
   echo "❌ Placeholder image is public, and Lambda cannot pull it: $placeholder_image_uri" >&2
   echo "" >&2
   echo "💡 Possible causes:" >&2
-  echo "   • No placeholder was configured, so the public default was used" >&2
+  echo "   • PLACEHOLDER_IMAGE_URI points at a public ECR registry" >&2
   echo "" >&2
   echo "🔧 How to fix:" >&2
   echo "   • Publish one to your private ECR: lambda/scope/placeholder/publish" >&2
