@@ -22,7 +22,7 @@ if [ "${PACKAGE_TYPE:-Image}" = "Zip" ]; then
   if ! base64 -d < "$b64_file" > "$placeholder_path" 2>/dev/null; then
     echo "" >&2
     echo "❌ Failed to decode placeholder zip from $b64_file" >&2
-    return 1
+    exit 1
   fi
 
   export LAMBDA_FILENAME="$placeholder_path"
@@ -99,7 +99,7 @@ if [ "$image_found" = "false" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Publish the image once by running: lambda/scope/placeholder/publish" >&2
   echo "   • Verify PLACEHOLDER_IMAGE_URI=$placeholder_image_uri is correct" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ image found"

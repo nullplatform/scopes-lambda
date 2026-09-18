@@ -33,7 +33,7 @@ elif [ "$package_type" = "Image" ]; then
     echo "    • Set deployment.placeholder_image_uri in the scope-configurations provider" >&2
     echo "    • Or set PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)" >&2
     echo "" >&2
-    return 1
+    exit 1
   fi
   log debug "   ✅ package_type=Image"
   log debug "   ✅ image_uri=$lambda_image_uri"
@@ -52,7 +52,7 @@ else
     echo "  🔧 How to fix:" >&2
     echo "    • Ensure the application has a valid build that produces a Lambda deployment package" >&2
     echo "" >&2
-    return 1
+    exit 1
   fi
   log debug "   ✅ package_type=Zip"
   log debug "   ✅ s3_bucket=$lambda_s3_bucket"
@@ -119,7 +119,7 @@ if [ "$vpc_enabled" = "true" ]; then
     echo "    • Set networking.aws_subnet_ids (comma-separated) in the scope-configurations provider" >&2
     echo "    • Set SECURITY_GROUP_IDS (comma-separated) in the scope values configuration" >&2
     echo "" >&2
-    return 1
+    exit 1
   fi
 fi
 
@@ -179,7 +179,7 @@ if [ -z "$lambda_function_name" ] || [ "$lambda_function_name" = "null" ]; then
   echo "    • Scope was not created properly" >&2
   echo "    • Lambda placeholder was not created during scope creation" >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ function_name=$lambda_function_name"

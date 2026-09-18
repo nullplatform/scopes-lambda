@@ -21,7 +21,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  return 1
+  exit 1
 fi
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
@@ -54,7 +54,7 @@ while true; do
     echo "   - Increase the timeout via PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS (current: ${max_wait}s)" >&2
     echo "   - Reduce the requested provisioned concurrency value" >&2
     echo "   - Check AWS Service Health Dashboard for Lambda issues" >&2
-    return 1
+    exit 1
   fi
 
   status_output=$(aws lambda get-provisioned-concurrency-config \
@@ -96,7 +96,7 @@ while true; do
       echo "   - Review the function logs for initialization errors" >&2
       echo "   - Verify the function can be invoked successfully" >&2
       echo "   - Check Lambda concurrent execution limits" >&2
-      return 1
+      exit 1
       ;;
     *)
       log warn "   ⚠️  Unknown status: $status on $LAMBDA_FUNCTION_NAME:$alias_name"
@@ -138,7 +138,7 @@ if [ -n "${WARMUP_ALIAS_NAME:-}" ]; then
         echo "🔧 How to fix:" >&2
         echo "   - Check account concurrency limits: aws lambda get-account-settings" >&2
         echo "   - Increase PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS (current: ${max_wait}s)" >&2
-        return 1
+        exit 1
       fi
 
       sleep $poll_interval
@@ -164,7 +164,7 @@ if [ -n "${WARMUP_ALIAS_NAME:-}" ]; then
       echo "🔧 How to fix:" >&2
       echo "   - Review the function logs for initialization errors" >&2
       echo "   - Verify warm alias $WARMUP_ALIAS_NAME points to a valid version" >&2
-      return 1
+      exit 1
     fi
   fi
 fi

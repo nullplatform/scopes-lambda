@@ -20,7 +20,7 @@ elif ! command -v tofu &> /dev/null; then
   echo "💡 Install mise (recommended): https://mise.jdx.dev" >&2
   echo "   Or install tofu directly:   https://opentofu.org/docs/intro/install/" >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 tofu_version=$(tofu version 2>&1 | head -1)
@@ -29,14 +29,14 @@ log debug "   ✅ tofu=$tofu_version"
 # Verify working directory has terraform files
 if [ ! -d "$TF_WORKING_DIR" ]; then
   echo "❌ Working directory does not exist: $TF_WORKING_DIR" >&2
-  return 1
+  exit 1
 fi
 
 tf_file_count=$(find "$TF_WORKING_DIR" -maxdepth 1 -name '*.tf' 2>/dev/null | wc -l | tr -d ' ')
 if [ "${tf_file_count:-0}" -eq 0 ]; then
   echo "❌ No .tf files found in $TF_WORKING_DIR" >&2
   echo "   Did you run compose_modules first?" >&2
-  return 1
+  exit 1
 fi
 
 log debug "📋 Found $tf_file_count .tf files"
@@ -202,7 +202,7 @@ if [ $tofu_exit_code -ne 0 ]; then
   echo ""
   echo "❌ Tofu $TOFU_ACTION failed with exit code $tofu_exit_code"
   echo ""
-  return 1
+  exit 1
 fi
 
 log info "✅ Tofu $TOFU_ACTION completed successfully"

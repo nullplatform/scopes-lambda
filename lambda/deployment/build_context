@@ -19,7 +19,7 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
   echo "   - The scope object is missing from the context payload" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Verify the CONTEXT environment variable contains valid JSON with .scope.id" >&2
-  return 1
+  exit 1
 fi
 
 if [ -z "$DEPLOYMENT_ID" ] || [ "$DEPLOYMENT_ID" = "null" ]; then
@@ -277,7 +277,7 @@ else
       echo "🔧 How to fix:" >&2
       echo "   - Verify the build pipeline pushes the image to ECR and sets asset.url" >&2
       echo "   - Expected format: {account}.dkr.ecr.{region}.amazonaws.com/{repo}:{tag}" >&2
-      return 1
+      exit 1
     fi
   else
     # Zip deployment (S3)
@@ -298,7 +298,7 @@ else
         echo "🔧 How to fix:" >&2
         echo "   - Verify the asset was uploaded correctly to S3" >&2
         echo "   - Expected format: s3://bucket-name/path/to/asset.zip" >&2
-        return 1
+        exit 1
       fi
     else
       log debug "   ✅ asset_url=not provided (may be set later)"

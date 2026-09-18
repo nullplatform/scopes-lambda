@@ -26,7 +26,7 @@ if [ -z "${MODULES_TO_USE:-}" ]; then
   echo "    • Ensure MODULES_TO_USE is set before calling compose_modules" >&2
   echo "    • This is typically done by the setup scripts (provider, compute, networking)" >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 if [ -z "${TOFU_MODULE_DIR:-}" ]; then
@@ -37,7 +37,7 @@ if [ -z "${TOFU_MODULE_DIR:-}" ]; then
   echo "    • Ensure TOFU_MODULE_DIR is set before calling compose_modules" >&2
   echo "    • This is typically done by the build_context script" >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 mkdir -p "$TOFU_MODULE_DIR"
@@ -56,7 +56,7 @@ for module in "${modules[@]}"; do
     echo "  🔧 How to fix:" >&2
     echo "    • Verify the module path is correct and the directory exists" >&2
     echo "" >&2
-    return 1
+    exit 1
   fi
 
   log info "📦 $module"
@@ -93,7 +93,7 @@ for module in "${modules[@]}"; do
       echo ""
       echo "   ❌ Setup script failed for module: $module" >&2
       echo "" >&2
-      return 1
+      exit 1
     fi
     log debug "   ✅ Setup completed"
   fi

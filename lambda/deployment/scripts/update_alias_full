@@ -14,7 +14,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  return 1
+  exit 1
 fi
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
@@ -28,7 +28,7 @@ if [ -z "$new_version" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the build step publishes a new Lambda version" >&2
   echo "   - Check that LAMBDA_GREEN_VERSION is set and NRN has the deployment version" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
@@ -55,7 +55,7 @@ if [ $update_exit_code -ne 0 ]; then
   echo "   - Check if the version exists: aws lambda get-function --function-name $LAMBDA_FUNCTION_NAME --qualifier $new_version" >&2
   echo "   - Verify alias exists: aws lambda get-alias --function-name $LAMBDA_FUNCTION_NAME --name $alias_name" >&2
   echo "   📋 Error: $update_output" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ Alias $alias_name updated successfully to version $new_version"
