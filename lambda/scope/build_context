@@ -17,7 +17,7 @@ if [ -z "${CONTEXT:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Ensure the scope event includes a valid CONTEXT JSON" >&2
   echo "   • Verify the agent trigger is passing CONTEXT correctly" >&2
-  return 1
+  exit 1
 fi
 
 #Extract scope information from context
@@ -34,7 +34,7 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Inspect the CONTEXT payload: echo \"\$CONTEXT\" | jq '.scope'" >&2
   echo "   • Ensure the scope was created correctly in nullplatform" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ scope_id=$SCOPE_ID"
@@ -116,7 +116,7 @@ if [ "$VISIBILITY" = "private" ] && [ "${TOFU_ACTION:-}" = "apply" ]; then
     echo "   • Increase ALB_LISTENER_RULE_CAPACITY if the ALB supports more rules" >&2
     echo "   • Remove unused scopes to free up listener rule slots" >&2
     echo "   • Provision an additional internal ALB for this account" >&2
-    return 1
+    exit 1
   fi
 
   export ALB_LISTENER_RULE_CAPACITY
@@ -138,7 +138,7 @@ if ! mkdir -p "$OUTPUT_DIR"; then
   echo "🔧 How to fix:" >&2
   echo "   • Check permissions on the parent directory" >&2
   echo "   • Verify available disk space with: df -h" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ output_dir=$OUTPUT_DIR"

@@ -18,7 +18,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "   - Environment variable not set by the deployment pipeline" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Ensure build_context runs before this script" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ function_name=$LAMBDA_FUNCTION_NAME"
@@ -91,7 +91,7 @@ if [ $update_exit_code -ne 0 ]; then
   echo "   - Verify capability values are within Lambda limits" >&2
   echo "   - Check the agent's IAM permissions include lambda:UpdateFunctionConfiguration" >&2
   echo "   📋 Error: $update_output" >&2
-  return 1
+  exit 1
 fi
 
 log info "   📡 Waiting for configuration update to complete..."
@@ -113,7 +113,7 @@ if [ $wait_exit_code -ne 0 ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Check the function's last update status reason" >&2
   echo "   - Verify VPC and layer configurations" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ Function configuration updated successfully"
