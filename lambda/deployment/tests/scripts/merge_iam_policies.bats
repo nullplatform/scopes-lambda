@@ -14,11 +14,13 @@ setup() {
   SCRIPT="$LAMBDA_DIR/deployment/scripts/merge_iam_policies"
 
   # Create temp dir for file-based mocks
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
 
   # Track call count for multi-response mocks
-  MOCK_STATE_DIR="$(mktemp -d)"
+  MOCK_STATE_DIR="$BATS_TEST_TMPDIR/state"
+  mkdir -p "$MOCK_STATE_DIR"
 
   # Unset exported functions so PATH-based mocks take precedence
   unset -f aws np
