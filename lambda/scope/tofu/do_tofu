@@ -71,7 +71,7 @@ import_or_fail() {
   if ! tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" "$address" "$id"; then
     echo "" >&2
     echo "❌ Failed to import existing $address into Tofu state" >&2
-    return 1
+    exit 1
   fi
 }
 
@@ -87,7 +87,7 @@ if [ "$TOFU_ACTION" = "apply" ]; then
   if ! tofu -chdir="$TF_WORKING_DIR" state show aws_lambda_function.main &>/dev/null; then
     if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" &>/dev/null 2>&1; then
       log info "   📡 Importing existing Lambda function: $LAMBDA_FUNCTION_NAME"
-      import_or_fail aws_lambda_function.main "$LAMBDA_FUNCTION_NAME" || return 1
+      import_or_fail aws_lambda_function.main "$LAMBDA_FUNCTION_NAME"
       log debug "   ✅ Lambda function imported"
     fi
   fi
@@ -96,7 +96,7 @@ if [ "$TOFU_ACTION" = "apply" ]; then
   if ! tofu -chdir="$TF_WORKING_DIR" state show aws_lambda_alias.main &>/dev/null; then
     if aws lambda get-alias --function-name "$LAMBDA_FUNCTION_NAME" --name "$main_alias_name" &>/dev/null 2>&1; then
       log info "   📡 Importing existing Lambda alias: $LAMBDA_FUNCTION_NAME/$main_alias_name"
-      import_or_fail aws_lambda_alias.main "$LAMBDA_FUNCTION_NAME/$main_alias_name" || return 1
+      import_or_fail aws_lambda_alias.main "$LAMBDA_FUNCTION_NAME/$main_alias_name"
       log debug "   ✅ Lambda alias imported"
     fi
   fi
@@ -108,7 +108,7 @@ if [ "$TOFU_ACTION" = "apply" ]; then
         --query "logGroups[?logGroupName=='$log_group_name'] | [0].logGroupName" \
         --output text 2>/dev/null | grep -q "$log_group_name"; then
       log info "   📡 Importing existing CloudWatch log group: $log_group_name"
-      import_or_fail aws_cloudwatch_log_group.lambda "$log_group_name" || return 1
+      import_or_fail aws_cloudwatch_log_group.lambda "$log_group_name"
       log debug "   ✅ CloudWatch log group imported"
     fi
   fi
