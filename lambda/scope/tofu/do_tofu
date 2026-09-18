@@ -45,7 +45,7 @@ log debug "📋 Found $tf_file_count .tf files"
 TOFU_VAR_FILE="$OUTPUT_DIR/tofu.tfvars.json"
 if ! echo "$TOFU_VARIABLES" > "$TOFU_VAR_FILE"; then
   echo "❌ Failed to write tofu variables to $TOFU_VAR_FILE" >&2
-  return 1
+  exit 1
 fi
 
 # Copy scripts if they exist
@@ -63,7 +63,7 @@ if ! tofu -chdir="$TF_WORKING_DIR" init -input=false $TOFU_INIT_VARIABLES; then
   echo "   - The state bucket does not exist or is not readable in this region" >&2
   echo "   - The assumed role lacks s3:GetObject/PutObject on the state bucket" >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 import_or_fail() {
