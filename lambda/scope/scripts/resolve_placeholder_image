@@ -66,7 +66,7 @@ if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
   echo "   • Set deployment.placeholder_image_uri in the scope-configurations provider," >&2
   echo "     or PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)" >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 # Validate image exists before committing to a Tofu run
