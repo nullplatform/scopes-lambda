@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/nullplatform/scopes-lambda/compare/v0.5.1...v0.6.0) (2026-09-18)
+
+
+### Features
+
+* dependabot for base image bumps ([9842bb7](https://github.com/nullplatform/scopes-lambda/commit/9842bb7cfbcee3cc16f39a2aa6831039a04bacab))
+* dependabot for base image bumps ([7bf0578](https://github.com/nullplatform/scopes-lambda/commit/7bf057870ead4861a74a34ccf158ee33a50feaca))
+
+
+### Bug Fixes
+
+* **ci:** auto-merge the release PR from workflow_run; Dependabot commits as fix(deps) ([bd11e9c](https://github.com/nullplatform/scopes-lambda/commit/bd11e9cc807cd160bb9061c2051d588dcb07489e))
+* **deps:** bump nullplatform/scopes/worker-bridge from 1.0.0 to 1.1.1 ([6344f4c](https://github.com/nullplatform/scopes-lambda/commit/6344f4c387ab50da80d3e21adfe34fd2b37ded3d))
+
 ## [0.5.1](https://github.com/nullplatform/scopes-lambda/compare/v0.5.0...v0.5.1) (2026-09-14)
 
 
