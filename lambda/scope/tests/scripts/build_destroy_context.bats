@@ -10,22 +10,20 @@ setup() {
   setup_test_env
   export SERVICE_PATH="$LAMBDA_DIR"
 
-  TMP_OUTPUT_DIR="$(mktemp -d)"
-  export OUTPUT_DIR="$TMP_OUTPUT_DIR"
-  export NP_OUTPUT_DIR="$TMP_OUTPUT_DIR"
+  export OUTPUT_DIR="$BATS_TEST_TMPDIR"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   export SCOPE_ID="scope-123"
   export LAMBDA_FUNCTION_NAME="np-lambda-test-fn"
   export CONTEXT='{}'
 }
 
 teardown() {
-  rm -rf "$TMP_OUTPUT_DIR"
   teardown_test_env
 }
 
 # Sourced, as the runner does — it also keeps the aws mock visible to the script.
 run_build_destroy_context() {
-  source "$LAMBDA_DIR/scope/scripts/build_destroy_context" || return $?
+  source "$LAMBDA_DIR/scope/scripts/build_destroy_context"
   echo "RESULT package_type=$PACKAGE_TYPE image_uri=$IMAGE_URI s3_bucket=$S3_BUCKET s3_key=$S3_KEY"
 }
 

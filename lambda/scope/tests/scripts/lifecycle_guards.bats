@@ -12,8 +12,7 @@ setup() {
   setup_test_env
   export SERVICE_PATH="$LAMBDA_DIR"
 
-  TMP_DIR="$(mktemp -d)"
-  export NP_OUTPUT_DIR="$TMP_DIR"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
 
   PROVIDERS_JSON='{"results":[{"category":"cloud-providers","attributes":{"account":{"id":"111122223333","region":"us-east-1"}}},{"category":"scope-configurations","attributes":{"state":{"tofu_state_bucket":"np-state"}}}]}'
 
@@ -26,7 +25,6 @@ setup() {
 }
 
 teardown() {
-  rm -rf "$TMP_DIR"
   teardown_test_env
 }
 
