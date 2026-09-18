@@ -12,7 +12,8 @@ setup() {
   export SERVICE_PATH="$LAMBDA_DIR"
 
   # Create temp dir for mock binaries and output
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
   _TEST_CLEANUP_DIRS=("$MOCK_BIN_DIR")
 
@@ -76,7 +77,7 @@ teardown() {
 
 @test "scope/build_context: extracts scope ID correctly" {
   set_context "public"
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"
@@ -87,7 +88,7 @@ teardown() {
 
 @test "scope/build_context: generates function name from slugs" {
   set_context "public"
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"
@@ -102,7 +103,7 @@ teardown() {
     .application.slug = "very-long-application-slug-exceeding" |
     .scope.slug = "long-scope"
   ')
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"
@@ -117,7 +118,7 @@ teardown() {
 
 @test "scope/build_context: extracts visibility from context" {
   set_context "private"
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
   export ALB_LISTENER_RULE_CAPACITY=100
   export ALB_LISTENER_RULE_ALERT_THRESHOLD=80
@@ -130,7 +131,7 @@ teardown() {
 
 @test "scope/build_context: defaults visibility to public" {
   export CONTEXT=$(echo "$MOCK_CONTEXT_PUBLIC" | jq 'del(.scope.capabilities.visibility)')
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"
@@ -144,7 +145,7 @@ teardown() {
   export TOFU_ACTION="apply"
   export ALB_LISTENER_RULE_CAPACITY=80
   export ALB_LISTENER_RULE_ALERT_THRESHOLD=80
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"
@@ -159,7 +160,7 @@ teardown() {
 
 @test "scope/build_context: creates output directory" {
   set_context "public"
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"
@@ -171,7 +172,7 @@ teardown() {
 
 @test "scope/build_context: generates resource tags JSON" {
   set_context "public"
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"
@@ -182,7 +183,7 @@ teardown() {
 
 @test "scope/build_context: outputs full success summary" {
   set_context "public"
-  export NP_OUTPUT_DIR="$(mktemp -d)"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run bash "$LAMBDA_DIR/scope/build_context"

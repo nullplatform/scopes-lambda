@@ -12,14 +12,15 @@ setup() {
   export SERVICE_PATH="$LAMBDA_DIR"
 
   # Create temp dir for mock binaries
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
   _TEST_CLEANUP_DIRS=("$MOCK_BIN_DIR")
 
   # Common required variables
   export LAMBDA_FUNCTION_NAME="my-namespace-my-app-my-scope-scope-123"
   export LAMBDA_ROLE_ARN="arn:aws:iam::123456789012:role/lambda-role"
-  export OUTPUT_DIR="$(mktemp -d)"
+  export OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$OUTPUT_DIR")
   export RUNTIME="nodejs20.x"
   export HANDLER="index.handler"

@@ -12,7 +12,8 @@ setup() {
   export SERVICE_PATH="$LAMBDA_DIR"
 
   # Create temp dir for mock binaries
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
   _TEST_CLEANUP_DIRS=("$MOCK_BIN_DIR")
 
