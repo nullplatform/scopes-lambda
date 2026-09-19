@@ -14,7 +14,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  return 1
+  exit 1
 fi
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
@@ -32,7 +32,7 @@ if [ -z "$previous_version" ] || [ "$previous_version" = "null" ]; then
   echo "   - LAMBDA_BLUE_VERSION was not exported from build_context" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Manually set the alias version if the previous version is known" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ previous_version=$previous_version"
@@ -57,7 +57,7 @@ if [ $update_exit_code -ne 0 ]; then
   echo "   - Check if the version exists: aws lambda get-function --function-name $LAMBDA_FUNCTION_NAME --qualifier $previous_version" >&2
   echo "   - Verify alias exists: aws lambda get-alias --function-name $LAMBDA_FUNCTION_NAME --name $alias_name" >&2
   echo "   📋 Error: $update_output" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ Alias $alias_name rolled back successfully to version $previous_version"

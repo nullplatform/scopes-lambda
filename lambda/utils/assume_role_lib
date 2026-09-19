@@ -52,7 +52,7 @@ scope_config_assume_role_arn() {
   local nrn="$1"
   [ -n "$nrn" ] || return 0
   np provider list --nrn "$nrn" --categories scope-configurations \
-      --format json --limit 100 2>/dev/null \
+      --format json 2>/dev/null \
     | jq -r '[ (.results // [])[] | .attributes.assume_role.arn? // empty ] | first // ""' 2>/dev/null
 }
 

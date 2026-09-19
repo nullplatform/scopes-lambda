@@ -12,7 +12,8 @@ setup() {
   export SERVICE_PATH="$LAMBDA_DIR"
 
   # Create temp dir for mock binaries
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
   _TEST_CLEANUP_DIRS=("$MOCK_BIN_DIR")
 
@@ -88,8 +89,12 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+run_sourced() {
+  source "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+}
+
 @test "adjust_provisioned: sets concurrency on alias" {
-  export CONTEXT='{"parameters":{"value":"5"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":5}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main","LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"0"}' \
@@ -99,14 +104,14 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"RequestedProvisionedConcurrentExecutions": 5, "StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "Provisioned concurrency set to 5"
 }
 
 @test "adjust_provisioned: removes provisioned concurrency when value is 0" {
-  export CONTEXT='{"parameters":{"value":"0"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":0}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main","LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"5"}' \
@@ -116,14 +121,14 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "Provisioned concurrency configuration removed successfully"
 }
 
 @test "adjust_provisioned: uses alias from NRN" {
-  export CONTEXT='{"parameters":{"value":"3"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":3}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"live","LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"0"}' \
@@ -133,14 +138,14 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"RequestedProvisionedConcurrentExecutions": 3, "StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "alias=live"
 }
 
 @test "adjust_provisioned: defaults alias to main" {
-  export CONTEXT='{"parameters":{"value":"3"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":3}}}'
 
   create_np_mock \
     '0:{"LAMBDA_CURRENT_PROVISIONED_CONCURRENCY_VALUE":"0"}' \
@@ -150,16 +155,16 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"RequestedProvisionedConcurrentExecutions": 3, "StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "alias=main"
 }
 
 @test "adjust_provisioned: fails when value not provided" {
-  export CONTEXT='{"parameters":{}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{}}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_provisioned_concurrency"
+  run run_sourced
 
   assert_failure
   assert_output_contains "'value' parameter is required"

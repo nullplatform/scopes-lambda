@@ -2,10 +2,6 @@
 # Resolve the placeholder code for scope provisioning.
 # For Image deployments: resolves the placeholder container image URI from ECR.
 # For Zip deployments: generates a minimal placeholder zip and uploads it to S3.
-#
-# Image tags follow the Docker convention for architecture:
-#   arm64  → suffix "-arm64"
-#   x86_64 → suffix "-amd64"
 
 source "$SERVICE_PATH/utils/log"
 
@@ -22,7 +18,7 @@ if [ "${PACKAGE_TYPE:-Image}" = "Zip" ]; then
   if ! base64 -d < "$b64_file" > "$placeholder_path" 2>/dev/null; then
     echo "" >&2
     echo "❌ Failed to decode placeholder zip from $b64_file" >&2
-    return 1
+    exit 1
   fi
 
   export LAMBDA_FILENAME="$placeholder_path"
@@ -35,75 +31,69 @@ fi
 # ── Image placeholder path ────────────────────────────────────────────────────
 log info "🔍 Resolving placeholder image URI..."
 
-placeholder_image_base="${PLACEHOLDER_IMAGE_URI:-public.ecr.aws/nullplatform/aws-lambda/nullplatform-lambda-placeholder:latest}"
 architecture="${ARCHITECTURE:-arm64}"
-
 log debug "   📋 architecture=$architecture"
 
-# Use the image URI as-is. If PLACEHOLDER_IMAGE_URI is not set, the default
-# :latest tag is used without any architecture suffix — publish arch-specific
-# tags and set PLACEHOLDER_IMAGE_URI explicitly if needed.
-if [[ "$placeholder_image_base" == *":"* ]]; then
-  placeholder_image_uri="$placeholder_image_base"
-else
-  placeholder_image_uri="${placeholder_image_base}:latest"
+if [ -z "${PLACEHOLDER_IMAGE_URI:-}" ]; then
+  echo "" >&2
+  echo "❌ No placeholder image is configured for this scope" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   • deployment.placeholder_image_uri is unset on the scope-configurations provider" >&2
+  echo "   • PLACEHOLDER_IMAGE_URI_DEFAULT is unset on the agent" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Publish one to your private ECR: lambda/scope/placeholder/publish" >&2
+  echo "   • Set deployment.placeholder_image_uri in the scope-configurations provider," >&2
+  echo "     or PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)" >&2
+  echo "" >&2
+  exit 1
 fi
 
-log debug "   📋 architecture=$architecture"
+# No architecture suffix is appended: publish arch-specific tags and point
+# PLACEHOLDER_IMAGE_URI at the exact one.
+if [[ "$PLACEHOLDER_IMAGE_URI" == *":"* ]]; then
+  placeholder_image_uri="$PLACEHOLDER_IMAGE_URI"
+else
+  placeholder_image_uri="${PLACEHOLDER_IMAGE_URI}:latest"
+fi
+
 log debug "   📋 placeholder_image_uri=$placeholder_image_uri"
+
+# Lambda only pulls from a private ECR repo in the same account and region, so a public
+# image passes validation here and then fails at function creation.
+if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
+  echo "" >&2
+  echo "❌ Placeholder image is public, and Lambda cannot pull it: $placeholder_image_uri" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   • PLACEHOLDER_IMAGE_URI points at a public ECR registry" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Publish one to your private ECR: lambda/scope/placeholder/publish" >&2
+  echo "   • Set deployment.placeholder_image_uri in the scope-configurations provider," >&2
+  echo "     or PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)" >&2
+  echo "" >&2
+  exit 1
+fi
 
 # Validate image exists before committing to a Tofu run
 log info "   📡 Validating placeholder image..."
 
 image_found=false
 
-if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
-  image_ref="${placeholder_image_uri#public.ecr.aws/}"
-  image_tag="${image_ref##*:}"
-  image_path="${image_ref%:*}"
-  [[ "$image_ref" != *":"* ]] && { image_tag="latest"; image_path="$image_ref"; }
+ecr_registry="${placeholder_image_uri%%/*}"
+ecr_region=$(echo "$ecr_registry" | cut -d. -f4)
+ecr_rest="${placeholder_image_uri#*/}"
+ecr_repo="${ecr_rest%:*}"
+ecr_tag="${ecr_rest##*:}"
+[[ "$ecr_rest" != *":"* ]] && ecr_tag="latest"
 
-  token_response=$(curl -sfL \
-    "https://public.ecr.aws/token/?scope=repository:${image_path}:pull&service=public.ecr.aws" \
-    2>/dev/null || echo "")
-
-  token=""
-  [ -n "$token_response" ] && token=$(echo "$token_response" | jq -r '.token // empty' 2>/dev/null || echo "")
-
-  if [ -z "$token" ]; then
-    echo "" >&2
-    echo "❌ Cannot reach public ECR to validate placeholder image" >&2
-    echo "" >&2
-    echo "💡 Possible causes:" >&2
-    echo "   • The agent has no outbound internet access" >&2
-    echo "   • public.ecr.aws is temporarily unavailable" >&2
-    echo "" >&2
-    echo "🔧 How to fix:" >&2
-    echo "   • Verify outbound connectivity: curl -s https://public.ecr.aws" >&2
-    return 1
-  fi
-
-  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "Authorization: Bearer $token" \
-    -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-    "https://public.ecr.aws/v2/${image_path}/manifests/${image_tag}")
-
-  [ "$http_code" = "200" ] && image_found=true
-else
-  # Private ECR
-  ecr_registry="${placeholder_image_uri%%/*}"
-  ecr_region=$(echo "$ecr_registry" | cut -d. -f4)
-  ecr_rest="${placeholder_image_uri#*/}"
-  ecr_repo="${ecr_rest%:*}"
-  ecr_tag="${ecr_rest##*:}"
-  [[ "$ecr_rest" != *":"* ]] && ecr_tag="latest"
-
-  if aws ecr describe-images \
-      --repository-name "$ecr_repo" \
-      --image-ids "imageTag=$ecr_tag" \
-      --region "$ecr_region" &>/dev/null 2>&1; then
-    image_found=true
-  fi
+if aws ecr describe-images \
+    --repository-name "$ecr_repo" \
+    --image-ids "imageTag=$ecr_tag" \
+    --region "$ecr_region" &>/dev/null 2>&1; then
+  image_found=true
 fi
 
 if [ "$image_found" = "false" ]; then
@@ -117,7 +107,7 @@ if [ "$image_found" = "false" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Publish the image once by running: lambda/scope/placeholder/publish" >&2
   echo "   • Verify PLACEHOLDER_IMAGE_URI=$placeholder_image_uri is correct" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ image found"

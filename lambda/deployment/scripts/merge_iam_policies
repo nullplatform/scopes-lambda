@@ -14,7 +14,7 @@ if [ -z "${LAMBDA_ROLE_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Verify the scope has a valid IAM role configured" >&2
   echo "   - Check that LAMBDA_ROLE_NAME is exported before this script runs" >&2
-  return 1
+  exit 1
 fi
 
 if [ -z "${DEPLOYMENT_ID:-}" ]; then
@@ -25,7 +25,7 @@ if [ -z "${DEPLOYMENT_ID:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure this script is called from within a nullplatform deployment flow" >&2
   echo "   - Check that DEPLOYMENT_ID is set in the environment" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ role_name=$LAMBDA_ROLE_NAME"
@@ -68,7 +68,7 @@ for i in $(seq 0 $((policy_count - 1))); do
     echo "   - Validate the policy document JSON" >&2
     echo "   - Check the agent's IAM permissions include iam:PutRolePolicy" >&2
     echo "   📋 Error: $attach_output" >&2
-    return 1
+    exit 1
   fi
 
   log debug "   ✅ Policy $full_policy_name attached successfully"

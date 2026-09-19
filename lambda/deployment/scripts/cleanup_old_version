@@ -14,7 +14,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Ensure the scope has a valid Lambda function configured" >&2
   echo "   - Check that LAMBDA_FUNCTION_NAME is exported before this script runs" >&2
-  return 1
+  exit 1
 fi
 
 # Blue version = Lambda version of the previously active deployment (now superseded)

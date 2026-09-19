@@ -12,14 +12,15 @@ setup() {
   export SERVICE_PATH="$LAMBDA_DIR"
 
   # Create temp dir for mock binaries
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
   _TEST_CLEANUP_DIRS=("$MOCK_BIN_DIR")
 
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
   export LAMBDA_FUNCTION_NAME="my-test-function"
   export OUTPUT_DIR="$BATS_TEST_TMPDIR"
-  export CONTEXT='{"parameters":{}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{}}}'
 
   # Unset exported shell functions so file-based mocks on PATH take precedence
   unset -f aws np
@@ -144,6 +145,10 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+run_sourced() {
+  source "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+}
+
 @test "invoke: succeeds with default payload" {
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main"}'
@@ -151,16 +156,17 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_success
+  assert_line "   📋 function_name=my-test-function | alias=main | payload_size=2"
   assert_output_contains "Lambda invoked successfully"
 }
 
 @test "invoke: fails when LAMBDA_FUNCTION_NAME not set" {
   unset LAMBDA_FUNCTION_NAME
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -174,14 +180,14 @@ MOCK_SCRIPT
     '{"errorMessage":"Runtime.HandlerNotFound","errorType":"Runtime.HandlerNotFound"}' \
     '0:{"StatusCode": 200, "FunctionError": "Unhandled"}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_failure
   assert_output_contains "Lambda function returned an error"
 }
 
-@test "invoke: uses custom payload from CONTEXT" {
-  export CONTEXT='{"parameters":{"payload":"{\"key\":\"value\"}"}}'
+@test "invoke: uses the payload from the action notification" {
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"payload":"{\"key\":\"value\"}"}}}'
 
   create_np_mock \
     '0:{"LAMBDA_FUNCTION_MAIN_ALIAS":"main"}'
@@ -189,8 +195,9 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"StatusCode": 200}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/invoke_lambda"
+  run run_sourced
 
   assert_success
-  assert_output_contains "lambda invoke" || assert_output_contains "Invoking my-test-function:main"
+  assert_line "   📋 function_name=my-test-function | alias=main | payload_size=15"
+  assert_line "   📡 Invoking my-test-function:main..."
 }

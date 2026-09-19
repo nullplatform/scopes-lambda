@@ -3,7 +3,6 @@
 # Source utility functions
 source "$SERVICE_PATH/utils/get_config_value"
 source "$SERVICE_PATH/utils/log"
-source "$SERVICE_PATH/utils/fetch_scope_configuration"
 
 log info "🔍 Building scope context..."
 
@@ -17,8 +16,11 @@ if [ -z "${CONTEXT:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Ensure the scope event includes a valid CONTEXT JSON" >&2
   echo "   • Verify the agent trigger is passing CONTEXT correctly" >&2
-  return 1
+  exit 1
 fi
+
+# Sourced after the CONTEXT guard: it derives NRN from CONTEXT and exits on a failed fetch.
+source "$SERVICE_PATH/utils/fetch_scope_configuration"
 
 #Extract scope information from context
 SCOPE_ID=$(echo "$CONTEXT" | jq -r '.scope.id')
@@ -34,7 +36,7 @@ if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Inspect the CONTEXT payload: echo \"\$CONTEXT\" | jq '.scope'" >&2
   echo "   • Ensure the scope was created correctly in nullplatform" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ scope_id=$SCOPE_ID"
@@ -89,7 +91,7 @@ log debug "   ✅ package_type=$PACKAGE_TYPE"
 log debug "   ✅ architecture=$ARCHITECTURE"
 
 #ALB listener rule capacity validation (private scopes use internal ALB)
-if [ "$VISIBILITY" = "private" ]; then
+if [ "$VISIBILITY" = "private" ] && [ "${TOFU_ACTION:-}" = "apply" ]; then
   ALB_LISTENER_RULE_CAPACITY=$(get_config_value \
     --provider '.providers["scope-configurations"].networking.alb_listener_rule_capacity' \
     --env ALB_LISTENER_RULE_CAPACITY \
@@ -116,7 +118,7 @@ if [ "$VISIBILITY" = "private" ]; then
     echo "   • Increase ALB_LISTENER_RULE_CAPACITY if the ALB supports more rules" >&2
     echo "   • Remove unused scopes to free up listener rule slots" >&2
     echo "   • Provision an additional internal ALB for this account" >&2
-    return 1
+    exit 1
   fi
 
   export ALB_LISTENER_RULE_CAPACITY
@@ -138,7 +140,7 @@ if ! mkdir -p "$OUTPUT_DIR"; then
   echo "🔧 How to fix:" >&2
   echo "   • Check permissions on the parent directory" >&2
   echo "   • Verify available disk space with: df -h" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ output_dir=$OUTPUT_DIR"

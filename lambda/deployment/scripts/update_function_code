@@ -12,7 +12,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
   echo "   - Environment variable not set by the deployment pipeline" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Ensure build_context runs before this script" >&2
-  return 1
+  exit 1
 fi
 
 package_type="${PACKAGE_TYPE:-Image}"
@@ -30,7 +30,7 @@ if [ "$package_type" = "Image" ]; then
     echo "   - The build did not produce a container image URL" >&2
     echo "🔧 How to fix:" >&2
     echo "   - Verify the build pipeline pushes the image to ECR and sets asset.url" >&2
-    return 1
+    exit 1
   fi
   log debug "   ✅ image_uri=$IMAGE_URI"
 
@@ -62,7 +62,7 @@ else
     echo "   - The build did not produce a zip asset" >&2
     echo "🔧 How to fix:" >&2
     echo "   - Verify the build pipeline uploads the zip to S3" >&2
-    return 1
+    exit 1
   fi
   log debug "   ✅ s3_bucket=$S3_BUCKET"
   log debug "   ✅ s3_key=$S3_KEY"
@@ -84,7 +84,7 @@ if [ $update_exit_code -ne 0 ]; then
   echo "   - Verify the asset exists and is accessible" >&2
   echo "   - Check the agent's IAM permissions include lambda:UpdateFunctionCode" >&2
   echo "   📋 Error: $update_output" >&2
-  return 1
+  exit 1
 fi
 
 log info "   📡 Waiting for function update to complete..."
@@ -106,7 +106,7 @@ if [ $wait_exit_code -ne 0 ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Check the function logs and update status reason" >&2
   echo "   - Verify the image architecture matches the function's architecture setting" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ Function code updated successfully"
