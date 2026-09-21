@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/nullplatform/scopes-lambda/compare/v0.6.0...v0.7.0) (2026-09-21)
+
+
+### Features
+
+* **lambda:** external invoke permissions, function DLQ and scope identity metadata ([#46](https://github.com/nullplatform/scopes-lambda/issues/46)) ([97ad426](https://github.com/nullplatform/scopes-lambda/commit/97ad426057068386ffcd06ece37f7e76cc2bc615))
+
 ## [0.6.0](https://github.com/nullplatform/scopes-lambda/compare/v0.5.1...v0.6.0) (2026-09-18)
 
 
