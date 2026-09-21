@@ -142,6 +142,21 @@ run_assume_role_step() {
   assert_output_not_contains "Placeholder image resolved"
 }
 
+@test "resolve_placeholder_image: a failed lookup reports the parsed URI and the AWS error" {
+  export PACKAGE_TYPE="Image"
+  export PLACEHOLDER_IMAGE_URI="084420143809.dkr.ecr.us-east-1.amazonaws.com/prd-registry-cross-account:placeholder"
+  mock_aws_error "An error occurred (RepositoryNotFoundException) when calling the DescribeImages operation"
+
+  run run_resolve_placeholder_image
+
+  assert_failure
+  assert_line "   📋 registry=084420143809 region=us-east-1 repo=prd-registry-cross-account tag=placeholder"
+  assert_line "❌ Placeholder image not found: 084420143809.dkr.ecr.us-east-1.amazonaws.com/prd-registry-cross-account:placeholder"
+  assert_line "📋 Parsed: registry=084420143809 region=us-east-1 repo=prd-registry-cross-account tag=placeholder"
+  assert_line "📋 Error details: An error occurred (RepositoryNotFoundException) when calling the DescribeImages operation "
+  assert_output_not_contains "Placeholder image resolved"
+}
+
 @test "fetch_scope_configuration: an empty result set names the missing providers" {
   np() { echo '{"results":[]}'; }
 

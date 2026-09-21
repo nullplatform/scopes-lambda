@@ -83,18 +83,25 @@ log info "   📡 Validating placeholder image..."
 image_found=false
 
 ecr_registry="${placeholder_image_uri%%/*}"
+ecr_account="${ecr_registry%%.*}"
 ecr_region=$(echo "$ecr_registry" | cut -d. -f4)
 ecr_rest="${placeholder_image_uri#*/}"
 ecr_repo="${ecr_rest%:*}"
 ecr_tag="${ecr_rest##*:}"
 [[ "$ecr_rest" != *":"* ]] && ecr_tag="latest"
 
+# At info level: a malformed URI is only visible through what it parsed into.
+log info "   📋 registry=$ecr_account region=$ecr_region repo=$ecr_repo tag=$ecr_tag"
+
+ecr_stderr="$NP_OUTPUT_DIR/describe-images.err"
 if aws ecr describe-images \
     --repository-name "$ecr_repo" \
     --image-ids "imageTag=$ecr_tag" \
-    --region "$ecr_region" &>/dev/null 2>&1; then
+    --region "$ecr_region" >/dev/null 2>"$ecr_stderr"; then
   image_found=true
 fi
+ecr_error=$(tr '\n' ' ' < "$ecr_stderr" 2>/dev/null)
+rm -f "$ecr_stderr"
 
 if [ "$image_found" = "false" ]; then
   echo "" >&2
@@ -107,6 +114,9 @@ if [ "$image_found" = "false" ]; then
   echo "🔧 How to fix:" >&2
   echo "   • Publish the image once by running: lambda/scope/placeholder/publish" >&2
   echo "   • Verify PLACEHOLDER_IMAGE_URI=$placeholder_image_uri is correct" >&2
+  echo "" >&2
+  echo "📋 Parsed: registry=$ecr_account region=$ecr_region repo=$ecr_repo tag=$ecr_tag" >&2
+  echo "📋 Error details: $ecr_error" >&2
   exit 1
 fi
 
