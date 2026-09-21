@@ -114,6 +114,18 @@ steps:
         type: environment
       - name: ALB_RULE_ARN
         type: environment
+      - name: LAMBDA_ALIAS_ARN
+        type: environment
+      - name: LAMBDA_EXECUTION_ROLE_ARN
+        type: environment
+      - name: LAMBDA_EXECUTION_ROLE_NAME
+        type: environment
+  - name: sync_invoke_permissions
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/sync_invoke_permissions"
+  - name: sync_dead_letter_queue
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/sync_dead_letter_queue"
   - name: store_metadata
     type: script
     file: "$SERVICE_PATH/scope/scripts/store_nrn_metadata"

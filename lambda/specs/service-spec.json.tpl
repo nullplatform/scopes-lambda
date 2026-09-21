@@ -116,6 +116,10 @@
                   {
                     "type": "Control",
                     "scope": "#/properties/architecture"
+                  },
+                  {
+                    "type": "Control",
+                    "scope": "#/properties/dead_letter_target_arn"
                   }
                 ]
               },
@@ -259,7 +263,8 @@
             { "const": "ruby4.0", "title": "Ruby 4.0" },
             { "const": "ruby3.4", "title": "Ruby 3.4" },
             { "const": "ruby3.3", "title": "Ruby 3.3" },
-            { "const": "provided.al2023", "title": "Custom Runtime (Amazon Linux 2023)" }
+            { "const": "provided.al2023", "title": "Custom Runtime (Amazon Linux 2023)" },
+            { "const": "provided.al2", "title": "Custom Runtime (Amazon Linux 2)" }
           ]
         },
         "handler": {
@@ -388,6 +393,12 @@
           "title": "VPC Integration",
           "description": "Run Lambda inside your VPC for access to private resources",
           "default": false
+        },
+        "dead_letter_target_arn": {
+          "type": "string",
+          "title": "Dead letter queue",
+          "description": "SQS queue or SNS topic ARN that receives events whose asynchronous invocation failed after all retries. Leave empty to disable. The execution role is granted send access to this ARN only.",
+          "default": ""
         },
         "layers": {
           "type": "array",

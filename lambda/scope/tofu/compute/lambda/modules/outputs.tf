@@ -28,11 +28,6 @@ output "lambda_current_version" {
   value       = aws_lambda_function.main.version
 }
 
-output "lambda_qualified_arn" {
-  description = "Qualified ARN of the Lambda function (with alias)"
-  value       = aws_lambda_alias.main.arn
-}
-
 output "lambda_log_group_name" {
   description = "Name of the CloudWatch log group"
   value       = aws_cloudwatch_log_group.lambda.name

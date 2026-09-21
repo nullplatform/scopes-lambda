@@ -77,6 +77,9 @@ steps:
         type: environment
       - name: MODULES_TO_USE
         type: environment
+  - name: cleanup_role_inline_policies
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/cleanup_role_inline_policies"
   - name: compose_modules
     type: script
     file: "$SERVICE_PATH/scope/tofu/compose_modules"

@@ -4,7 +4,7 @@
 ################################################################################
 
 module "scope_definition" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v6.19.1"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v7.0.0"
 
   nrn        = var.nrn
   np_api_key = var.np_api_key
@@ -44,6 +44,24 @@ module "scope_definition" {
   external_logging_provider = var.external_logging_provider
 
   create_scope_configuration = true
+
+  # Worker model: publish the scope as a versioned package whose bill of
+  # materials pins the released worker image, so a scope binds to an immutable
+  # revision. lookup references the globally-published artifact instead of
+  # registering a copy. null keeps the git-clone exec behaviour.
+  package = var.worker_orchestrator ? {
+    version = var.package_version
+    slug    = var.package_slug
+    artifacts = [{
+      name   = "worker-image"
+      lookup = true
+      meta = {
+        registry   = "public.ecr.aws"
+        repository = "nullplatform/scopes/lambda"
+        digest     = var.worker_image_digest
+      }
+    }]
+  } : null
 }
 
 ################################################################################
@@ -52,7 +70,7 @@ module "scope_definition" {
 ################################################################################
 
 module "scope_definition_agent_association" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=v6.19.1"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=v7.0.0"
 
   nrn     = var.nrn
   api_key = var.np_api_key
@@ -68,6 +86,13 @@ module "scope_definition_agent_association" {
   repository_notification_channel_branch = var.github_branch
 
   repo_path = var.repo_path
+
+  # package-exec instead of git-clone exec: the agent spawns the worker image
+  # pinned above and runs its baked entrypoint. The image lays the repo down at
+  # /app/pkg (see the Dockerfile), not the module's /app/packages/<slug> default.
+  worker_orchestrator = var.worker_orchestrator
+  package_slug        = var.worker_orchestrator ? var.package_slug : ""
+  entrypoint          = var.worker_orchestrator ? "/app/pkg/${var.service_path}/entrypoint" : ""
 
   tags_selectors = var.tags_selectors
 
