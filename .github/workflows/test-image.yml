@@ -2,29 +2,29 @@ name: test-image
 
 # Test image from a branch, without cutting a release: builds the branch this
 # run is dispatched on, pushes public.ecr.aws/nullplatform/scopes/lambda with
-# the tag test-<branch-slug>-<short-sha>, and registers it as a test artifact
-# owned by NP_TEST_ARTIFACT_NRN. The run's summary has the image, digest,
-# artifact id and revision id to put in a test package version.
+# the tag test-<branch-slug>-<short-sha>, and registers it as a revision of the
+# same artifact releases use (owner NP_ARTIFACT_NRN, visible to organization=*),
+# annotated com.nullplatform.build.type=test. The run's summary has the image,
+# digest, artifact id and revision id to put in a test package version.
 #
 # Run: Actions > test-image > Run workflow (pick the branch), or
 #   gh workflow run test-image.yml --ref <branch>
 #
-# Configure: secrets AWS_ROLE_ARN_ECR_PUSH + ARTIFACT_NP_API_KEY (same as
-# release.yml), variable NP_TEST_ARTIFACT_NRN (must differ from
-# NP_ARTIFACT_NRN).
+# Configure: nothing beyond release.yml. Same secrets (AWS_ROLE_ARN_ECR_PUSH +
+# ARTIFACT_NP_API_KEY) and the same NP_ARTIFACT_NRN variable.
 on:
   workflow_dispatch:
     inputs:
       register_artifact:
-        description: 'Register the image as a test artifact (off = image only)'
+        description: 'Register the image as a revision of the release artifact (off = image only)'
         required: false
         type: boolean
         default: true
       artifact_visible_to:
-        description: 'Extra NRNs that can use the test artifact, e.g. organization=123 (empty = owner NRN only)'
+        description: 'Visibility selector for the registered artifact (same default as a release)'
         required: false
         type: string
-        default: ''
+        default: 'organization=*'
 
 permissions:
   contents: read
