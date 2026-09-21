@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/nullplatform/scopes-lambda/compare/v0.7.0...v0.7.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **scope:** don't block delete when the Lambda function is already gone ([#55](https://github.com/nullplatform/scopes-lambda/issues/55)) ([f415ce9](https://github.com/nullplatform/scopes-lambda/commit/f415ce9f7b808a26d5e737834d86ce1b077be1e9))
+
 ## [0.7.0](https://github.com/nullplatform/scopes-lambda/compare/v0.6.0...v0.7.0) (2026-09-21)
 
 
