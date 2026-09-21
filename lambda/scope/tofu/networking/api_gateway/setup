@@ -9,7 +9,7 @@ if [ "$visibility" != "public" ]; then
   echo ""
   echo "   ⏭️  Skipping API Gateway - visibility is '$visibility' (not public)"
   echo ""
-  return 0 2>/dev/null || exit 0
+  return 0
 fi
 
 echo "   ✅ visibility=public"

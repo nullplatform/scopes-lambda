@@ -12,7 +12,8 @@ setup() {
   export SERVICE_PATH="$LAMBDA_DIR"
 
   # Create temp dir for mock binaries
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
   _TEST_CLEANUP_DIRS=("$MOCK_BIN_DIR")
 
@@ -88,8 +89,12 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
+run_sourced() {
+  source "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+}
+
 @test "adjust_reserved: sets concurrency value" {
-  export CONTEXT='{"parameters":{"value":"10"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":10}}}'
 
   create_np_mock \
     '0:{"LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE":"5"}' \
@@ -99,14 +104,14 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:{"ReservedConcurrentExecutions": 10}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "Reserved concurrency set to 10"
 }
 
 @test "adjust_reserved: removes reservation when value is 0" {
-  export CONTEXT='{"parameters":{"value":"0"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":0}}}'
 
   create_np_mock \
     '0:{"LAMBDA_CURRENT_RESERVED_CONCURRENCY_VALUE":"5"}' \
@@ -116,24 +121,24 @@ MOCK_SCRIPT
   create_aws_mock \
     '0:'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_success
   assert_output_contains "reservation removed"
 }
 
 @test "adjust_reserved: fails when value not provided" {
-  export CONTEXT='{"parameters":{}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{}}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_failure
 }
 
 @test "adjust_reserved: fails when value is not a number" {
-  export CONTEXT='{"parameters":{"value":"abc"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":"abc"}}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_failure
   assert_output_contains "must be a non-negative integer"
@@ -141,9 +146,9 @@ MOCK_SCRIPT
 
 @test "adjust_reserved: fails when LAMBDA_FUNCTION_NAME not set" {
   unset LAMBDA_FUNCTION_NAME
-  export CONTEXT='{"parameters":{"value":"10"}}'
+  export NP_ACTION_CONTEXT='{"notification":{"parameters":{"value":10}}}'
 
-  run bash "$LAMBDA_DIR/scope/scripts/adjust_reserved_concurrency"
+  run run_sourced
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"

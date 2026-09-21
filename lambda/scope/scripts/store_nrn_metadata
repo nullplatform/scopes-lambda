@@ -17,7 +17,7 @@ if [ -z "${SCOPE_NRN:-}" ]; then
   echo "🔧 How to fix:" >&2
   echo "   - Verify SCOPE_NRN is exported before this script runs" >&2
   echo "   - Check the deployment agent configuration" >&2
-  return 1
+  exit 1
 fi
 
 main_alias="${LAMBDA_MAIN_ALIAS_NAME:-main}"
@@ -110,7 +110,7 @@ if [ $np_exit_code -ne 0 ]; then
   echo "   - Verify the metadata JSON is valid" >&2
   echo "   - Ensure the agent has write permissions to the NRN namespace" >&2
   echo "   📋 Error: $np_output" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ Metadata stored successfully"

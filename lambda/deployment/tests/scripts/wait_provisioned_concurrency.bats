@@ -14,7 +14,8 @@ setup() {
 
   SCRIPT="$LAMBDA_DIR/deployment/scripts/wait_provisioned_concurrency"
 
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
 
   # Mock sleep to be instant

@@ -9,7 +9,7 @@ if [ "$visibility" != "private" ] && [ "$visibility" != "internal" ]; then
   echo ""
   echo "   ⏭️  Skipping ALB - visibility is '$visibility' (not private/internal)"
   echo ""
-  return 0 2>/dev/null || exit 0
+  return 0
 fi
 
 echo "   ✅ visibility=$visibility"

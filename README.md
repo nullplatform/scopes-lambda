@@ -434,7 +434,7 @@ for SQS) on the key, which the scope cannot derive — add it yourself.
 
 | Resource | Format | Example |
 |----------|--------|---------|
-| Lambda Function | `{namespace}-{application}-{scope}-{scope_id}` (max 64 chars) | `acme-webapp-api-12345abcdef` |
+| Lambda Function | `{scope_id}-{application}-{scope}` (max 64 chars) | `12345abcdef-webapp-api` |
 | Terraform State | `lambda/{scope_id}/terraform.tfstate` | — |
 | Alias (primary) | `main` | — |
 | Alias (warmup) | `warmup` | — |

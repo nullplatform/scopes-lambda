@@ -13,12 +13,46 @@ DIMENSION_FILTER=$(echo "$CONTEXT" | jq -r '
   (.scope.dimensions // {}) | to_entries | map("\(.key):\(.value)") | join(",")
 ')
 
+np_exit_code=0
+
 if [ -z "$DIMENSION_FILTER" ] || [ "$DIMENSION_FILTER" = "" ]; then
   log debug "   ✅ dimensions=none"
-  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --format json)
+  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --format json) || np_exit_code=$?
 else
   log debug "   ✅ dimensions=$DIMENSION_FILTER"
-  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --dimensions "$DIMENSION_FILTER" --format json)
+  PROVIDER_RESPONSE=$(np provider list --nrn "$NRN" --categories "vpc,scope-configurations,cloud-providers" --dimensions "$DIMENSION_FILTER" --format json) || np_exit_code=$?
+fi
+
+# Fail here: no providers surfaces downstream as a misleading "AWS_REGION is missing".
+if [ "$np_exit_code" -ne 0 ]; then
+  echo "❌ Failed to fetch providers for NRN=$NRN" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The nullplatform API is unreachable or returned an error" >&2
+  echo "   - The agent's API key lacks permission to list providers" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Verify the agent can reach the nullplatform API" >&2
+  echo "   • Check the agent's credentials and NRN visibility" >&2
+  echo "   📋 Error: $(echo "$PROVIDER_RESPONSE" | tr '\n' ' ')" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# np exits 0 with an empty result set, so an unconfigured NRN needs its own message.
+provider_count=$(echo "$PROVIDER_RESPONSE" | jq '[.results[]?] | length' 2>/dev/null) || provider_count=""
+if [ -z "$provider_count" ] || [ "$provider_count" -eq 0 ]; then
+  echo "❌ No providers found for NRN=$NRN" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The NRN has no vpc, cloud-providers or scope-configurations provider configured" >&2
+  echo "   - The scope dimensions match no provider: dimensions=${DIMENSION_FILTER:-none}" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Configure the providers on the NRN or a parent of it" >&2
+  echo "   • Verify the dimensions with: np provider list --nrn $NRN" >&2
+  echo "" >&2
+  exit 1
 fi
 
 for CATEGORY in vpc cloud-providers scope-configurations; do

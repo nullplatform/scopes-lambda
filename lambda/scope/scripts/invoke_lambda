@@ -20,8 +20,8 @@ LAMBDA_FUNCTION_MAIN_ALIAS="main"
 
 alias="$LAMBDA_FUNCTION_MAIN_ALIAS"
 
-# Read payload from CONTEXT
-payload=$(echo "$CONTEXT" | jq -r '.parameters.payload // "{}"')
+# Action parameters live in the raw notification; CONTEXT holds the app parameters.
+payload=$(echo "$NP_ACTION_CONTEXT" | jq -r '.notification.parameters.payload // "{}"')
 
 if [ -z "$payload" ] || [ "$payload" = "null" ]; then
   payload="{}"

@@ -24,7 +24,7 @@ _ar_log() {
 if [ -n "${ASSUME_ROLE_ARN:-}" ]; then
   _ar_log info "   🔑 Assuming role: $ASSUME_ROLE_ARN"
 
-  _ar_sts_error=$(mktemp)
+  _ar_sts_error="$NP_OUTPUT_DIR/sts_assume_role.err"
   if ! ASSUMED_CREDS=$(aws sts assume-role \
     --role-arn     "$ASSUME_ROLE_ARN" \
     --role-session-name "np-lambda-${SCOPE_ID:-workflow}" \

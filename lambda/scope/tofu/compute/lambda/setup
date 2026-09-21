@@ -15,21 +15,25 @@ lambda_image_uri="${IMAGE_URI:-}"
 lambda_filename="${LAMBDA_FILENAME:-}"
 lambda_s3_bucket="${S3_BUCKET:-}"
 lambda_s3_key="${S3_KEY:-}"
+tofu_action="${TOFU_ACTION:-apply}"
 
-if [ "$package_type" = "Image" ]; then
+# A destroy reads resources from state, so the asset values are irrelevant to it.
+if [ "$tofu_action" = "destroy" ]; then
+  log info "   ✅ asset validation skipped (tofu destroy reads resources from state)"
+elif [ "$package_type" = "Image" ]; then
   if [ -z "$lambda_image_uri" ] || [ "$lambda_image_uri" = "null" ]; then
     echo ""
-    echo "   ❌ Image URI not found (ASSET_TYPE=docker-image but IMAGE_URI is empty)" >&2
+    echo "   ❌ Image URI not found (PACKAGE_TYPE=Image but IMAGE_URI is empty)" >&2
     echo "" >&2
     echo "  💡 Possible causes:" >&2
-    echo "    • The build did not produce a container image URL" >&2
-    echo "    • The asset object is missing the url field" >&2
+    echo "    • No placeholder image is configured for this account" >&2
+    echo "    • The scope's Lambda function could not be read from AWS" >&2
     echo "" >&2
     echo "  🔧 How to fix:" >&2
-    echo "    • Verify the build pipeline pushes the image to ECR and sets asset.url" >&2
-    echo "    • Expected format: {account}.dkr.ecr.{region}.amazonaws.com/{repo}:{tag}" >&2
+    echo "    • Set deployment.placeholder_image_uri in the scope-configurations provider" >&2
+    echo "    • Or set PLACEHOLDER_IMAGE_URI_DEFAULT on the agent (README: Placeholder Image)" >&2
     echo "" >&2
-    return 1
+    exit 1
   fi
   log debug "   ✅ package_type=Image"
   log debug "   ✅ image_uri=$lambda_image_uri"
@@ -48,7 +52,7 @@ else
     echo "  🔧 How to fix:" >&2
     echo "    • Ensure the application has a valid build that produces a Lambda deployment package" >&2
     echo "" >&2
-    return 1
+    exit 1
   fi
   log debug "   ✅ package_type=Zip"
   log debug "   ✅ s3_bucket=$lambda_s3_bucket"
@@ -107,6 +111,8 @@ if [ "$vpc_enabled" = "true" ]; then
       --argjson security_group_ids "$security_group_ids" \
       '{subnet_ids: $subnet_ids, security_group_ids: $security_group_ids}')
     log debug "   ✅ vpc_enabled=true"
+  elif [ "$tofu_action" = "destroy" ]; then
+    log info "   ✅ vpc validation skipped (tofu destroy reads the config from state)"
   else
     echo ""
     echo "   ❌ VPC enabled but subnet_ids or security_group_ids not configured" >&2
@@ -115,7 +121,7 @@ if [ "$vpc_enabled" = "true" ]; then
     echo "    • Set networking.aws_subnet_ids (comma-separated) in the scope-configurations provider" >&2
     echo "    • Set SECURITY_GROUP_IDS (comma-separated) in the scope values configuration" >&2
     echo "" >&2
-    return 1
+    exit 1
   fi
 fi
 
@@ -175,7 +181,7 @@ if [ -z "$lambda_function_name" ] || [ "$lambda_function_name" = "null" ]; then
   echo "    • Scope was not created properly" >&2
   echo "    • Lambda placeholder was not created during scope creation" >&2
   echo "" >&2
-  return 1
+  exit 1
 fi
 
 log debug "   ✅ function_name=$lambda_function_name"

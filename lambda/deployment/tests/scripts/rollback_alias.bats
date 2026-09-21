@@ -14,7 +14,8 @@ setup() {
   SCRIPT="$LAMBDA_DIR/deployment/scripts/rollback_alias"
 
   # Create temp dir for file-based mocks
-  MOCK_BIN_DIR="$(mktemp -d)"
+  MOCK_BIN_DIR="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN_DIR"
   export PATH="$MOCK_BIN_DIR:$PATH"
 
   # Unset exported functions so PATH-based mocks take precedence
