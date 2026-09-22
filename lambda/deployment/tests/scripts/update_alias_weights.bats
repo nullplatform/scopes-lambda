@@ -79,7 +79,7 @@ SCRIPT
   export DESIRED_TRAFFIC="10"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -92,7 +92,7 @@ SCRIPT
   unset DESIRED_TRAFFIC
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "DESIRED_TRAFFIC is required"
@@ -106,7 +106,7 @@ SCRIPT
   export DESIRED_TRAFFIC="10"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "No version specified"
@@ -123,7 +123,7 @@ SCRIPT
   create_aws_sequential_mock '{"FunctionVersion": "1", "Name": "main"}'
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
 }
@@ -137,7 +137,7 @@ SCRIPT
   create_aws_sequential_mock '{"FunctionVersion": "1", "Name": "main"}'
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
 }
@@ -151,7 +151,7 @@ SCRIPT
   create_aws_sequential_mock '{"FunctionVersion": "1", "Name": "main"}'
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
 }
@@ -267,7 +267,7 @@ SCRIPT
   create_aws_error_mock "ResourceNotFoundException: Function not found"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
 }
@@ -281,7 +281,7 @@ SCRIPT
   create_aws_error_mock "ResourceNotFoundException: Version 999 not found"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
 }

@@ -23,7 +23,7 @@ teardown() {
   unset LAMBDA_FUNCTION_NAME
   export LAMBDA_NEW_VERSION="5"
 
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_line "❌ LAMBDA_FUNCTION_NAME is required"

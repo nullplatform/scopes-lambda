@@ -581,10 +581,11 @@ Two mocking styles live in `scope/tests/scripts/helpers/`:
   every invocation. Use it for scripts that branch on what AWS returns, and to
   assert on calls that must *not* happen.
 
-**Scripts that use `return` instead of `exit`** — the workflow engine sources
-them — must be tested with `run bash -c "source '<script>'"`. Running them with
-`run bash <script>` makes `return` a warning that does not stop the script, so
-every failure assertion silently passes.
+Steps abort with `exit N`, so `run bash <script>` is the default. A top-level
+`return` in an executed script only warns and carries on, so the few scripts
+that still use one must be sourced instead: `run_step "<script>"` (already a
+`run` — call it bare) or a local `run_sourced() { source …; }` plus
+`run run_sourced`.
 
 ### Tofu Tests (OpenTofu)
 

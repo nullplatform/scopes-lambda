@@ -145,7 +145,7 @@ MOCK_SCRIPT
   unset SCOPE_ID
   set_context secretsmanager
 
-  run_sourced "$LAMBDA_DIR/deployment/scripts/sync_parameters_to_secrets_manager"
+  run_step "$LAMBDA_DIR/deployment/scripts/sync_parameters_to_secrets_manager"
 
   assert_failure
   assert_output_contains "SCOPE_ID is not set"

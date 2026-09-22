@@ -44,7 +44,7 @@ with_policy() {
   context_with '[]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "add-permission"
@@ -56,7 +56,7 @@ with_policy() {
   context_with '[{"statement_id":"apigw-authorizer","principal":"apigateway.amazonaws.com","source_arn":"arn:aws:execute-api:us-east-1:111122223333:abcd/authorizers/*"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "add-permission"
@@ -71,7 +71,7 @@ with_policy() {
   context_with '[{"statement_id":"eventbridge-daily","principal":"events.amazonaws.com"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--action lambda:InvokeFunction"
@@ -81,7 +81,7 @@ with_policy() {
   context_with '[{"statement_id":"s3-uploads","principal":"s3.amazonaws.com","source_arn":"arn:aws:s3:::my-bucket","source_account":"111122223333"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--source-account 111122223333"
@@ -91,7 +91,7 @@ with_policy() {
   context_with '[{"statement_id":"eventbridge-daily","principal":"events.amazonaws.com","source_arn":"arn:aws:events:us-east-1:111122223333:rule/daily"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction","Condition":{"ArnLike":{"AWS:SourceArn":"arn:aws:events:us-east-1:111122223333:rule/daily"}}}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "add-permission"
@@ -102,7 +102,7 @@ with_policy() {
   context_with '[{"statement_id":"eventbridge-daily","principal":"events.amazonaws.com","source_arn":"arn:aws:events:us-east-1:111122223333:rule/NEW"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction","Condition":{"ArnLike":{"AWS:SourceArn":"arn:aws:events:us-east-1:111122223333:rule/OLD"}}}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "remove-permission"
@@ -113,7 +113,7 @@ with_policy() {
   context_with '[]'
   with_policy '{"Statement":[{"Sid":"np-ext-stale","Effect":"Allow","Principal":{"Service":"s3.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--statement-id np-ext-stale"
@@ -124,7 +124,7 @@ with_policy() {
   context_with '[]'
   with_policy '{"Statement":[{"Sid":"AllowAPIGatewayInvoke","Effect":"Allow","Principal":{"Service":"apigateway.amazonaws.com"},"Action":"lambda:InvokeFunction"},{"Sid":"AllowALBInvoke","Effect":"Allow","Principal":{"Service":"elasticloadbalancing.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "remove-permission"
@@ -134,7 +134,7 @@ with_policy() {
   context_with '[]'
   with_policy '{"Statement":[{"Sid":"SomebodyElsesGrant","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "remove-permission"
@@ -144,7 +144,7 @@ with_policy() {
   context_with '[{"statement_id":"arn:aws:events:us-east-1:1:rule/x","principal":"events.amazonaws.com"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Invalid statement_id"
@@ -155,7 +155,7 @@ with_policy() {
   context_with '[{"statement_id":"no-principal"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "missing 'statement_id' or 'principal'"
@@ -165,7 +165,7 @@ with_policy() {
   unset LAMBDA_FUNCTION_NAME
   context_with '[]'
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -176,7 +176,7 @@ with_policy() {
   no_policy
   aws_mock_response "lambda add-permission" 254 "AccessDeniedException"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Failed to add invoke permission"
@@ -189,7 +189,7 @@ with_policy() {
   context_with '[{"statement_id":"cross-account","principal":"arn:aws:iam::111122223333:role/caller"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-cross-account","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:role/caller"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "remove-permission"
@@ -200,7 +200,7 @@ with_policy() {
   context_with '[]'
   aws_mock_response "lambda get-policy" 254 "AccessDeniedException: not authorized to perform lambda:GetPolicy"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Failed to read the resource policy"
@@ -212,7 +212,7 @@ with_policy() {
   with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction","Condition":{"ArnLike":{"AWS:SourceArn":"arn:aws:events:us-east-1:111122223333:rule/OLD"}}}]}'
   aws_mock_response "lambda add-permission" 254 "InvalidParameterValueException"
 
-  run_sourced
+  run_step
 
   assert_failure
   # The old grant was working a moment ago; it must not be left removed.
@@ -227,7 +227,7 @@ with_policy() {
   export CONTEXT='{"providers":{"scope-configurations":{"state":{"tofu_state_bucket":"b"},"triggers":{"invoke_permissions":[{"statement_id":"apigw","principal":"apigateway.amazonaws.com"}]}}}}'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--statement-id np-ext-apigw"
@@ -238,7 +238,7 @@ with_policy() {
   export CONTEXT=''
   with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Could not read triggers.invoke_permissions"
@@ -249,7 +249,7 @@ with_policy() {
   context_with '[{"statement_id":"dup","principal":"events.amazonaws.com"},{"statement_id":"dup","principal":"s3.amazonaws.com"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Duplicate statement_id 'dup'"
@@ -260,7 +260,7 @@ with_policy() {
   context_with '[{"statement_id":"multi","principal":"events.amazonaws.com"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-multi","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":["lambda:InvokeFunction","lambda:InvokeFunctionUrl"]}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   # add-permission grants one action, so restoring it would silently narrow it
@@ -274,7 +274,7 @@ with_policy() {
   context_with '[{"statement_id":"s3-uploads","principal":"s3.amazonaws.com","scope":"other-scope"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "add-permission"
@@ -285,7 +285,7 @@ with_policy() {
   context_with '[{"statement_id":"by-slug","principal":"events.amazonaws.com","scope":"my-scope"},{"statement_id":"by-id","principal":"s3.amazonaws.com","scope":"9001"}]'
   no_policy
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--statement-id np-ext-by-slug"
@@ -296,7 +296,7 @@ with_policy() {
   context_with '[{"statement_id":"mine","principal":"events.amazonaws.com"},{"statement_id":"theirs","principal":"s3.amazonaws.com","scope":"other-scope"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-mine","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "remove-permission"
@@ -308,7 +308,7 @@ with_policy() {
   context_with '[{"statement_id":"eventbridge.daily","principal":"events.amazonaws.com"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Invalid statement_id"
@@ -320,7 +320,7 @@ with_policy() {
   context_with "[{\"statement_id\":\"$long_id\",\"principal\":\"events.amazonaws.com\"}]"
   with_policy '{"Statement":[{"Sid":"np-ext-stale","Effect":"Allow","Principal":{"Service":"s3.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "too long"
@@ -331,7 +331,7 @@ with_policy() {
   context_with '[{"statement_id":"acct","principal":"111122223333"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-acct","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::111122223333:root"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "remove-permission"
@@ -345,7 +345,7 @@ with_policy() {
   context_with '[{"statement_id":"mine","principal":"events.amazonaws.com","scope":"my-scope"}]'
   with_policy '{"Statement":[{"Sid":"np-ext-mine","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "SCOPE_SLUG is required"

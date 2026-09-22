@@ -43,7 +43,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "iam put-role-policy"
@@ -57,7 +57,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sns:us-east-1:111122223333:my-topic"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "sns:Publish"
@@ -68,7 +68,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   # Lambda drops failed events if the role cannot write yet, so the grant has
@@ -82,7 +82,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "iam put-role-policy"
@@ -94,7 +94,7 @@ function_with_dlq() {
   context_with_dlq ""
   function_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called '--dead-letter-config {"TargetArn":""}'
@@ -107,7 +107,7 @@ function_with_dlq() {
   context_with_dlq ""
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "update-function-configuration"
@@ -118,7 +118,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:s3:::my-bucket"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Unsupported dead letter target"
@@ -129,7 +129,7 @@ function_with_dlq() {
   context_with_dlq "my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Unsupported dead letter target"
@@ -139,7 +139,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "update-function-code"
@@ -151,7 +151,7 @@ function_with_dlq() {
   unset LAMBDA_FUNCTION_NAME
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -161,7 +161,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Failed to read configuration"
@@ -172,7 +172,7 @@ function_with_dlq() {
   function_with_dlq
   aws_mock_response "iam put-role-policy" 254 "AccessDenied"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Failed to grant dead letter access"
@@ -183,7 +183,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   # A dedicated execution role can be shared between scopes; an unscoped name
@@ -196,7 +196,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "SCOPE_ID is required"
@@ -207,7 +207,7 @@ function_with_dlq() {
   function_with_dlq
   aws_mock_response "lambda wait" 255 "Waiter FunctionUpdated failed"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "did not complete"
@@ -218,7 +218,7 @@ function_with_dlq() {
   function_with_dlq
   aws_mock_response "lambda update-function-configuration" 254 "InvalidParameterValueException"
 
-  run_sourced
+  run_step
 
   assert_failure
   # Otherwise the role keeps send access to an arbitrary ARN with no DLQ enabled
@@ -230,7 +230,7 @@ function_with_dlq() {
   function_with_dlq "arn:aws:sqs:us-east-1:111122223333:old-dlq"
   aws_mock_response "lambda update-function-configuration" 254 "InvalidParameterValueException"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_aws_cli_called "old-dlq"
