@@ -109,8 +109,8 @@ variable "package_version" {
 variable "worker_image_digest" {
   description = "Digest of the worker image to pin. Taken from the Artifact table of the matching GitHub release."
   type        = string
-  # v0.7.1
-  default = "sha256:03fd74c8980bcfc584abde16f6e25762a5845b7bc6c1c3bc7c2a207847a4d595"
+  # v0.7.2
+  default = "sha256:bf9844e48226b2f3c515a4014868a218c1325e7b0dc6a15c2e1c4a9f0e4b74a0"
 }
 
 ################################################################################
