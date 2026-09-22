@@ -56,6 +56,12 @@ variable "service_spec_description" {
   default     = "AWS Lambda functions managed by nullplatform"
 }
 
+variable "scope_configuration_name_override" {
+  description = "Name for the provider specification built from scope-configuration.json.tpl. Set it when installing beside another Lambda scope type, whose template declares the same name."
+  type        = string
+  default     = null
+}
+
 variable "external_metrics_provider" {
   description = "Name of the external metrics provider"
   type        = string
@@ -95,16 +101,16 @@ variable "package_slug" {
 }
 
 variable "package_version" {
-  description = "Semver of the package revision to publish. Bump when pinning a newer worker image."
+  description = "Semver of the package revision to publish. Bump when pinning a newer worker image — a published revision is immutable."
   type        = string
-  default     = "0.0.1"
+  default     = "0.0.2"
 }
 
 variable "worker_image_digest" {
   description = "Digest of the worker image to pin. Taken from the Artifact table of the matching GitHub release."
   type        = string
-  # v0.3.2
-  default = "sha256:4151e8005a6ad7de44b82411cf4f04cf197cf52d4a399e403ffdcd111e083482"
+  # v0.7.1
+  default = "sha256:03fd74c8980bcfc584abde16f6e25762a5845b7bc6c1c3bc7c2a207847a4d595"
 }
 
 ################################################################################
