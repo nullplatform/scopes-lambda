@@ -19,7 +19,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; t
   echo "🔧 How to fix:" >&2
   echo "   - Verify LAMBDA_FUNCTION_NAME is listed in the build_context step outputs" >&2
   echo "   - Re-run the diagnose-scope action to check scope health" >&2
-  return 1
+  exit 1
 fi
 
 # Entries may name their scope by slug or id. Missing either would filter such
@@ -32,7 +32,7 @@ for required in SCOPE_ID SCOPE_SLUG; do
     echo "   - The step was added to a workflow without declaring $required as a build_context output" >&2
     echo "🔧 How to fix:" >&2
     echo "   - Add $required to the build_context step outputs of that workflow" >&2
-    return 1
+    exit 1
   fi
 done
 
@@ -47,7 +47,7 @@ if ! desired=$(echo "$CONTEXT" | jq -ce '.providers["scope-configurations"].trig
   echo "   - Re-run the action; treating an unreadable config as empty would" >&2
   echo "     remove every external trigger this scope has" >&2
   echo "   📋 jq error: $desired" >&2
-  return 1
+  exit 1
 fi
 
 declared_count=$(echo "$desired" | jq 'length')
@@ -73,7 +73,7 @@ if [ -n "$duplicate_sid" ]; then
   echo "   - Two entries were given the same name" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Give every entry a distinct statement_id" >&2
-  return 1
+  exit 1
 fi
 
 while IFS= read -r perm; do
@@ -88,7 +88,7 @@ while IFS= read -r perm; do
     echo "   - The scope-configuration entry was saved with an incomplete object" >&2
     echo "🔧 How to fix:" >&2
     echo "   - Set both statement_id and principal on every invoke_permissions entry" >&2
-    return 1
+    exit 1
   fi
 
   # AWS restricts StatementId to [a-zA-Z0-9-_] and 100 characters, and our prefix
@@ -99,7 +99,7 @@ while IFS= read -r perm; do
     echo "   - The statement_id contains dots, colons or spaces (e.g. an ARN was pasted)" >&2
     echo "🔧 How to fix:" >&2
     echo "   - Use a short symbolic name, e.g. 'apigw-authorizer' or 'eventbridge-daily'" >&2
-    return 1
+    exit 1
   fi
 
   if [ ${#statement_id} -gt $((100 - ${#NP_INVOKE_SID_PREFIX})) ]; then
@@ -108,7 +108,7 @@ while IFS= read -r perm; do
     echo "   - AWS caps StatementId at 100 characters, and '$NP_INVOKE_SID_PREFIX' is prepended" >&2
     echo "🔧 How to fix:" >&2
     echo "   - Shorten the statement_id to at most $((100 - ${#NP_INVOKE_SID_PREFIX})) characters" >&2
-    return 1
+    exit 1
   fi
 done < <(echo "$desired" | jq -c '.[]')
 
@@ -138,7 +138,7 @@ else
   echo "   - Check the assume role has lambda:GetPolicy on the function" >&2
   echo "   - Run diagnose-scope to confirm the function and alias are healthy" >&2
   echo "   📋 AWS error: $policy_json" >&2
-  return 1
+  exit 1
 fi
 
 managed_sids=$(echo "$current_statements" | jq -r --arg p "$NP_INVOKE_SID_PREFIX" \
@@ -163,7 +163,7 @@ while IFS= read -r sid; do
       echo "   - Check the assume role has lambda:RemovePermission on the function" >&2
       echo "   - Re-run the action; removal is idempotent" >&2
       echo "   📋 AWS error: $aws_output" >&2
-      return 1
+      exit 1
     fi
   fi
 done <<< "$managed_sids"
@@ -217,7 +217,7 @@ while IFS= read -r perm; do
       echo "🔧 How to fix:" >&2
       echo "   - Check the assume role has lambda:RemovePermission on the function" >&2
       echo "   📋 AWS error: $aws_output" >&2
-      return 1
+      exit 1
     fi
     replaced="$existing"
   else
@@ -259,7 +259,7 @@ while IFS= read -r perm; do
     echo "   - Verify source_arn belongs to the same account and region as the function" >&2
     echo "   - Run diagnose-scope to confirm the function and alias are healthy" >&2
     echo "   📋 AWS error: $aws_output" >&2
-    return 1
+    exit 1
   fi
 done < <(echo "$desired" | jq -c '.[]')
 

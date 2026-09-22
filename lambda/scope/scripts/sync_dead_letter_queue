@@ -64,7 +64,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; t
   echo "🔧 How to fix:" >&2
   echo "   - Verify LAMBDA_FUNCTION_NAME is listed in the build_context step outputs" >&2
   echo "   - Re-run the diagnose-scope action to check scope health" >&2
-  return 1
+  exit 1
 fi
 
 if [ -z "${SCOPE_ID:-}" ] || [ "$SCOPE_ID" = "null" ]; then
@@ -73,7 +73,7 @@ if [ -z "${SCOPE_ID:-}" ] || [ "$SCOPE_ID" = "null" ]; then
   echo "   - The step was added to the workflow without declaring SCOPE_ID as an output" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Verify SCOPE_ID is listed in the build_context step outputs" >&2
-  return 1
+  exit 1
 fi
 
 # Scoped by id: a dedicated execution role can be shared between scopes (its
@@ -97,7 +97,7 @@ if ! function_config=$(aws lambda get-function-configuration \
   echo "   - Run diagnose-scope to confirm the function exists" >&2
   echo "   - Check the assume role permissions" >&2
   echo "   📋 AWS error: $function_config" >&2
-  return 1
+  exit 1
 fi
 
 current_dlq=$(echo "$function_config" | jq -r '.DeadLetterConfig.TargetArn // ""')
@@ -124,7 +124,7 @@ if [ -z "$dlq_target_arn" ]; then
       echo "   - Check the assume role permissions" >&2
       echo "   - Wait for the running deployment to finish and re-run the action" >&2
       echo "   📋 AWS error: $aws_output" >&2
-      return 1
+      exit 1
     fi
     wait_for_function_update || return 1
   else
@@ -155,7 +155,7 @@ case "$dlq_target_arn" in
     echo "🔧 How to fix:" >&2
     echo "   - Use a full ARN, e.g. arn:aws:sqs:us-east-1:123456789012:my-dlq" >&2
     echo "   - Leave the field empty to disable the dead letter queue" >&2
-    return 1
+    exit 1
     ;;
 esac
 
@@ -165,7 +165,7 @@ if [ -z "$role_name" ]; then
   echo "   - The function configuration returned an empty Role field" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Run diagnose-scope to check the function and its execution role" >&2
-  return 1
+  exit 1
 fi
 
 # Grant first, then enable: the other order leaves a window where Lambda drops
@@ -182,7 +182,7 @@ if ! aws_output=$(aws iam put-role-policy \
   echo "🔧 How to fix:" >&2
   echo "   - Check the assume role has iam:PutRolePolicy on the scope's execution roles" >&2
   echo "   📋 AWS error: $aws_output" >&2
-  return 1
+  exit 1
 fi
 
 if [ "$current_dlq" = "$dlq_target_arn" ]; then
@@ -206,7 +206,7 @@ if ! aws_output=$(aws lambda update-function-configuration \
   echo "   - Wait for the running deployment to finish and re-run the action" >&2
   echo "   📋 AWS error: $aws_output" >&2
   revert_dlq_grant
-  return 1
+  exit 1
 fi
 
 wait_for_function_update || { revert_dlq_grant; return 1; }
