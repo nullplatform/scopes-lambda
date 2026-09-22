@@ -94,7 +94,10 @@ ecr_tag="${ecr_rest##*:}"
 log info "   📋 registry=$ecr_account region=$ecr_region repo=$ecr_repo tag=$ecr_tag"
 
 ecr_stderr="$NP_OUTPUT_DIR/describe-images.err"
+# --registry-id: without it AWS queries the caller's registry, not the one the URI names,
+# so a placeholder shared from another account reads as missing.
 if aws ecr describe-images \
+    --registry-id "$ecr_account" \
     --repository-name "$ecr_repo" \
     --image-ids "imageTag=$ecr_tag" \
     --region "$ecr_region" >/dev/null 2>"$ecr_stderr"; then

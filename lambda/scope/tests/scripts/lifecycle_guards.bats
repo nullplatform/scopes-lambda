@@ -157,6 +157,24 @@ run_assume_role_step() {
   assert_output_not_contains "Placeholder image resolved"
 }
 
+@test "resolve_placeholder_image: the lookup targets the registry the URI names" {
+  export PACKAGE_TYPE="Image"
+  export PLACEHOLDER_IMAGE_URI="084420143809.dkr.ecr.us-east-1.amazonaws.com/prd-registry-cross-account:placeholder"
+  # Only answers when the caller asks the URI's registry, not the caller's own.
+  aws() {
+    case "$*" in
+      *"--registry-id 084420143809"*) echo '{"imageDetails":[{"imageTags":["placeholder"]}]}' ;;
+      *) echo "An error occurred (RepositoryNotFoundException) ... registry with id '684909421940'" >&2; return 1 ;;
+    esac
+  }
+
+  run run_resolve_placeholder_image
+
+  assert_success
+  assert_line "✨ Placeholder image resolved: 084420143809.dkr.ecr.us-east-1.amazonaws.com/prd-registry-cross-account:placeholder"
+  assert_output_not_contains "Placeholder image not found"
+}
+
 @test "fetch_scope_configuration: an empty result set names the missing providers" {
   np() { echo '{"results":[]}'; }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/nullplatform/scopes-lambda/compare/v0.7.1...v0.7.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* **scope:** look up the placeholder in the registry the URI names ([#67](https://github.com/nullplatform/scopes-lambda/issues/67)) ([f2a7ff8](https://github.com/nullplatform/scopes-lambda/commit/f2a7ff80ef7f5d832a24335a6f5f9dd8548911c8))
+
 ## [0.7.1](https://github.com/nullplatform/scopes-lambda/compare/v0.7.0...v0.7.1) (2026-09-21)
 
 
