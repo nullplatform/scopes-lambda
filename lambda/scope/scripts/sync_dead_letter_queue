@@ -96,6 +96,73 @@ set_dead_letter_config() {
   done
 }
 
+# Published versions freeze their config, so a change on $LATEST never reaches
+# the version the alias serves until it is republished.
+sync_served_version() {
+  local alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
+  local alias_json served served_version served_dlq served_sha new_version
+
+  alias_json=$(aws lambda get-alias \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --name "$alias_name" --output json 2>/dev/null) || return 0
+  served_version=$(echo "$alias_json" | jq -r '.FunctionVersion // ""' 2>/dev/null)
+  [ -z "$served_version" ] && return 0
+
+  if [ "$(echo "$alias_json" | jq '.RoutingConfig.AdditionalVersionWeights // {} | length')" != "0" ]; then
+    log warn "   ⚠️  Alias '$alias_name' is splitting traffic — the dead letter queue reaches it on the next deployment"
+    return 0
+  fi
+
+  if ! served=$(aws lambda get-function \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --qualifier "$alias_name" --output json 2>&1); then
+    echo "❌ Failed to read the version alias '$alias_name' serves" >&2
+    echo "📋 AWS error: $served" >&2
+    return 1
+  fi
+  served_dlq=$(echo "$served" | jq -r '.Configuration.DeadLetterConfig.TargetArn // ""')
+  served_sha=$(echo "$served" | jq -r '.Configuration.CodeSha256 // ""')
+  [ "$served_dlq" = "$dlq_target_arn" ] && return 0
+
+  log info "   📡 Publishing a version with the dead letter queue for alias '$alias_name' (serves $served_version)..."
+  # Pinned to the served code, so an alias rolled back to older code is never rolled forward.
+  if ! aws_output=$(aws lambda publish-version \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --code-sha256 "$served_sha" \
+    --description np-scope-dead-letter-queue \
+    --output json 2>&1); then
+    case "$aws_output" in
+      *PreconditionFailedException*)
+        log warn "   ⚠️  \$LATEST runs other code than alias '$alias_name' — the dead letter queue reaches it on the next deployment"
+        return 0
+        ;;
+    esac
+    echo "❌ Failed to publish a version for alias '$alias_name'" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - Permission denied (missing lambda:PublishVersion)" >&2
+    echo "   - Another update is still in progress on the function" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Check the assume role permissions and re-run the action" >&2
+    echo "   📋 AWS error: $aws_output" >&2
+    return 1
+  fi
+  new_version=$(echo "$aws_output" | jq -r '.Version')
+
+  if ! aws_output=$(aws lambda update-alias \
+    --function-name "$LAMBDA_FUNCTION_NAME" \
+    --name "$alias_name" \
+    --function-version "$new_version" 2>&1); then
+    echo "❌ Failed to move alias '$alias_name' to version $new_version" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - Permission denied (missing lambda:UpdateAlias)" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Check the assume role permissions and re-run the action" >&2
+    echo "   📋 AWS error: $aws_output" >&2
+    return 1
+  fi
+  log info "   ✅ Alias '$alias_name' now serves version $new_version"
+}
+
 log info "🔍 Reconciling function dead letter queue..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
@@ -184,6 +251,8 @@ if [ -z "$dlq_target_arn" ]; then
       && log debug "   ✅ Removed inline policy $DLQ_POLICY_NAME from $role_name"
   fi
 
+  sync_served_version || exit 1
+
   echo ""
   log info "✨ Dead letter queue disabled for $LAMBDA_FUNCTION_NAME"
   return 0
@@ -254,6 +323,7 @@ fi
 
 if [ "$current_dlq" = "$dlq_target_arn" ]; then
   log debug "   ⏭️  Dead letter queue already set to $dlq_target_arn"
+  sync_served_version || exit 1
   echo ""
   log info "✨ Dead letter queue up to date for $LAMBDA_FUNCTION_NAME"
   return 0
@@ -276,6 +346,7 @@ if ! set_dead_letter_config "$dlq_target_arn"; then
 fi
 
 wait_for_function_update || { revert_dlq_grant; exit 1; }
+sync_served_version || exit 1
 
 echo ""
 log info "✨ Dead letter queue set to $dlq_target_arn for $LAMBDA_FUNCTION_NAME"
