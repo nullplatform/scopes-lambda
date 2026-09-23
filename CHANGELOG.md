@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/nullplatform/scopes-lambda/compare/v0.7.3...v0.7.4) (2026-09-23)
+
+
+### Bug Fixes
+
+* **scope:** stop update-scope from skipping its last three steps ([#70](https://github.com/nullplatform/scopes-lambda/issues/70)) ([9402135](https://github.com/nullplatform/scopes-lambda/commit/9402135bd38386daa949bb79f5fcffa6bfd7e749))
+
 ## [0.7.3](https://github.com/nullplatform/scopes-lambda/compare/v0.7.2...v0.7.3) (2026-09-23)
 
 
