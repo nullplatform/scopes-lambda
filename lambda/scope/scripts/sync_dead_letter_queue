@@ -54,9 +54,7 @@ wait_for_function_update() {
   return 1
 }
 
-# Lambda validates the role's send permission inside UpdateFunctionConfiguration,
-# but IAM needs a few seconds to replicate the grant written just above. Retry
-# that window instead of failing the whole step.
+# Lambda validates the grant before IAM has replicated it; retry that window.
 set_dead_letter_config() {
   local attempt=1
   local max_attempts="${DLQ_UPDATE_MAX_ATTEMPTS:-6}"

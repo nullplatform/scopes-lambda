@@ -10,14 +10,16 @@ log info "🔍 Updating IAM role configuration..."
 use_dedicated_role=$(echo "$CONTEXT" | jq -r '.providers["scope-configurations"].lambda.use_dedicated_role // "false"')
 
 # Read stored role info from NRN (for roles created by the scope)
-nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --namespace aws --format json 2>&1 || echo "{}")
-role_name=$(echo "$nrn_output" | jq -r '.AWS_DEDICATED_ROLE_NAME // ""')
+# Keep stderr out: np prints warnings there and they would corrupt the JSON.
+nrn_output=$(np nrn read --nrn "$SCOPE_NRN" --ids aws.AWS_DEDICATED_ROLE_NAME --format json 2>/dev/null || echo "{}")
+role_name=$(echo "$nrn_output" | jq -r '.namespaces.aws.AWS_DEDICATED_ROLE_NAME // ""' 2>/dev/null)
 
 log debug "   📋 use_dedicated_role=$use_dedicated_role, role_name=$role_name"
 
 if [ "$use_dedicated_role" = "true" ] || [ -z "$role_name" ] || [ "$role_name" = "null" ]; then
   log info "   ✅ No scope-managed role to update"
-  exit 0
+  # return, not exit: the engine sources the steps, so exit ends the workflow.
+  return 0
 fi
 
 # Check if VPC status changed
