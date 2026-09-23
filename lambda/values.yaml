@@ -20,6 +20,12 @@
 #     PLACEHOLDER_IMAGE_URI    - ECR image URI used during scope creation
 #     NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer (if USE_NULL_AGENT=true)
 
+# Only the categories listed here reach CONTEXT.providers.
+provider_categories:
+  - cloud-providers
+  - scope-configurations
+  - assets-repository
+
 configuration:
   # ── Terraform ──────────────────────────────────────────────────────────────
   TOFU_PATH: "$SERVICE_PATH/scope/tofu"
