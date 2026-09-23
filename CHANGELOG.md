@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/nullplatform/scopes-lambda/compare/v0.7.2...v0.7.3) (2026-09-23)
+
+
+### Bug Fixes
+
+* post-merge cleanup — red tests, exit convention, install pin ([#66](https://github.com/nullplatform/scopes-lambda/issues/66)) ([9636a59](https://github.com/nullplatform/scopes-lambda/commit/9636a59b07fd2bfd140ea143c4b89cd4f4764a65))
+
 ## [0.7.2](https://github.com/nullplatform/scopes-lambda/compare/v0.7.1...v0.7.2) (2026-09-22)
 
 
