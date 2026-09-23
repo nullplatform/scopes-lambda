@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/nullplatform/scopes-lambda/compare/v0.8.0...v0.8.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **scope:** declare the provider categories the workflows read ([#76](https://github.com/nullplatform/scopes-lambda/issues/76)) ([3dbc7f7](https://github.com/nullplatform/scopes-lambda/commit/3dbc7f7818058b0517bcb0899c4e0f110e3f8e0a))
+* **scope:** publish the dead letter queue to the version the alias serves ([#75](https://github.com/nullplatform/scopes-lambda/issues/75)) ([520d04d](https://github.com/nullplatform/scopes-lambda/commit/520d04d6a229f07d780781e4dad33009e99c381e))
+
 ## [0.8.0](https://github.com/nullplatform/scopes-lambda/compare/v0.7.4...v0.8.0) (2026-09-23)
 
 
