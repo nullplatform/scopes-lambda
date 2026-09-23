@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/nullplatform/scopes-lambda/compare/v0.7.4...v0.8.0) (2026-09-23)
+
+
+### Features
+
+* **scope:** grant KMS on a dead letter target encrypted with a CMK ([#73](https://github.com/nullplatform/scopes-lambda/issues/73)) ([77f54f4](https://github.com/nullplatform/scopes-lambda/commit/77f54f4ec43913947610fdc5c195b4eb2fd8ce69))
+
+
+### Bug Fixes
+
+* **scope:** don't revoke invoke permissions when the config is unreadable ([#72](https://github.com/nullplatform/scopes-lambda/issues/72)) ([62c9cd4](https://github.com/nullplatform/scopes-lambda/commit/62c9cd4d1eb89aa34048bc755d8e87909f3c6864))
+
 ## [0.7.4](https://github.com/nullplatform/scopes-lambda/compare/v0.7.3...v0.7.4) (2026-09-23)
 
 
