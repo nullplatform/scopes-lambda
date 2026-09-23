@@ -74,7 +74,7 @@ with_tofu_outputs() {
 @test "store_nrn_metadata: publishes the scope identity under the lambda namespace" {
   with_tofu_outputs
 
-  run_sourced
+  run_step
 
   assert_success
   assert_np_body_contains "lambda.function_name"
@@ -88,7 +88,7 @@ with_tofu_outputs() {
   with_tofu_outputs
   unset LAMBDA_MAIN_ALIAS_NAME
 
-  run_sourced
+  run_step
 
   assert_success
   assert_np_body_contains '"lambda.main_alias":"main"'
@@ -97,7 +97,7 @@ with_tofu_outputs() {
 @test "store_nrn_metadata: omits the ALB priority on event-driven scopes" {
   with_tofu_outputs
 
-  run_sourced
+  run_step
 
   assert_success
   assert_np_body_contains "lambda.function_arn"
@@ -109,7 +109,7 @@ with_tofu_outputs() {
   with_tofu_outputs
   export ALB_RULE_PRIORITY=142
 
-  run_sourced
+  run_step
 
   assert_success
   assert_np_body_contains '"lambda.alb_rule_priority":142'
@@ -123,7 +123,7 @@ with_tofu_outputs() {
   aws_mock_response "lambda get-alias" 0 \
     "arn:aws:lambda:us-east-1:111122223333:function:my-test-function:main"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "get-function-configuration"
@@ -136,7 +136,7 @@ with_tofu_outputs() {
   aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
   aws_mock_response "lambda get-alias" 254 "ResourceNotFoundException"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_np_body_contains '"lambda.function_name":"my-test-function"'
@@ -145,7 +145,7 @@ with_tofu_outputs() {
 @test "store_nrn_metadata: skips the patch when nothing resolves" {
   unset LAMBDA_FUNCTION_NAME
 
-  run_sourced
+  run_step
 
   assert_success
   assert_np_not_called
@@ -155,7 +155,7 @@ with_tofu_outputs() {
   unset SCOPE_NRN
   with_tofu_outputs
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "SCOPE_NRN is required"
@@ -165,7 +165,7 @@ with_tofu_outputs() {
   with_tofu_outputs
   create_np_mock 1
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Failed to write NRN metadata"
@@ -175,7 +175,7 @@ with_tofu_outputs() {
   with_tofu_outputs
   export ALB_RULE_PRIORITY="not-a-number"
 
-  run_sourced
+  run_step
 
   assert_success
   # jq --argjson would fail on this and blank the whole payload, dropping the

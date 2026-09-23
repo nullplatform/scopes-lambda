@@ -52,7 +52,7 @@ SCRIPT
   export LAMBDA_NEW_VERSION="2"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -65,7 +65,7 @@ SCRIPT
   unset LAMBDA_CURRENT_VERSION
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "No version specified"
@@ -163,7 +163,7 @@ SCRIPT
   create_aws_error_mock "ResourceNotFoundException: Function my-function not found"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "Failed to update alias"

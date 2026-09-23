@@ -45,7 +45,14 @@ tags_selectors = {
 # worker_image_digest = "sha256:..."
 
 # Bump when pinning a newer image.
-# package_version = "0.0.1"
+# package_version = "0.0.2"
+
+# Installing beside another Lambda scope type in the same NRN: give the scope
+# type, the package and the scope configuration their own names, or the apply
+# overwrites the existing ones.
+# service_spec_name                 = "AWS Lambda (test)"
+# package_slug                      = "scopes-lambda-test"
+# scope_configuration_name_override = "AWS Lambda (test)"
 
 ################################################################################
 # Overrides (optional — appends --overrides-path to the agent cmdline)

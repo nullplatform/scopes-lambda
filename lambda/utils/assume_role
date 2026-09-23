@@ -32,7 +32,7 @@ if [ -n "${ASSUME_ROLE_ARN:-}" ]; then
     _ar_log info "ERROR: sts:AssumeRole failed for $ASSUME_ROLE_ARN"
     _ar_log info "$(cat "$_ar_sts_error")"
     rm -f "$_ar_sts_error"
-    return 1
+    exit 1
   fi
   rm -f "$_ar_sts_error"
 

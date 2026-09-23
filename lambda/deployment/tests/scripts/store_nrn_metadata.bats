@@ -57,7 +57,7 @@ OUTERSCRIPT
 @test "deployment/scripts/store_nrn_metadata: fails when SCOPE_NRN is not set" {
   unset SCOPE_NRN
 
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_line "❌ SCOPE_NRN is required"
@@ -113,7 +113,7 @@ OUTERSCRIPT
 
   create_np_error_mock "Connection refused"
 
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "❌ Failed to write NRN metadata to scope=organization=1:account=2:namespace=3:application=4:scope=5"

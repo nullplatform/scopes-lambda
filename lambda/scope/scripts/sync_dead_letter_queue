@@ -31,7 +31,7 @@ dlq_policy_document() {
     *) return 1 ;;
   esac
   jq -n --arg action "$grant" --arg resource "$1" \
-    '{Version: "2012-10-17", Statement: [{Effect: "Allow", Action: [$action], Resource: $resource}]}'
+    '{Version: "2012-10-17", Statement: [{Sid: "npLambdaDeadLetter", Effect: "Allow", Action: [$action], Resource: $resource}]}'
 }
 
 wait_for_function_update() {
@@ -54,6 +54,34 @@ wait_for_function_update() {
   return 1
 }
 
+# Lambda validates the role's send permission inside UpdateFunctionConfiguration,
+# but IAM needs a few seconds to replicate the grant written just above. Retry
+# that window instead of failing the whole step.
+set_dead_letter_config() {
+  local attempt=1
+  local max_attempts="${DLQ_UPDATE_MAX_ATTEMPTS:-6}"
+  local retry_delay="${DLQ_UPDATE_RETRY_DELAY_SECONDS:-5}"
+
+  while :; do
+    if aws_output=$(aws lambda update-function-configuration \
+      --function-name "$LAMBDA_FUNCTION_NAME" \
+      --dead-letter-config "TargetArn=$1" 2>&1); then
+      return 0
+    fi
+
+    case "$aws_output" in
+      *InvalidParameterValueException*"does not have permissions"*) ;;
+      *) return 1 ;;
+    esac
+
+    [ "$attempt" -ge "$max_attempts" ] && return 1
+
+    log debug "   ⏳ Execution role grant not propagated yet — retrying in ${retry_delay}s ($attempt/$max_attempts)"
+    sleep "$retry_delay"
+    attempt=$((attempt + 1))
+  done
+}
+
 log info "🔍 Reconciling function dead letter queue..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
@@ -64,7 +92,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; t
   echo "🔧 How to fix:" >&2
   echo "   - Verify LAMBDA_FUNCTION_NAME is listed in the build_context step outputs" >&2
   echo "   - Re-run the diagnose-scope action to check scope health" >&2
-  return 1
+  exit 1
 fi
 
 if [ -z "${SCOPE_ID:-}" ] || [ "$SCOPE_ID" = "null" ]; then
@@ -73,7 +101,7 @@ if [ -z "${SCOPE_ID:-}" ] || [ "$SCOPE_ID" = "null" ]; then
   echo "   - The step was added to the workflow without declaring SCOPE_ID as an output" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Verify SCOPE_ID is listed in the build_context step outputs" >&2
-  return 1
+  exit 1
 fi
 
 # Scoped by id: a dedicated execution role can be shared between scopes (its
@@ -97,7 +125,7 @@ if ! function_config=$(aws lambda get-function-configuration \
   echo "   - Run diagnose-scope to confirm the function exists" >&2
   echo "   - Check the assume role permissions" >&2
   echo "   📋 AWS error: $function_config" >&2
-  return 1
+  exit 1
 fi
 
 current_dlq=$(echo "$function_config" | jq -r '.DeadLetterConfig.TargetArn // ""')
@@ -124,9 +152,9 @@ if [ -z "$dlq_target_arn" ]; then
       echo "   - Check the assume role permissions" >&2
       echo "   - Wait for the running deployment to finish and re-run the action" >&2
       echo "   📋 AWS error: $aws_output" >&2
-      return 1
+      exit 1
     fi
-    wait_for_function_update || return 1
+    wait_for_function_update || exit 1
   else
     log debug "   ⏭️  No dead letter queue configured — nothing to remove"
   fi
@@ -155,7 +183,7 @@ case "$dlq_target_arn" in
     echo "🔧 How to fix:" >&2
     echo "   - Use a full ARN, e.g. arn:aws:sqs:us-east-1:123456789012:my-dlq" >&2
     echo "   - Leave the field empty to disable the dead letter queue" >&2
-    return 1
+    exit 1
     ;;
 esac
 
@@ -165,7 +193,7 @@ if [ -z "$role_name" ]; then
   echo "   - The function configuration returned an empty Role field" >&2
   echo "🔧 How to fix:" >&2
   echo "   - Run diagnose-scope to check the function and its execution role" >&2
-  return 1
+  exit 1
 fi
 
 # Grant first, then enable: the other order leaves a window where Lambda drops
@@ -182,7 +210,7 @@ if ! aws_output=$(aws iam put-role-policy \
   echo "🔧 How to fix:" >&2
   echo "   - Check the assume role has iam:PutRolePolicy on the scope's execution roles" >&2
   echo "   📋 AWS error: $aws_output" >&2
-  return 1
+  exit 1
 fi
 
 if [ "$current_dlq" = "$dlq_target_arn" ]; then
@@ -193,12 +221,11 @@ if [ "$current_dlq" = "$dlq_target_arn" ]; then
 fi
 
 log info "   📡 Setting dead letter queue to $dlq_target_arn..."
-if ! aws_output=$(aws lambda update-function-configuration \
-  --function-name "$LAMBDA_FUNCTION_NAME" \
-  --dead-letter-config "TargetArn=$dlq_target_arn" 2>&1); then
+if ! set_dead_letter_config "$dlq_target_arn"; then
   echo "❌ Failed to set the dead letter queue on '$LAMBDA_FUNCTION_NAME'" >&2
   echo "💡 Possible causes:" >&2
   echo "   - The target queue or topic does not exist, or lives in another region" >&2
+  echo "   - The execution role grant has not propagated yet (IAM is eventually consistent)" >&2
   echo "   - Permission denied (missing lambda:UpdateFunctionConfiguration)" >&2
   echo "   - Another update is still in progress on the function" >&2
   echo "🔧 How to fix:" >&2
@@ -206,10 +233,10 @@ if ! aws_output=$(aws lambda update-function-configuration \
   echo "   - Wait for the running deployment to finish and re-run the action" >&2
   echo "   📋 AWS error: $aws_output" >&2
   revert_dlq_grant
-  return 1
+  exit 1
 fi
 
-wait_for_function_update || { revert_dlq_grant; return 1; }
+wait_for_function_update || { revert_dlq_grant; exit 1; }
 
 echo ""
 log info "✨ Dead letter queue set to $dlq_target_arn for $LAMBDA_FUNCTION_NAME"

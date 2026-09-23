@@ -5,6 +5,7 @@
 #
 #   setup_aws_cli_mock
 #   aws_mock_response "lambda get-policy" 254 'ResourceNotFoundException'
+#   aws_mock_response "lambda update-function-configuration" 254 'err' 2  # first 2 calls
 #   assert_aws_cli_not_called "add-permission"
 #
 # Unconfigured subcommands succeed empty, so best-effort calls need no stub.
@@ -21,8 +22,18 @@ printf '%s\n' "$*" >> "$MOCK_DIR/aws_calls"
 response_file="$MOCK_DIR/resp_${1}_${2}"
 [ -f "$response_file" ] || exit 0
 
-exit_code=$(head -1 "$response_file")
-output=$(tail -n +2 "$response_file")
+exit_code=$(sed -n '1p' "$response_file")
+remaining=$(sed -n '2p' "$response_file")
+output=$(tail -n +3 "$response_file")
+
+# A bounded response expires, so later calls fall through to the default.
+if [ -n "$remaining" ]; then
+  if [ "$remaining" -le 1 ]; then
+    rm -f "$response_file"
+  else
+    printf '%s\n%s\n%s\n' "$exit_code" "$((remaining - 1))" "$output" > "$response_file"
+  fi
+fi
 
 if [ "$exit_code" != "0" ]; then
   printf '%s\n' "$output" >&2
@@ -35,12 +46,15 @@ MOCK_SCRIPT
   chmod +x "$MOCK_BIN_DIR/aws"
 }
 
-# aws_mock_response "<service> <subcommand>" <exit_code> [output]
+# aws_mock_response "<service> <subcommand>" <exit_code> [output] [times]
+# Without <times> the response is permanent; with it, it applies to that many
+# calls and then expires.
 aws_mock_response() {
   local key="${1// /_}"
   local exit_code="$2"
   local output="${3:-}"
-  printf '%s\n%s\n' "$exit_code" "$output" > "$MOCK_BIN_DIR/resp_${key}"
+  local times="${4:-}"
+  printf '%s\n%s\n%s\n' "$exit_code" "$times" "$output" > "$MOCK_BIN_DIR/resp_${key}"
 }
 
 aws_cli_calls() {

@@ -42,7 +42,7 @@ with_inline_policies() {
   # list would leave them behind and DeleteRole would fail.
   with_inline_policies "np-lambda-dlq-9001	app-policy-4242"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
@@ -53,7 +53,7 @@ with_inline_policies() {
   on_role "$SCOPE_ROLE"
   with_inline_policies "cloudwatch-logs	ecr-image-pull	secrets-manager-parameters-read	np-lambda-dlq-9001"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
@@ -68,7 +68,7 @@ with_inline_policies() {
   on_role "shared-lambda-role"
   with_inline_policies "np-lambda-dlq-9001	np-lambda-dlq-7777	someone-elses-policy"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--policy-name np-lambda-dlq-9001"
@@ -81,7 +81,7 @@ with_inline_policies() {
   aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
   with_inline_policies "np-lambda-dlq-9001"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--role-name $SCOPE_ROLE"
@@ -92,7 +92,7 @@ with_inline_policies() {
   aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
   with_inline_policies "np-lambda-dlq-9001"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "--role-name nullplatform-my-test-function-role"
@@ -102,7 +102,7 @@ with_inline_policies() {
   on_role "$SCOPE_ROLE"
   with_inline_policies ""
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "delete-role-policy"
@@ -113,7 +113,7 @@ with_inline_policies() {
   with_inline_policies "np-lambda-dlq-9001"
   aws_mock_response "iam delete-role-policy" 254 "NoSuchEntity"
 
-  run_sourced
+  run_step
 
   assert_success
 }
@@ -121,7 +121,7 @@ with_inline_policies() {
 @test "cleanup_role_inline_policies: no-op without a function name" {
   unset LAMBDA_FUNCTION_NAME
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "delete-role-policy"

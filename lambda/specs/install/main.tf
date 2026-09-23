@@ -43,7 +43,8 @@ module "scope_definition" {
   external_metrics_provider = var.external_metrics_provider
   external_logging_provider = var.external_logging_provider
 
-  create_scope_configuration = true
+  create_scope_configuration        = true
+  scope_configuration_name_override = var.scope_configuration_name_override
 
   # Worker model: publish the scope as a versioned package whose bill of
   # materials pins the released worker image, so a scope binds to an immutable

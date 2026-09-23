@@ -156,3 +156,6 @@ testing/docker/certs/
 
 # Docs
 docs/
+
+# Credenciales locales, nunca versionadas
+.token

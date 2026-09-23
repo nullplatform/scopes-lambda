@@ -38,7 +38,7 @@ teardown() {
 @test "scope/build_context: fails when CONTEXT is not set" {
   unset CONTEXT
 
-  run_sourced "$LAMBDA_DIR/scope/build_context"
+  run_step "$LAMBDA_DIR/scope/build_context"
 
   assert_failure
   assert_output_contains "CONTEXT variable is not set or empty"
@@ -49,7 +49,7 @@ teardown() {
 @test "scope/build_context: fails when CONTEXT is empty string" {
   export CONTEXT=""
 
-  run_sourced "$LAMBDA_DIR/scope/build_context"
+  run_step "$LAMBDA_DIR/scope/build_context"
 
   assert_failure
   assert_output_contains "CONTEXT variable is not set or empty"
@@ -58,7 +58,7 @@ teardown() {
 @test "scope/build_context: fails when scope ID is missing from CONTEXT" {
   export CONTEXT='{"scope": {"slug": "test"}, "namespace": {"slug": "ns"}, "application": {"slug": "app"}, "account": {"slug": "acc"}}'
 
-  run_sourced "$LAMBDA_DIR/scope/build_context"
+  run_step "$LAMBDA_DIR/scope/build_context"
 
   assert_failure
   assert_output_contains "Failed to extract scope ID from CONTEXT"
@@ -69,7 +69,7 @@ teardown() {
 @test "scope/build_context: fails when scope ID is null" {
   export CONTEXT='{"scope": {"id": null, "slug": "test", "nrn": "nrn:1", "visibility": "public"}, "namespace": {"slug": "ns"}, "application": {"slug": "app"}, "account": {"slug": "acc"}}'
 
-  run_sourced "$LAMBDA_DIR/scope/build_context"
+  run_step "$LAMBDA_DIR/scope/build_context"
 
   assert_failure
   assert_output_contains "Failed to extract scope ID from CONTEXT"
@@ -148,7 +148,7 @@ teardown() {
   export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
-  run_sourced "$LAMBDA_DIR/scope/build_context"
+  run_step "$LAMBDA_DIR/scope/build_context"
 
   assert_failure
   assert_output_contains "ALB listener rule capacity (80) is at or below the alert threshold (80)"

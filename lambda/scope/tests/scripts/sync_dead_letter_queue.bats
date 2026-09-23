@@ -19,6 +19,7 @@ setup() {
 
   export LAMBDA_FUNCTION_NAME="my-test-function"
   export SCOPE_ID="9001"
+  export DLQ_UPDATE_RETRY_DELAY_SECONDS=0
   ROLE_ARN="arn:aws:iam::111122223333:role/np-lambda-my-test-function-role"
 }
 
@@ -43,7 +44,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "iam put-role-policy"
@@ -57,7 +58,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sns:us-east-1:111122223333:my-topic"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "sns:Publish"
@@ -68,7 +69,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   # Lambda drops failed events if the role cannot write yet, so the grant has
@@ -82,7 +83,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called "iam put-role-policy"
@@ -94,7 +95,7 @@ function_with_dlq() {
   context_with_dlq ""
   function_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_called '--dead-letter-config {"TargetArn":""}'
@@ -107,7 +108,7 @@ function_with_dlq() {
   context_with_dlq ""
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "update-function-configuration"
@@ -118,7 +119,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:s3:::my-bucket"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Unsupported dead letter target"
@@ -129,7 +130,7 @@ function_with_dlq() {
   context_with_dlq "my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Unsupported dead letter target"
@@ -139,7 +140,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   assert_aws_cli_not_called "update-function-code"
@@ -151,7 +152,7 @@ function_with_dlq() {
   unset LAMBDA_FUNCTION_NAME
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -161,7 +162,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   aws_mock_response "lambda get-function-configuration" 254 "ResourceNotFoundException"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Failed to read configuration"
@@ -172,7 +173,7 @@ function_with_dlq() {
   function_with_dlq
   aws_mock_response "iam put-role-policy" 254 "AccessDenied"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "Failed to grant dead letter access"
@@ -183,7 +184,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_success
   # A dedicated execution role can be shared between scopes; an unscoped name
@@ -196,7 +197,7 @@ function_with_dlq() {
   context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
   function_with_dlq
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "SCOPE_ID is required"
@@ -207,7 +208,7 @@ function_with_dlq() {
   function_with_dlq
   aws_mock_response "lambda wait" 255 "Waiter FunctionUpdated failed"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_output_contains "did not complete"
@@ -218,7 +219,7 @@ function_with_dlq() {
   function_with_dlq
   aws_mock_response "lambda update-function-configuration" 254 "InvalidParameterValueException"
 
-  run_sourced
+  run_step
 
   assert_failure
   # Otherwise the role keeps send access to an arbitrary ARN with no DLQ enabled
@@ -230,9 +231,58 @@ function_with_dlq() {
   function_with_dlq "arn:aws:sqs:us-east-1:111122223333:old-dlq"
   aws_mock_response "lambda update-function-configuration" 254 "InvalidParameterValueException"
 
-  run_sourced
+  run_step
 
   assert_failure
   assert_aws_cli_called "old-dlq"
   assert_aws_cli_not_called "iam delete-role-policy"
+}
+
+PROPAGATION_ERROR="An error occurred (InvalidParameterValueException) when calling the UpdateFunctionConfiguration operation: The provided execution role does not have permissions to call SendMessage on SQS"
+
+@test "sync_dead_letter_queue: retries until the role grant propagates" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  aws_mock_response "lambda update-function-configuration" 254 "$PROPAGATION_ERROR" 2
+
+  run_step
+
+  assert_success
+  assert_aws_cli_call_count "--dead-letter-config TargetArn=arn:aws:sqs:us-east-1:111122223333:my-dlq" 3
+  assert_aws_cli_not_called "iam delete-role-policy"
+}
+
+@test "sync_dead_letter_queue: gives up after the retry budget and reverts the grant" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  export DLQ_UPDATE_MAX_ATTEMPTS=3
+  aws_mock_response "lambda update-function-configuration" 254 "$PROPAGATION_ERROR"
+
+  run_step
+
+  assert_failure
+  assert_aws_cli_call_count "--dead-letter-config TargetArn=arn:aws:sqs:us-east-1:111122223333:my-dlq" 3
+  assert_output_contains "has not propagated yet"
+  assert_aws_cli_called "iam delete-role-policy"
+}
+
+@test "sync_dead_letter_queue: does not retry an error unrelated to propagation" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  aws_mock_response "lambda update-function-configuration" 254 "ResourceConflictException: update in progress"
+
+  run_step
+
+  assert_failure
+  assert_aws_cli_call_count "--dead-letter-config TargetArn=arn:aws:sqs:us-east-1:111122223333:my-dlq" 1
+}
+
+@test "sync_dead_letter_queue: names the grant statement so it is identifiable in audit logs" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+
+  run_step
+
+  assert_success
+  assert_aws_cli_called "npLambdaDeadLetter"
 }

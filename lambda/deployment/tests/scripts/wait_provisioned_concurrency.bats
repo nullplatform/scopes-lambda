@@ -100,7 +100,7 @@ SCRIPT
   export LAMBDA_MAIN_ALIAS_NAME="main"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_success
   assert_output_contains "Provisioned concurrency not enabled"
@@ -114,7 +114,7 @@ SCRIPT
   export LAMBDA_MAIN_ALIAS_NAME="main"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "LAMBDA_FUNCTION_NAME is required"
@@ -129,7 +129,7 @@ SCRIPT
   create_aws_error_mock "ProvisionedConcurrencyConfigNotFoundException: No provisioned concurrency config"
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_success
   assert_output_contains "No provisioned concurrency configuration found"
@@ -203,7 +203,7 @@ SCRIPT
   }'
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_success
   assert_output_contains "Provisioned concurrency is READY"
@@ -224,7 +224,7 @@ SCRIPT
     '{"RequestedProvisionedConcurrentExecutions": 5, "AllocatedProvisionedConcurrentExecutions": 5, "Status": "READY"}'
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_success
   assert_output_contains "IN_PROGRESS"
@@ -247,7 +247,7 @@ SCRIPT
   }'
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_failure
   assert_output_contains "Provisioned concurrency allocation FAILED"
@@ -366,7 +366,7 @@ SCRIPT
     '{"RequestedProvisionedConcurrentExecutions": 3, "AllocatedProvisionedConcurrentExecutions": 3, "Status": "READY"}'
 
   unset -f aws
-  run_sourced "$SCRIPT"
+  run_step "$SCRIPT"
 
   assert_success
   assert_output_contains "Provisioned concurrency is READY"
