@@ -351,3 +351,43 @@ with_policy() {
   assert_output_contains "SCOPE_SLUG is required"
   assert_aws_cli_not_called "remove-permission"
 }
+
+@test "sync_invoke_permissions: leaves grants untouched when CONTEXT has no providers" {
+  export CONTEXT='{"scope":{}}'
+  with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_step
+
+  assert_success
+  assert_line "🔍 Reconciling external invoke permissions..."
+  assert_line "   ⚠️  No scope-configurations provider in CONTEXT — declared permissions are unknown"
+  assert_line "   ⚠️  Leaving the existing np-ext- grants untouched"
+  assert_line "✨ External invoke permissions skipped for my-test-function"
+  # Unknown is not none: pruning here would revoke a live trigger.
+  assert_aws_cli_not_called "remove-permission"
+  assert_aws_cli_not_called "add-permission"
+}
+
+@test "sync_invoke_permissions: leaves grants untouched when the provider is absent" {
+  export CONTEXT='{"providers":{"vpc":{}}}'
+  with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_step
+
+  assert_success
+  assert_line "   ⚠️  No scope-configurations provider in CONTEXT — declared permissions are unknown"
+  assert_aws_cli_not_called "remove-permission"
+}
+
+@test "sync_invoke_permissions: still prunes when the provider declares nothing" {
+  export CONTEXT='{"providers":{"scope-configurations":{"state":{"tofu_state_bucket":"b"}}}}'
+  with_policy '{"Statement":[{"Sid":"np-ext-eventbridge-daily","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"lambda:InvokeFunction"}]}'
+
+  run_step
+
+  assert_success
+  # The provider is there and declares none, so the grant really is stale.
+  assert_aws_cli_called "remove-permission"
+  assert_aws_cli_called "--statement-id np-ext-eventbridge-daily"
+  assert_line "✨ External invoke permissions reconciled (0 declared)"
+}
