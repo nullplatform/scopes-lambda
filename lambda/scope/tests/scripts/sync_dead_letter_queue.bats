@@ -363,3 +363,173 @@ KMS_KEY="arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-12345678
   assert_aws_cli_called "OLDKEY"
   assert_aws_cli_not_called "iam delete-role-policy"
 }
+
+SERVED_SHA="c2VydmVkLWNvZGU="
+
+alias_serves() {
+  local routing="${2:-null}"
+  aws_mock_response "lambda get-alias" 0 \
+    "{\"Name\":\"main\",\"FunctionVersion\":\"$1\",\"RoutingConfig\":$routing}"
+}
+
+served_version_has_dlq() {
+  local dlq_block="null"
+  [ -n "${1:-}" ] && dlq_block="{\"TargetArn\":\"$1\"}"
+  aws_mock_response "lambda get-function" 0 \
+    "{\"Configuration\":{\"Version\":\"1\",\"CodeSha256\":\"$SERVED_SHA\",\"DeadLetterConfig\":$dlq_block}}"
+}
+
+@test "sync_dead_letter_queue: moves the alias to a version that carries the new queue" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  alias_serves 1
+  served_version_has_dlq
+  aws_mock_response "lambda publish-version" 0 '{"Version":"2"}'
+
+  run_step
+
+  assert_success
+  assert_line "🔍 Reconciling function dead letter queue..."
+  assert_line "   📝 Granting sqs:SendMessage on the dead letter target to np-lambda-my-test-function-role..."
+  assert_line "   📡 Setting dead letter queue to arn:aws:sqs:us-east-1:111122223333:my-dlq..."
+  assert_line "   📡 Publishing a version with the dead letter queue for alias 'main' (serves 1)..."
+  assert_line "   ✅ Alias 'main' now serves version 2"
+  assert_line "✨ Dead letter queue set to arn:aws:sqs:us-east-1:111122223333:my-dlq for my-test-function"
+  assert_aws_cli_called "--qualifier main"
+  # Pinned to the served code so a rolled-back alias is never rolled forward
+  assert_aws_cli_called "--code-sha256 $SERVED_SHA"
+  # Deployments find their version by description, which must not be inherited
+  assert_aws_cli_called "--description np-scope-dead-letter-queue"
+  assert_aws_cli_called "update-alias --function-name my-test-function --name main --function-version 2"
+}
+
+@test "sync_dead_letter_queue: moves a lagging alias even when \$LATEST is up to date" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  alias_serves 1
+  served_version_has_dlq
+  aws_mock_response "lambda publish-version" 0 '{"Version":"2"}'
+
+  run_step
+
+  assert_success
+  assert_line "🔍 Reconciling function dead letter queue..."
+  assert_line "   📝 Granting sqs:SendMessage on the dead letter target to np-lambda-my-test-function-role..."
+  assert_line "   📡 Publishing a version with the dead letter queue for alias 'main' (serves 1)..."
+  assert_line "   ✅ Alias 'main' now serves version 2"
+  assert_line "✨ Dead letter queue up to date for my-test-function"
+  assert_aws_cli_not_called "update-function-configuration"
+  assert_aws_cli_called "--function-version 2"
+}
+
+@test "sync_dead_letter_queue: moves the alias off a version that still has a removed queue" {
+  context_with_dlq ""
+  function_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  alias_serves 1
+  served_version_has_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  aws_mock_response "lambda publish-version" 0 '{"Version":"2"}'
+
+  run_step
+
+  assert_success
+  assert_line "🔍 Reconciling function dead letter queue..."
+  assert_line "   📝 Removing dead letter queue..."
+  assert_line "   📡 Publishing a version with the dead letter queue for alias 'main' (serves 1)..."
+  assert_line "   ✅ Alias 'main' now serves version 2"
+  assert_line "✨ Dead letter queue disabled for my-test-function"
+  assert_aws_cli_called "--function-version 2"
+}
+
+@test "sync_dead_letter_queue: leaves the alias alone when its version already matches" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  alias_serves 3
+  served_version_has_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+
+  run_step
+
+  assert_success
+  assert_line "🔍 Reconciling function dead letter queue..."
+  assert_line "   📝 Granting sqs:SendMessage on the dead letter target to np-lambda-my-test-function-role..."
+  assert_line "✨ Dead letter queue up to date for my-test-function"
+  assert_aws_cli_not_called "publish-version"
+  assert_aws_cli_not_called "update-alias"
+}
+
+@test "sync_dead_letter_queue: does not break a traffic split in progress" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  alias_serves 1 '{"AdditionalVersionWeights":{"2":0.1}}'
+  served_version_has_dlq
+
+  run_step
+
+  assert_success
+  assert_line "🔍 Reconciling function dead letter queue..."
+  assert_line "   📡 Setting dead letter queue to arn:aws:sqs:us-east-1:111122223333:my-dlq..."
+  assert_line "   ⚠️  Alias 'main' is splitting traffic — the dead letter queue reaches it on the next deployment"
+  assert_line "✨ Dead letter queue set to arn:aws:sqs:us-east-1:111122223333:my-dlq for my-test-function"
+  assert_aws_cli_not_called "publish-version"
+  assert_aws_cli_not_called "update-alias"
+}
+
+@test "sync_dead_letter_queue: does not roll the alias forward onto different code" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  alias_serves 1
+  served_version_has_dlq
+  aws_mock_response "lambda publish-version" 254 \
+    "An error occurred (PreconditionFailedException) when calling the PublishVersion operation: CodeSha256 does not match"
+
+  run_step
+
+  assert_success
+  assert_line "🔍 Reconciling function dead letter queue..."
+  assert_line "   📡 Publishing a version with the dead letter queue for alias 'main' (serves 1)..."
+  assert_line "   ⚠️  \$LATEST runs other code than alias 'main' — the dead letter queue reaches it on the next deployment"
+  assert_line "✨ Dead letter queue set to arn:aws:sqs:us-east-1:111122223333:my-dlq for my-test-function"
+  assert_aws_cli_not_called "update-alias"
+}
+
+@test "sync_dead_letter_queue: fails when the version cannot be published" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  alias_serves 1
+  served_version_has_dlq
+  aws_mock_response "lambda publish-version" 254 "AccessDeniedException"
+
+  run_step
+
+  assert_failure
+  assert_output_contains "Failed to publish a version for alias 'main'"
+  assert_aws_cli_not_called "update-alias"
+}
+
+@test "sync_dead_letter_queue: fails when the alias cannot be moved" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  alias_serves 1
+  served_version_has_dlq
+  aws_mock_response "lambda publish-version" 0 '{"Version":"2"}'
+  aws_mock_response "lambda update-alias" 254 "AccessDeniedException"
+
+  run_step
+
+  assert_failure
+  assert_output_contains "Failed to move alias 'main' to version 2"
+}
+
+@test "sync_dead_letter_queue: honours a custom main alias name" {
+  export LAMBDA_MAIN_ALIAS_NAME="live"
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  alias_serves 1
+  served_version_has_dlq
+  aws_mock_response "lambda publish-version" 0 '{"Version":"2"}'
+
+  run_step
+
+  assert_success
+  assert_aws_cli_called "get-alias --function-name my-test-function --name live"
+  assert_aws_cli_called "--name live --function-version 2"
+}
