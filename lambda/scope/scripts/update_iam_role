@@ -18,8 +18,7 @@ log debug "   📋 use_dedicated_role=$use_dedicated_role, role_name=$role_name"
 
 if [ "$use_dedicated_role" = "true" ] || [ -z "$role_name" ] || [ "$role_name" = "null" ]; then
   log info "   ✅ No scope-managed role to update"
-  # return, not exit: the engine sources the steps, so exit would end the whole
-  # workflow and silently skip everything after this one.
+  # return, not exit: the engine sources the steps, so exit ends the workflow.
   return 0
 fi
 

@@ -47,8 +47,6 @@ MOCK_SCRIPT
 }
 
 # aws_mock_response "<service> <subcommand>" <exit_code> [output] [times]
-# Without <times> the response is permanent; with it, it applies to that many
-# calls and then expires.
 aws_mock_response() {
   local key="${1// /_}"
   local exit_code="$2"

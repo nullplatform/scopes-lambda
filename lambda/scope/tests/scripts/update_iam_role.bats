@@ -26,7 +26,6 @@ teardown() {
   [ -d "$MOCK_BIN_DIR" ] && rm -rf "$MOCK_BIN_DIR"
 }
 
-# np writes the payload to stdout and a warning to stderr, as the real CLI does.
 np_returns() {
   cat > "$MOCK_BIN_DIR/np" <<MOCK
 #!/bin/bash
@@ -38,9 +37,7 @@ MOCK
   chmod +x "$MOCK_BIN_DIR/np"
 }
 
-# The engine sources every step into one shell, so the step is run the same way:
-# an exit would silently skip sync_invoke_permissions, sync_dead_letter_queue
-# and store_metadata.
+# The engine sources every step into one shell: an exit here skips the rest.
 run_step_then_next() {
   run bash -c "source '$SCRIPT'; echo NEXT_STEP_RAN"
 }
