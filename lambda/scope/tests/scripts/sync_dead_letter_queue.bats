@@ -276,3 +276,13 @@ PROPAGATION_ERROR="An error occurred (InvalidParameterValueException) when calli
   assert_failure
   assert_aws_cli_call_count "--dead-letter-config TargetArn=arn:aws:sqs:us-east-1:111122223333:my-dlq" 1
 }
+
+@test "sync_dead_letter_queue: names the grant statement so it is identifiable in audit logs" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+
+  run_step
+
+  assert_success
+  assert_aws_cli_called "npLambdaDeadLetter"
+}

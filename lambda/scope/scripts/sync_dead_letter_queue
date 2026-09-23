@@ -31,7 +31,7 @@ dlq_policy_document() {
     *) return 1 ;;
   esac
   jq -n --arg action "$grant" --arg resource "$1" \
-    '{Version: "2012-10-17", Statement: [{Effect: "Allow", Action: [$action], Resource: $resource}]}'
+    '{Version: "2012-10-17", Statement: [{Sid: "npLambdaDeadLetter", Effect: "Allow", Action: [$action], Resource: $resource}]}'
 }
 
 wait_for_function_update() {
