@@ -411,9 +411,15 @@ the redrive policy of a queue the function consumes from.
 
 Setting it enables `DeadLetterConfig` and grants the execution role
 `sqs:SendMessage` or `sns:Publish` on that ARN alone; without the grant Lambda
-drops the event silently. Clearing it reverts both. A target encrypted with a
-customer-managed KMS key also needs `kms:GenerateDataKey` (plus `kms:Decrypt`
-for SQS) on the key, which the scope cannot derive — add it yourself.
+drops the event silently. Clearing it reverts both.
+
+`dead_letter_kms_key_arn` covers the encrypted case: set it to the key's ARN and
+the role is also granted `kms:GenerateDataKey` and `kms:Decrypt` on it. Lambda
+only checks the send permission when the queue is configured, so an encrypted
+target without this grant leaves the scope `active` and loses every event. Leave
+it empty for an unencrypted target or one using SSE-SQS. A cross-account target
+needs its queue policy and key policy to allow the role too, which the scope
+cannot grant.
 
 > **Why these two are not in Terraform.** The scope's tofu state holds the
 > *placeholder* function while deployments mutate the real one via the AWS CLI,

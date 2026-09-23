@@ -29,7 +29,7 @@ teardown() {
 }
 
 context_with_dlq() {
-  export CONTEXT="{\"scope\":{\"capabilities\":{\"dead_letter_target_arn\":\"$1\"}}}"
+  export CONTEXT="{\"scope\":{\"capabilities\":{\"dead_letter_target_arn\":\"$1\",\"dead_letter_kms_key_arn\":\"${2:-}\"}}}"
 }
 
 function_with_dlq() {
@@ -285,4 +285,81 @@ PROPAGATION_ERROR="An error occurred (InvalidParameterValueException) when calli
 
   assert_success
   assert_aws_cli_called "npLambdaDeadLetter"
+}
+
+KMS_KEY="arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+
+@test "sync_dead_letter_queue: grants nothing on KMS when the target is not encrypted" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+
+  run_step
+
+  assert_success
+  assert_aws_cli_called "npLambdaDeadLetter"
+  assert_aws_cli_not_called "kms:GenerateDataKey"
+  assert_aws_cli_not_called "npLambdaDeadLetterKms"
+}
+
+@test "sync_dead_letter_queue: grants the KMS key alongside the send permission" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq" "$KMS_KEY"
+  function_with_dlq
+
+  run_step
+
+  assert_success
+  assert_aws_cli_called "npLambdaDeadLetterKms"
+  assert_aws_cli_called "kms:GenerateDataKey"
+  assert_aws_cli_called "kms:Decrypt"
+  assert_aws_cli_called "$KMS_KEY"
+  # The send grant still names the queue, not the key
+  assert_aws_cli_called "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+}
+
+@test "sync_dead_letter_queue: grants KMS for an SNS target too" {
+  context_with_dlq "arn:aws:sns:us-east-1:111122223333:my-topic" "$KMS_KEY"
+  function_with_dlq
+
+  run_step
+
+  assert_success
+  assert_aws_cli_called "sns:Publish"
+  assert_aws_cli_called "kms:GenerateDataKey"
+}
+
+@test "sync_dead_letter_queue: rejects a KMS key that is not an ARN" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq" "1234abcd-12ab-34cd-56ef-1234567890ab"
+  function_with_dlq
+
+  run_step
+
+  assert_failure
+  assert_output_contains "Unsupported dead letter KMS key"
+  # Rejected before anything reaches the role
+  assert_aws_cli_not_called "iam put-role-policy"
+}
+
+@test "sync_dead_letter_queue: ignores a KMS key when there is no target" {
+  context_with_dlq "" "$KMS_KEY"
+  function_with_dlq
+
+  run_step
+
+  assert_success
+  assert_aws_cli_not_called "kms:GenerateDataKey"
+}
+
+@test "sync_dead_letter_queue: restores the captured grant verbatim, KMS included" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:new-dlq" "$KMS_KEY"
+  function_with_dlq "arn:aws:sqs:us-east-1:111122223333:old-dlq"
+  aws_mock_response "iam get-role-policy" 0 \
+    '{"Statement":[{"Sid":"npLambdaDeadLetter","Action":["sqs:SendMessage"],"Resource":"arn:aws:sqs:us-east-1:111122223333:old-dlq"},{"Sid":"npLambdaDeadLetterKms","Action":["kms:GenerateDataKey"],"Resource":"arn:aws:kms:us-east-1:111122223333:key/OLDKEY"}]}'
+  aws_mock_response "lambda update-function-configuration" 254 "InvalidParameterValueException"
+
+  run_step
+
+  assert_failure
+  # The previous KMS key comes back, which regenerating the document could not do
+  assert_aws_cli_called "OLDKEY"
+  assert_aws_cli_not_called "iam delete-role-policy"
 }

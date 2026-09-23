@@ -8,10 +8,19 @@ source "$SERVICE_PATH/utils/log"
 
 # The grant is written before the config update, so it has to be undone when
 # that update fails — otherwise the role keeps send access to an arbitrary,
-# possibly cross-account ARN with no DLQ ever enabled.
+# possibly cross-account ARN with no DLQ ever enabled. Restoring the document we
+# captured beats regenerating it: only the capture knows the previous KMS key.
 revert_dlq_grant() {
-  if [ -n "${current_dlq:-}" ]; then
-    log warn "   ⚠️  Restoring the grant for the previous target $current_dlq"
+  if [ -n "${previous_policy:-}" ]; then
+    log warn "   ⚠️  Restoring the previous grant on $role_name"
+    aws iam put-role-policy \
+      --role-name "$role_name" \
+      --policy-name "$DLQ_POLICY_NAME" \
+      --policy-document "$previous_policy" >/dev/null 2>&1 || true
+  elif [ -n "${current_dlq:-}" ]; then
+    # Capture failed, but a grant for the previous target has to exist. Rebuild
+    # it — without any KMS statement, which only the capture would have known.
+    log warn "   ⚠️  Rebuilding the grant for the previous target $current_dlq"
     aws iam put-role-policy \
       --role-name "$role_name" \
       --policy-name "$DLQ_POLICY_NAME" \
@@ -24,14 +33,21 @@ revert_dlq_grant() {
   fi
 }
 
+# A target encrypted with a customer-managed key needs the KMS grant too, or
+# Lambda cannot write the event and drops it.
 dlq_policy_document() {
   case "$1" in
     arn:*:sqs:*) local grant="sqs:SendMessage" ;;
     arn:*:sns:*) local grant="sns:Publish" ;;
     *) return 1 ;;
   esac
-  jq -n --arg action "$grant" --arg resource "$1" \
-    '{Version: "2012-10-17", Statement: [{Sid: "npLambdaDeadLetter", Effect: "Allow", Action: [$action], Resource: $resource}]}'
+  jq -n --arg action "$grant" --arg resource "$1" --arg key "${2:-}" \
+    '{Version: "2012-10-17", Statement: (
+       [{Sid: "npLambdaDeadLetter", Effect: "Allow", Action: [$action], Resource: $resource}]
+       + (if $key == "" then [] else
+           [{Sid: "npLambdaDeadLetterKms", Effect: "Allow",
+             Action: ["kms:GenerateDataKey", "kms:Decrypt"], Resource: $key}]
+         end))}'
 }
 
 wait_for_function_update() {
@@ -110,6 +126,9 @@ DLQ_POLICY_NAME="np-lambda-dlq-${SCOPE_ID}"
 dlq_target_arn=$(echo "$CONTEXT" | jq -r '.scope.capabilities.dead_letter_target_arn // ""')
 [ "$dlq_target_arn" = "null" ] && dlq_target_arn=""
 
+dlq_kms_key_arn=$(echo "$CONTEXT" | jq -r '.scope.capabilities.dead_letter_kms_key_arn // ""')
+[ "$dlq_kms_key_arn" = "null" ] && dlq_kms_key_arn=""
+
 # Read the role off the function rather than re-deriving its name: the scope
 # truncates role names to 64 chars and a scope may run on a dedicated role.
 if ! function_config=$(aws lambda get-function-configuration \
@@ -134,6 +153,7 @@ log debug "   📋 function_name=$LAMBDA_FUNCTION_NAME"
 log debug "   📋 execution_role=$role_name"
 log debug "   📋 current_dlq=${current_dlq:-<none>}"
 log debug "   📋 desired_dlq=${dlq_target_arn:-<none>}"
+log debug "   📋 dlq_kms_key=${dlq_kms_key_arn:-<none>}"
 
 # ── Disable ───────────────────────────────────────────────────────────────────
 if [ -z "$dlq_target_arn" ]; then
@@ -196,11 +216,32 @@ fi
 
 # Grant first, then enable: the other order leaves a window where Lambda drops
 # failed events because the role cannot write to the target yet.
+if [ -n "$dlq_kms_key_arn" ]; then
+  case "$dlq_kms_key_arn" in
+    arn:*:kms:*) ;;
+    *)
+      echo "❌ Unsupported dead letter KMS key '$dlq_kms_key_arn'" >&2
+      echo "💡 Possible causes:" >&2
+      echo "   - The value is not a KMS key ARN (e.g. a key id or an alias was entered)" >&2
+      echo "🔧 How to fix:" >&2
+      echo "   - Use a full ARN, e.g. arn:aws:kms:us-east-1:123456789012:key/1234abcd-..." >&2
+      echo "   - Leave the field empty if the target is not encrypted with a customer-managed key" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+# Captured before the overwrite so revert_dlq_grant can put it back verbatim.
+previous_policy=$(aws iam get-role-policy \
+  --role-name "$role_name" \
+  --policy-name "$DLQ_POLICY_NAME" \
+  --query PolicyDocument --output json 2>/dev/null) || previous_policy=""
+
 log info "   📝 Granting $dlq_action on the dead letter target to $role_name..."
 if ! aws_output=$(aws iam put-role-policy \
   --role-name "$role_name" \
   --policy-name "$DLQ_POLICY_NAME" \
-  --policy-document "$(dlq_policy_document "$dlq_target_arn")" 2>&1); then
+  --policy-document "$(dlq_policy_document "$dlq_target_arn" "$dlq_kms_key_arn")" 2>&1); then
   echo "❌ Failed to grant dead letter access to role '$role_name'" >&2
   echo "💡 Possible causes:" >&2
   echo "   - Permission denied (missing iam:PutRolePolicy)" >&2
