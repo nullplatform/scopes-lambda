@@ -120,6 +120,19 @@
                   {
                     "type": "Control",
                     "scope": "#/properties/dead_letter_target_arn"
+                  },
+                  {
+                    "rule": {
+                      "effect": "SHOW",
+                      "condition": {
+                        "scope": "#/properties/dead_letter_target_arn",
+                        "schema": {
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "type": "Control",
+                    "scope": "#/properties/dead_letter_kms_key_arn"
                   }
                 ]
               },
@@ -398,6 +411,12 @@
           "type": "string",
           "title": "Dead letter queue",
           "description": "SQS queue or SNS topic ARN that receives events whose asynchronous invocation failed after all retries. Leave empty to disable. The execution role is granted send access to this ARN only.",
+          "default": ""
+        },
+        "dead_letter_kms_key_arn": {
+          "type": "string",
+          "title": "Dead letter queue KMS key",
+          "description": "Only if the target is encrypted with a customer-managed KMS key: its ARN. The execution role is also granted kms:GenerateDataKey and kms:Decrypt on it, without which Lambda cannot write the event and drops it. Leave empty for an unencrypted target or one using SSE-SQS.",
           "default": ""
         },
         "layers": {
