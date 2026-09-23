@@ -19,6 +19,7 @@ setup() {
 
   export LAMBDA_FUNCTION_NAME="my-test-function"
   export SCOPE_ID="9001"
+  export DLQ_UPDATE_RETRY_DELAY_SECONDS=0
   ROLE_ARN="arn:aws:iam::111122223333:role/np-lambda-my-test-function-role"
 }
 
@@ -235,4 +236,43 @@ function_with_dlq() {
   assert_failure
   assert_aws_cli_called "old-dlq"
   assert_aws_cli_not_called "iam delete-role-policy"
+}
+
+PROPAGATION_ERROR="An error occurred (InvalidParameterValueException) when calling the UpdateFunctionConfiguration operation: The provided execution role does not have permissions to call SendMessage on SQS"
+
+@test "sync_dead_letter_queue: retries until the role grant propagates" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  aws_mock_response "lambda update-function-configuration" 254 "$PROPAGATION_ERROR" 2
+
+  run_step
+
+  assert_success
+  assert_aws_cli_call_count "--dead-letter-config TargetArn=arn:aws:sqs:us-east-1:111122223333:my-dlq" 3
+  assert_aws_cli_not_called "iam delete-role-policy"
+}
+
+@test "sync_dead_letter_queue: gives up after the retry budget and reverts the grant" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  export DLQ_UPDATE_MAX_ATTEMPTS=3
+  aws_mock_response "lambda update-function-configuration" 254 "$PROPAGATION_ERROR"
+
+  run_step
+
+  assert_failure
+  assert_aws_cli_call_count "--dead-letter-config TargetArn=arn:aws:sqs:us-east-1:111122223333:my-dlq" 3
+  assert_output_contains "has not propagated yet"
+  assert_aws_cli_called "iam delete-role-policy"
+}
+
+@test "sync_dead_letter_queue: does not retry an error unrelated to propagation" {
+  context_with_dlq "arn:aws:sqs:us-east-1:111122223333:my-dlq"
+  function_with_dlq
+  aws_mock_response "lambda update-function-configuration" 254 "ResourceConflictException: update in progress"
+
+  run_step
+
+  assert_failure
+  assert_aws_cli_call_count "--dead-letter-config TargetArn=arn:aws:sqs:us-east-1:111122223333:my-dlq" 1
 }
