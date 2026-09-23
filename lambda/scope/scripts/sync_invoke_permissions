@@ -1,5 +1,5 @@
 #!/bin/bash
-# Reconcile lambda.triggers.invoke_permissions from the scope-configuration.
+# Reconcile triggers.invoke_permissions from the scope-configuration.
 #
 # Grants target the main alias, so external triggers respect blue/green weights.
 # Only Sids carrying our prefix are removed — never AllowAPIGatewayInvoke,
@@ -37,6 +37,18 @@ for required in SCOPE_ID SCOPE_SLUG; do
 done
 
 invoke_alias="${LAMBDA_MAIN_ALIAS_NAME:-main}"
+
+# `//` below turns a missing provider into an empty list, and the prune loop would
+# then revoke every live trigger. Unknown is not the same as none. A CONTEXT that
+# does not parse falls through instead, so it still fails loudly.
+if echo "$CONTEXT" | jq -e . >/dev/null 2>&1 &&
+   ! echo "$CONTEXT" | jq -e '(.providers // {}) | has("scope-configurations")' >/dev/null 2>&1; then
+  log warn "   ⚠️  No scope-configurations provider in CONTEXT — declared permissions are unknown"
+  log warn "   ⚠️  Leaving the existing $NP_INVOKE_SID_PREFIX grants untouched"
+  echo ""
+  log info "✨ External invoke permissions skipped for $LAMBDA_FUNCTION_NAME"
+  return 0
+fi
 
 if ! desired=$(echo "$CONTEXT" | jq -ce '.providers["scope-configurations"].triggers.invoke_permissions // [] | if type == "array" then . else error("not an array") end' 2>&1); then
   echo "❌ Could not read triggers.invoke_permissions from the scope configuration" >&2
