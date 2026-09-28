@@ -1,14 +1,5 @@
 #!/bin/bash
-# Helpers shared by the diagnose checks, ported from the k8s scope.
-#
-# Evidence schema (passed to update_check_result --evidence):
-#   {
-#     "summary":           "one-line summary of findings",
-#     "severity":          "critical" | "warning" | "info",
-#     "affected":          ["resource-name", ...],
-#     "details":           { check-specific data },
-#     "suggested_actions": ["actionable guidance"]
-#   }
+# Helpers to record diagnose check results and report them to the action.
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -24,7 +15,6 @@ evidence_json() {
     local details="$4"
     local actions="$5"
 
-    # ${var:-{}} mis-parses the closing brace, so default explicitly.
     [[ -z "$affected" ]] && affected="[]"
     [[ -z "$details"  ]] && details="{}"
     [[ -z "$actions"  ]] && actions="[]"
@@ -96,9 +86,7 @@ require_function_name() {
 }
 
 update_check_result() {
-    # Usage:
-    #   update_check_result "status" '{"evidence":"json"}'
-    #   update_check_result --status "status" --evidence '{...}' [--log-tail-lines N]
+    # Usage: update_check_result --status <status> --evidence <json> [--log-tail-lines N]
     local status="" evidence="" log_tail_lines=20
 
     if [[ "$1" == --* ]]; then
@@ -193,8 +181,6 @@ notify_results() {
         return 1
     fi
 
-    # Keep the payload off argv (Linux caps one execve arg at 128 KiB); np reads
-    # --body from disk only when the value ends in .json.
     local work_dir results_file body_file rc action_id service_id
     work_dir="$(mktemp -d)"
     results_file="$work_dir/results.json"

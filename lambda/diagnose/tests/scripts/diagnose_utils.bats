@@ -6,7 +6,7 @@ setup() {
   source "$DIAGNOSE_UTILS"
   export NP_ACTION_CONTEXT='{"notification":{"id":"action-1","service":{"id":"service-1"}}}'
 
-  # Keep a copy of the body: notify_results deletes it after the call.
+  # Copy the request body before notify_results deletes it.
   cat > "$MOCK_BIN_DIR/np" <<'MOCK'
 #!/bin/bash
 echo "$*" >> "$(dirname "$0")/np_calls.log"

@@ -15,7 +15,6 @@ fi
 
 echo "   Checking domain: $SCOPE_DOMAIN"
 
-# dig prints ";;" diagnostics to stdout when no server answers.
 dns_result=$(dig +short "$SCOPE_DOMAIN" 2>/dev/null | grep -v '^;;') || dns_result=""
 
 if [ -z "$dns_result" ]; then

@@ -3,7 +3,6 @@
 
 require_function_name || return 0
 
-# Event-driven scopes (http_enabled=false) have no HTTP integration to verify.
 if echo "$CONTEXT" | jq -e '.scope.capabilities.http_enabled == false' > /dev/null 2>&1; then
    echo "   HTTP disabled for this scope, skipping networking check"
 
@@ -18,7 +17,6 @@ fi
 
 visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
-# Invoke permissions live on the main alias, and either visibility may sit behind an ALB.
 permissions=$(aws lambda get-policy \
    --function-name "$LAMBDA_FUNCTION_NAME" \
    --qualifier "${LAMBDA_MAIN_ALIAS_NAME:-main}" \
