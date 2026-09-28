@@ -8,21 +8,12 @@ setup() {
   export CONTEXT='{"scope":{"id":"scope-123","capabilities":{"visibility":"public"}}}'
 }
 
-@test "checks: a failed check does not stop an && chain" {
-  unset LAMBDA_FUNCTION_NAME
-
-  run bash -c "source '$DIAGNOSE_UTILS'; source '$CHECKS/lambda_exists' && echo NEXT_STEP"
-
-  assert_output_contains "NEXT_STEP"
-  [ "$(check_status)" = "failed" ]
-}
-
-@test "checks: every check reports failed when LAMBDA_FUNCTION_NAME is empty" {
+@test "checks: every check fails when LAMBDA_FUNCTION_NAME is empty" {
   unset LAMBDA_FUNCTION_NAME
   export SCOPE_ID="scope-123"
   for check in lambda_exists lambda_active provisioned_concurrency iam_role_valid networking_healthy; do
     run_check "$CHECKS/$check"
-    assert_success
+    assert_failure
     [ "$(check_status)" = "failed" ]
     [ "$(check_evidence .evidence.summary)" = "No Lambda function found for scope scope-123" ]
   done
@@ -43,7 +34,7 @@ setup() {
 
   run_check "$CHECKS/lambda_exists"
 
-  assert_success
+  assert_failure
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence .evidence.severity)" = "critical" ]
   [ "$(check_evidence '.evidence.affected[0]')" = "$LAMBDA_FUNCTION_NAME" ]
@@ -65,7 +56,7 @@ setup() {
 
   run_check "$CHECKS/lambda_active"
 
-  assert_success
+  assert_failure
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence .evidence.details.state)" = "Failed" ]
 }
@@ -87,7 +78,7 @@ setup() {
 
   run_check "$CHECKS/iam_role_valid"
 
-  assert_success
+  assert_failure
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence '.evidence.summary')" = "IAM role 'my-role' does not trust lambda.amazonaws.com" ]
 }
@@ -98,7 +89,7 @@ setup() {
 
   run_check "$CHECKS/iam_role_valid"
 
-  assert_success
+  assert_failure
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence '.evidence.affected[0]')" = "my-role" ]
 }
@@ -169,7 +160,7 @@ setup() {
 
   run_check "$CHECKS/provisioned_concurrency"
 
-  assert_success
+  assert_failure
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence .evidence.details.allocated)" = "0" ]
 }
@@ -209,7 +200,7 @@ setup() {
 
   run_check "$CHECKS/dns_resolves"
 
-  assert_success
+  assert_failure
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence '.evidence.affected[0]')" = "my-scope.example.com" ]
 }
@@ -220,6 +211,6 @@ setup() {
 
   run_check "$CHECKS/dns_resolves"
 
-  assert_success
+  assert_failure
   [ "$(check_status)" = "failed" ]
 }

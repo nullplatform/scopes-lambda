@@ -34,7 +34,7 @@ if [ -z "$dns_result" ]; then
       "$(jq -nc --arg d "$SCOPE_DOMAIN" '[$d]')" \
       "$(jq -nc --arg d "$SCOPE_DOMAIN" '{domain: $d}')" \
       "$(jq -nc --arg d "$SCOPE_DOMAIN" '["Wait a few minutes for DNS propagation", "Verify the Route53 record exists for \($d)", "Check that the hosted zone is correctly configured"]')")"
-   return 0
+   return 1
 fi
 
 echo "   Domain resolves to: $dns_result"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check: IAM execution role is valid
 
-require_function_name || return 0
+require_function_name || return 1
 
 # Get the role ARN from the function configuration
 config=$(aws lambda get-function-configuration \
@@ -25,7 +25,7 @@ if [ -z "$role_arn" ] || [ "$role_arn" = "null" ]; then
       "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '[$f]')" \
       "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '{function_name: $f}')" \
       '["Verify the function exists and has a valid execution role", "Check the Terraform configuration for the IAM role"]')"
-   return 0
+   return 1
 fi
 
 # Extract role name from ARN
@@ -51,7 +51,7 @@ if echo "$role_check" | grep -q "NoSuchEntity\|NOT_FOUND"; then
       "$(jq -nc --arg r "$role_name" '[$r]')" \
       "$details" \
       '["Re-run Terraform to recreate the IAM role", "Verify the correct AWS account is being used"]')"
-   return 0
+   return 1
 fi
 
 if ! echo "$role_check" | jq -e '[.Role.AssumeRolePolicyDocument.Statement[]? | select(.Effect == "Allow") | .Principal.Service // empty] | flatten | index("lambda.amazonaws.com")' > /dev/null 2>&1; then
@@ -67,7 +67,7 @@ if ! echo "$role_check" | jq -e '[.Role.AssumeRolePolicyDocument.Statement[]? | 
       "$(jq -nc --arg r "$role_name" '[$r]')" \
       "$details" \
       '["Re-run Terraform to restore the role trust policy"]')"
-   return 0
+   return 1
 fi
 
 echo "   IAM role is valid: $role_name"

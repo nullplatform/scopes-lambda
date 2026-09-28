@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check: Provisioned concurrency status (if configured)
 
-require_function_name || return 0
+require_function_name || return 1
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
@@ -48,7 +48,7 @@ if [ "$pc_status" != "READY" ]; then
          "$affected" \
          "$details" \
          '["Check CloudWatch logs for allocation errors", "Re-apply Terraform to retry provisioned concurrency setup"]')"
-      return 0
+      return 1
    fi
 
    update_check_result --status "warning" --evidence "$(evidence_json \

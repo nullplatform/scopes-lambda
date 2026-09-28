@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check: Lambda function is active
 
-require_function_name || return 0
+require_function_name || return 1
 
 config=$(aws lambda get-function-configuration \
    --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -29,7 +29,7 @@ if [ "$state" != "Active" ]; then
       "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '[$f]')" \
       "$details" \
       "$(jq -nc --arg u "$last_update_status" '["Wait for the current deployment to complete", "Check the last update status: \($u)", "Review CloudTrail for recent changes to the function"]')")"
-   return 0
+   return 1
 fi
 
 echo "   Lambda function is Active (last update: $last_update_status)"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check: Lambda function exists
 
-require_function_name || return 0
+require_function_name || return 1
 
 result=$(aws lambda get-function \
    --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -24,7 +24,7 @@ if echo "$result" | grep -q "ResourceNotFoundException\|NOT_FOUND"; then
       "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '[$f]')" \
       "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '{function_name: $f}')" \
       "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '["Re-run the scope provisioning workflow", "Verify the function name \($f) in the AWS console", "Check Terraform state for drift"]')")"
-   return 0
+   return 1
 fi
 
 echo "   Lambda function exists: $LAMBDA_FUNCTION_NAME"
