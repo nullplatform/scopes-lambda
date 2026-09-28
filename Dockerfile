@@ -7,8 +7,8 @@
 FROM public.ecr.aws/nullplatform/scopes/worker-bridge:1.1.1
 
 # Cloud tooling the lambda steps call (the bridge base stays minimal on purpose):
-# aws + gomplate from apk. bash, jq, np, base64 and curl ship in the base.
-RUN apk add --no-cache aws-cli gomplate
+# aws, gomplate and dig (bind-tools) from apk. bash, jq, np, base64 and curl ship in the base.
+RUN apk add --no-cache aws-cli gomplate bind-tools
 
 # OpenTofu >= 1.10 — the scope inits its S3 backend with use_lockfile=true
 # (lambda/scope/tofu/provider/aws/setup), which needs tofu 1.10+. alpine 3.20
