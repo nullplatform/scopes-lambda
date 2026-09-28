@@ -181,6 +181,31 @@ teardown() {
   assert_output_contains "Scope context built successfully"
 }
 
+@test "scope/build_context: adds key:value scope tags to resource tags" {
+  export CONTEXT=$(echo "$MOCK_CONTEXT_PUBLIC" | jq '.scope.tags = ["business_unit:Payments", "owner:a@b.com", "url:https://x", "requires_deploy", "tribe:Pagos (MX), Ñandú"]')
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
+
+  run bash -c 'source "$SERVICE_PATH/scope/build_context" >/dev/null 2>&1; echo "$RESOURCE_TAGS_JSON"'
+
+  assert_success
+  [ "$(echo "$output" | jq -r '.business_unit')" = "Payments" ]
+  [ "$(echo "$output" | jq -r '.owner')" = "a@b.com" ]
+  [ "$(echo "$output" | jq -r '.url')" = "https://x" ]
+  [ "$(echo "$output" | jq -r '.tribe')" = "Pagos _MX__ Ñandú" ]
+  [ "$(echo "$output" | jq 'has("requires_deploy")')" = "false" ]
+  [ "$(echo "$output" | jq -r '."nullplatform:scope"')" = "my-scope" ]
+}
+
+@test "scope/build_context: resource tags work without scope tags" {
+  set_context "public"
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
+
+  run bash -c 'source "$SERVICE_PATH/scope/build_context" >/dev/null 2>&1; echo "$RESOURCE_TAGS_JSON"'
+
+  assert_success
+  [ "$(echo "$output" | jq -r 'keys | length')" = "4" ]
+}
+
 @test "scope/build_context: outputs full success summary" {
   set_context "public"
   export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"

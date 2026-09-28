@@ -145,13 +145,17 @@ fi
 
 log debug "   ✅ output_dir=$OUTPUT_DIR"
 
-#Resource tags
+#Resource tags: "key:value" scope tags become AWS tags; plain ones (requires_deploy, stopped...) are platform flags.
 RESOURCE_TAGS_JSON=$(jq -n \
   --arg scope_id "$SCOPE_ID" \
   --arg namespace "$NAMESPACE_SLUG" \
   --arg application "$APPLICATION_SLUG" \
   --arg scope "$SCOPE_SLUG" \
-  '{
+  --argjson scope_tags "$(echo "$CONTEXT" | jq -c '.scope.tags // []')" \
+  '($scope_tags
+    | map(select(type == "string" and test("^[^:]+:.+")) | capture("^(?<key>[^:]+):(?<value>.+)$")
+        | map_values(gsub("[^\\p{L}\\p{Z}\\p{N}_.:/=+@-]"; "_")) | .key |= .[:128] | .value |= .[:256])
+    | from_entries) + {
     "nullplatform:scope-id": $scope_id,
     "nullplatform:namespace": $namespace,
     "nullplatform:application": $application,
