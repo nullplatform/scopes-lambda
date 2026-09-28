@@ -1,4 +1,4 @@
 #!/bin/bash
-# Notify that a diagnostic check is running
 
-echo "Running check: $CHECK_NAME"
+update_check_result --status "running" \
+                    --evidence "{}"

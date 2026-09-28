@@ -1,56 +1,66 @@
 #!/bin/bash
 # Check: Networking (API Gateway or ALB) is healthy
 
-CHECK_NAME="Networking Health"
+require_function_name || return 1
 
-if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-   echo "❌ Lambda function name not configured" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - build_context failed to resolve the function name" >&2
-   echo "   - LAMBDA_FUNCTION_NAME was not exported" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Check that build_context ran successfully" >&2
-   exit 1
+# Event-driven scopes (http_enabled=false) have no HTTP integration to verify.
+if echo "$CONTEXT" | jq -e '.scope.capabilities.http_enabled == false' > /dev/null 2>&1; then
+   echo "   HTTP disabled for this scope, skipping networking check"
+
+   update_check_result --status "skipped" --evidence "$(evidence_json \
+      "HTTP disabled for this scope, check skipped" \
+      "info" \
+      "[]" \
+      "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '{function_name: $f, http_enabled: false}')" \
+      "[]")"
+   return 0
 fi
 
-# Get visibility from context
 visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
-# Get the Lambda resource-based policy — it contains the permissions granted
-# to API Gateway or ALB to invoke this function.
+# The resource-based policy holds the permissions granted to API Gateway or ALB.
 permissions=$(aws lambda get-policy \
    --function-name "$LAMBDA_FUNCTION_NAME" \
    2>&1 || echo "{}")
 
 if [ "$visibility" = "public" ]; then
-   echo "   Checking API Gateway integration (visibility: $visibility)..."
-
-   if echo "$permissions" | grep -q "apigateway"; then
-      echo "   API Gateway permission configured for $LAMBDA_FUNCTION_NAME"
-   else
-      echo "❌ API Gateway permission may not be configured for '$LAMBDA_FUNCTION_NAME'" >&2
-      echo "💡 Possible causes:" >&2
-      echo "   - The Lambda resource-based policy is missing the API Gateway permission" >&2
-      echo "   - The API Gateway integration has not been created" >&2
-      echo "🔧 How to fix:" >&2
-      echo "   - Re-run Terraform to configure API Gateway permissions" >&2
-      echo "   - Verify the API Gateway integration references this function" >&2
-   fi
-
+   integration="API Gateway"
+   principal="apigateway"
+   causes=("The Lambda resource-based policy is missing the API Gateway permission" "The API Gateway integration has not been created")
+   actions=("Re-run Terraform to configure API Gateway permissions" "Verify the API Gateway integration references this function")
 else
-   echo "   Checking ALB integration (visibility: $visibility)..."
-
-   if echo "$permissions" | grep -q "elasticloadbalancing"; then
-      echo "   ALB permission configured for $LAMBDA_FUNCTION_NAME"
-   else
-      echo "❌ ALB permission may not be configured for '$LAMBDA_FUNCTION_NAME'" >&2
-      echo "💡 Possible causes:" >&2
-      echo "   - The Lambda resource-based policy is missing the ALB permission" >&2
-      echo "   - The ALB target group has not been registered" >&2
-      echo "🔧 How to fix:" >&2
-      echo "   - Re-run Terraform to configure ALB permissions" >&2
-      echo "   - Verify the ALB target group references this function" >&2
-   fi
+   integration="ALB"
+   principal="elasticloadbalancing"
+   causes=("The Lambda resource-based policy is missing the ALB permission" "The ALB target group has not been registered")
+   actions=("Re-run Terraform to configure ALB permissions" "Verify the ALB target group references this function")
 fi
 
-exit 0
+echo "   Checking $integration integration (visibility: $visibility)..."
+
+details=$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" --arg v "$visibility" --arg i "$integration" \
+   '{function_name: $f, visibility: $v, integration: $i}')
+
+if echo "$permissions" | grep -q "$principal"; then
+   echo "   $integration permission configured for $LAMBDA_FUNCTION_NAME"
+
+   update_check_result --status "success" --evidence "$(evidence_json \
+      "$integration permission configured for '$LAMBDA_FUNCTION_NAME'" \
+      "info" \
+      "[]" \
+      "$details" \
+      "[]")"
+   return 0
+fi
+
+echo "❌ $integration permission may not be configured for '$LAMBDA_FUNCTION_NAME'" >&2
+echo "💡 Possible causes:" >&2
+printf '   - %s\n' "${causes[@]}" >&2
+echo "🔧 How to fix:" >&2
+printf '   - %s\n' "${actions[@]}" >&2
+
+update_check_result --status "warning" --evidence "$(evidence_json \
+   "$integration permission may not be configured for '$LAMBDA_FUNCTION_NAME'" \
+   "warning" \
+   "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '[$f]')" \
+   "$details" \
+   "$(printf '%s\n' "${actions[@]}" | jq -R . | jq -sc .)")"

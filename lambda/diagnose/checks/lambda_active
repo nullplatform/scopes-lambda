@@ -1,25 +1,16 @@
 #!/bin/bash
 # Check: Lambda function is active
 
-CHECK_NAME="Lambda Function Active"
-
-if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-   echo "❌ Lambda function name not configured" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - build_context failed to resolve the function name" >&2
-   echo "   - LAMBDA_FUNCTION_NAME was not exported" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Check that build_context ran successfully" >&2
-   echo "   - Verify the NRN contains LAMBDA_FUNCTION_NAME" >&2
-   exit 1
-fi
+require_function_name || return 1
 
 config=$(aws lambda get-function-configuration \
    --function-name "$LAMBDA_FUNCTION_NAME" \
    2>&1 || echo "{}")
 
-state=$(echo "$config" | jq -r '.State // "Unknown"')
-last_update_status=$(echo "$config" | jq -r '.LastUpdateStatus // "Unknown"')
+state=$(echo "$config" | jq -r '.State // "Unknown"' 2>/dev/null || echo "Unknown")
+last_update_status=$(echo "$config" | jq -r '.LastUpdateStatus // "Unknown"' 2>/dev/null || echo "Unknown")
+details=$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" --arg s "$state" --arg u "$last_update_status" \
+   '{function_name: $f, state: $s, last_update_status: $u}')
 
 if [ "$state" != "Active" ]; then
    echo "❌ Lambda function '$LAMBDA_FUNCTION_NAME' state: $state (expected: Active)" >&2
@@ -31,8 +22,21 @@ if [ "$state" != "Active" ]; then
    echo "   - Wait for the current deployment to complete" >&2
    echo "   - Check the last update status: $last_update_status" >&2
    echo "   - Review CloudTrail for recent changes to the function" >&2
-   exit 1
+
+   update_check_result --status "failed" --evidence "$(evidence_json \
+      "Lambda function '$LAMBDA_FUNCTION_NAME' state is $state (expected: Active)" \
+      "critical" \
+      "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '[$f]')" \
+      "$details" \
+      "$(jq -nc --arg u "$last_update_status" '["Wait for the current deployment to complete", "Check the last update status: \($u)", "Review CloudTrail for recent changes to the function"]')")"
+   return 1
 fi
 
 echo "   Lambda function is Active (last update: $last_update_status)"
-exit 0
+
+update_check_result --status "success" --evidence "$(evidence_json \
+   "Lambda function '$LAMBDA_FUNCTION_NAME' is Active" \
+   "info" \
+   "[]" \
+   "$details" \
+   "[]")"

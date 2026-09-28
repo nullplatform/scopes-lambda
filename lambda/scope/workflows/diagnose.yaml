@@ -1,6 +1,22 @@
+trace:
+  title: Diagnose the scope
+# A failed check must not stop the remaining checks or their notification.
+continue_on_error: true
 include:
   - "$SERVICE_PATH/values.yaml"
 steps:
+  - name: load_functions
+    type: script
+    file: "$SERVICE_PATH/diagnose/utils/diagnose_utils"
+    trace: false
+    output:
+      - name: update_check_result
+        type: function
+        parameters:
+          status: string
+          evidence: object
+      - name: notify_results
+        type: function
   - name: assume_role
     type: script
     file: "$SERVICE_PATH/utils/assume_role_step"
@@ -13,7 +29,7 @@ steps:
         type: environment
   - name: build_context
     type: script
-    file: "$SERVICE_PATH/scope/build_context"
+    file: "$SERVICE_PATH/diagnose/build_context"
     output:
       - name: SCOPE_ID
         type: environment
@@ -21,15 +37,25 @@ steps:
         type: environment
       - name: LAMBDA_FUNCTION_NAME
         type: environment
+      - name: LAMBDA_FUNCTION_ARN
+        type: environment
+      - name: LAMBDA_ROLE_ARN
+        type: environment
+      - name: SCOPE_DOMAIN
+        type: environment
+      - name: LAMBDA_MAIN_ALIAS_NAME
+        type: environment
   - name: diagnose
     type: executor
     before_each:
       name: notify_check_running
       type: script
       file: "$SERVICE_PATH/diagnose/notify_check_running"
+      trace: false
     after_each:
       name: notify_check_results
       type: script
       file: "$SERVICE_PATH/diagnose/notify_results"
+      trace: false
     folders:
       - "$SERVICE_PATH/diagnose/checks"

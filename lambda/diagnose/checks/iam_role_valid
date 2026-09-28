@@ -1,25 +1,14 @@
 #!/bin/bash
 # Check: IAM execution role is valid
 
-CHECK_NAME="IAM Role Valid"
-
-if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-   echo "❌ Lambda function name not configured" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - build_context failed to resolve the function name" >&2
-   echo "   - LAMBDA_FUNCTION_NAME was not exported" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Check that build_context ran successfully" >&2
-   echo "   - Verify the NRN contains LAMBDA_FUNCTION_NAME" >&2
-   exit 1
-fi
+require_function_name || return 1
 
 # Get the role ARN from the function configuration
 config=$(aws lambda get-function-configuration \
    --function-name "$LAMBDA_FUNCTION_NAME" \
    2>&1 || echo "{}")
 
-role_arn=$(echo "$config" | jq -r '.Role // ""')
+role_arn=$(echo "$config" | jq -r '.Role // ""' 2>/dev/null || echo "")
 
 if [ -z "$role_arn" ] || [ "$role_arn" = "null" ]; then
    echo "❌ No IAM role configured for Lambda function '$LAMBDA_FUNCTION_NAME'" >&2
@@ -29,11 +18,20 @@ if [ -z "$role_arn" ] || [ "$role_arn" = "null" ]; then
    echo "🔧 How to fix:" >&2
    echo "   - Verify the function exists and has a valid execution role" >&2
    echo "   - Check the Terraform configuration for the IAM role" >&2
-   exit 1
+
+   update_check_result --status "failed" --evidence "$(evidence_json \
+      "No IAM role configured for Lambda function '$LAMBDA_FUNCTION_NAME'" \
+      "critical" \
+      "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '[$f]')" \
+      "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '{function_name: $f}')" \
+      '["Verify the function exists and has a valid execution role", "Check the Terraform configuration for the IAM role"]')"
+   return 1
 fi
 
 # Extract role name from ARN
 role_name=$(echo "$role_arn" | sed 's/.*role\///')
+details=$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" --arg arn "$role_arn" --arg r "$role_name" \
+   '{function_name: $f, role_arn: $arn, role_name: $r}')
 
 # Check if role exists
 role_check=$(aws iam get-role --role-name "$role_name" 2>&1 || echo "NOT_FOUND")
@@ -46,8 +44,21 @@ if echo "$role_check" | grep -q "NoSuchEntity\|NOT_FOUND"; then
    echo "🔧 How to fix:" >&2
    echo "   - Re-run Terraform to recreate the IAM role" >&2
    echo "   - Verify the correct AWS account is being used" >&2
-   exit 1
+
+   update_check_result --status "failed" --evidence "$(evidence_json \
+      "IAM role '$role_name' does not exist" \
+      "critical" \
+      "$(jq -nc --arg r "$role_name" '[$r]')" \
+      "$details" \
+      '["Re-run Terraform to recreate the IAM role", "Verify the correct AWS account is being used"]')"
+   return 1
 fi
 
 echo "   IAM role is valid: $role_name"
-exit 0
+
+update_check_result --status "success" --evidence "$(evidence_json \
+   "IAM role '$role_name' is valid" \
+   "info" \
+   "[]" \
+   "$details" \
+   "[]")"

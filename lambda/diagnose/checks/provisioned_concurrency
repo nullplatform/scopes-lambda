@@ -1,22 +1,10 @@
 #!/bin/bash
 # Check: Provisioned concurrency status (if configured)
 
-CHECK_NAME="Provisioned Concurrency"
-
-if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-   echo "❌ Lambda function name not configured" >&2
-   echo "💡 Possible causes:" >&2
-   echo "   - build_context failed to resolve the function name" >&2
-   echo "   - LAMBDA_FUNCTION_NAME was not exported" >&2
-   echo "🔧 How to fix:" >&2
-   echo "   - Check that build_context ran successfully" >&2
-   echo "   - Verify the NRN contains LAMBDA_FUNCTION_NAME" >&2
-   exit 1
-fi
+require_function_name || return 1
 
 alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
-# Check if provisioned concurrency is configured
 pc_config=$(aws lambda get-provisioned-concurrency-config \
    --function-name "$LAMBDA_FUNCTION_NAME" \
    --qualifier "$alias_name" \
@@ -24,15 +12,26 @@ pc_config=$(aws lambda get-provisioned-concurrency-config \
 
 if echo "$pc_config" | grep -q "ProvisionedConcurrencyConfigNotFoundException\|NOT_CONFIGURED"; then
    echo "   Provisioned concurrency not configured for $LAMBDA_FUNCTION_NAME (alias: $alias_name)"
-   exit 0
+
+   update_check_result --status "skipped" --evidence "$(evidence_json \
+      "Provisioned concurrency not configured, check skipped" \
+      "info" \
+      "[]" \
+      "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" --arg a "$alias_name" '{function_name: $f, alias: $a}')" \
+      "[]")"
+   return 0
 fi
 
-status=$(echo "$pc_config" | jq -r '.Status // "Unknown"')
+pc_status=$(echo "$pc_config" | jq -r '.Status // "Unknown"')
 requested=$(echo "$pc_config" | jq -r '.RequestedProvisionedConcurrentExecutions // 0')
 allocated=$(echo "$pc_config" | jq -r '.AllocatedProvisionedConcurrentExecutions // 0')
+details=$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" --arg a "$alias_name" --arg s "$pc_status" \
+   --argjson r "$requested" --argjson al "$allocated" \
+   '{function_name: $f, alias: $a, status: $s, requested: $r, allocated: $al}')
+affected=$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" --arg a "$alias_name" '["\($f):\($a)"]')
 
-if [ "$status" != "READY" ]; then
-   echo "❌ Provisioned concurrency status: $status (expected: READY)" >&2
+if [ "$pc_status" != "READY" ]; then
+   echo "❌ Provisioned concurrency status: $pc_status (expected: READY)" >&2
    echo "💡 Possible causes:" >&2
    echo "   - Provisioned concurrency is still being allocated (status: IN_PROGRESS)" >&2
    echo "   - Allocation failed (status: FAILED)" >&2
@@ -41,16 +40,43 @@ if [ "$status" != "READY" ]; then
    echo "   - Wait for allocation to complete if status is IN_PROGRESS" >&2
    echo "   - Check CloudWatch logs for allocation errors if FAILED" >&2
    echo "   - Re-apply Terraform to retry provisioned concurrency setup" >&2
-   if [ "$status" = "FAILED" ]; then
-      exit 1
+
+   if [ "$pc_status" = "FAILED" ]; then
+      update_check_result --status "failed" --evidence "$(evidence_json \
+         "Provisioned concurrency allocation failed ($allocated / $requested)" \
+         "critical" \
+         "$affected" \
+         "$details" \
+         '["Check CloudWatch logs for allocation errors", "Re-apply Terraform to retry provisioned concurrency setup"]')"
+      return 1
    fi
-   exit 0
+
+   update_check_result --status "warning" --evidence "$(evidence_json \
+      "Provisioned concurrency status: $pc_status (expected: READY)" \
+      "warning" \
+      "$affected" \
+      "$details" \
+      '["Wait for allocation to complete if status is IN_PROGRESS"]')"
+   return 0
 fi
 
 if [ "$allocated" -lt "$requested" ]; then
    echo "   Provisioned concurrency partially allocated: $allocated / $requested"
-   exit 0
+
+   update_check_result --status "warning" --evidence "$(evidence_json \
+      "Provisioned concurrency partially allocated: $allocated / $requested" \
+      "warning" \
+      "$affected" \
+      "$details" \
+      '["Wait for allocation to complete", "Check the account concurrency limits"]')"
+   return 0
 fi
 
 echo "   Provisioned concurrency ready: $allocated instances (alias: $alias_name)"
-exit 0
+
+update_check_result --status "success" --evidence "$(evidence_json \
+   "Provisioned concurrency ready: $allocated instances (alias: $alias_name)" \
+   "info" \
+   "[]" \
+   "$details" \
+   "[]")"
