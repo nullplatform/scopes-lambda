@@ -15,7 +15,8 @@ fi
 
 echo "   Checking domain: $SCOPE_DOMAIN"
 
-dns_result=$(dig +short "$SCOPE_DOMAIN" 2>/dev/null || echo "")
+# dig prints ";;" diagnostics to stdout when no server answers.
+dns_result=$(dig +short "$SCOPE_DOMAIN" 2>/dev/null | grep -v '^;;') || dns_result=""
 
 if [ -z "$dns_result" ]; then
    echo "❌ Domain '$SCOPE_DOMAIN' does not resolve" >&2
@@ -34,7 +35,7 @@ if [ -z "$dns_result" ]; then
       "$(jq -nc --arg d "$SCOPE_DOMAIN" '[$d]')" \
       "$(jq -nc --arg d "$SCOPE_DOMAIN" '{domain: $d}')" \
       "$(jq -nc --arg d "$SCOPE_DOMAIN" '["Wait a few minutes for DNS propagation", "Verify the Route53 record exists for \($d)", "Check that the hosted zone is correctly configured"]')")"
-   return 1
+   return 0
 fi
 
 echo "   Domain resolves to: $dns_result"

@@ -78,16 +78,16 @@ print_action() {
 require_function_name() {
     [[ -n "${LAMBDA_FUNCTION_NAME:-}" ]] && return 0
 
-    echo "❌ Lambda function name not configured" >&2
+    echo "❌ No Lambda function found for scope ${SCOPE_ID:-}" >&2
     echo "💡 Possible causes:" >&2
-    echo "   - build_context failed to resolve the function name" >&2
+    echo "   - The function was deleted outside of Terraform" >&2
     echo "   - No Lambda function is tagged with nullplatform:scope-id=${SCOPE_ID:-}" >&2
     echo "🔧 How to fix:" >&2
     echo "   - Check that build_context ran successfully" >&2
     echo "   - Re-run the scope provisioning workflow" >&2
 
     update_check_result --status "failed" --evidence "$(evidence_json \
-        "Lambda function name not configured" \
+        "No Lambda function found for scope ${SCOPE_ID:-}" \
         "critical" \
         "[]" \
         "$(jq -nc --arg scope_id "${SCOPE_ID:-}" '{scope_id: $scope_id}')" \

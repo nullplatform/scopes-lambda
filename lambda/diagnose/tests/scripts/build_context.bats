@@ -30,6 +30,15 @@ run_build_context() {
   assert_output_contains "DOMAIN= "
 }
 
+@test "diagnose/build_context: ignores the platform domain placeholder" {
+  export CONTEXT='{"scope":{"id":"s-1","slug":"my-scope","domain":"To be defined"},"application":{"slug":"my-app"}}'
+
+  run_build_context
+
+  assert_success
+  assert_output_contains "DOMAIN= "
+}
+
 @test "diagnose/build_context: defaults LAMBDA_MAIN_ALIAS_NAME to main" {
   export CONTEXT='{"scope":{"id":"s-1","slug":"my-scope"},"application":{"slug":"my-app"}}'
 

@@ -1,6 +1,7 @@
 trace:
   title: Diagnose the deployment
-# A failed check must not stop the remaining checks or their notification.
+# A failed check must not stop the rest. np drops this flag through `include`,
+# so checks also return 0 once their status is reported.
 continue_on_error: true
 include:
   - "$SERVICE_PATH/values.yaml"

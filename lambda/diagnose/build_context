@@ -24,7 +24,8 @@ lambda_info=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --
 LAMBDA_FUNCTION_ARN=$(echo "$lambda_info" | jq -r '.Configuration.FunctionArn // ""')
 LAMBDA_ROLE_ARN=$(echo "$lambda_info" | jq -r '.Configuration.Role // ""')
 # generate_domain persists the domain on the scope entity.
-SCOPE_DOMAIN=$(echo "$CONTEXT" | jq -r '.scope.domain // ""')
+# The platform fills .scope.domain with a placeholder ("To be defined") until a domain exists.
+SCOPE_DOMAIN=$(echo "$CONTEXT" | jq -r '.scope.domain // "" | select(test("^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$")) // ""')
 LAMBDA_MAIN_ALIAS_NAME="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 
 export SCOPE_ID

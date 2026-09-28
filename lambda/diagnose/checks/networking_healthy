@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check: Networking (API Gateway or ALB) is healthy
 
-require_function_name || return 1
+require_function_name || return 0
 
 # Event-driven scopes (http_enabled=false) have no HTTP integration to verify.
 if echo "$CONTEXT" | jq -e '.scope.capabilities.http_enabled == false' > /dev/null 2>&1; then
@@ -18,29 +18,22 @@ fi
 
 visibility=$(echo "$CONTEXT" | jq -r '.scope.capabilities.visibility // "public"')
 
-# The resource-based policy holds the permissions granted to API Gateway or ALB.
+# Invoke permissions live on the main alias, and either visibility may sit behind an ALB.
 permissions=$(aws lambda get-policy \
    --function-name "$LAMBDA_FUNCTION_NAME" \
+   --qualifier "${LAMBDA_MAIN_ALIAS_NAME:-main}" \
    2>&1 || echo "{}")
 
-if [ "$visibility" = "public" ]; then
-   integration="API Gateway"
-   principal="apigateway"
-   causes=("The Lambda resource-based policy is missing the API Gateway permission" "The API Gateway integration has not been created")
-   actions=("Re-run Terraform to configure API Gateway permissions" "Verify the API Gateway integration references this function")
-else
-   integration="ALB"
-   principal="elasticloadbalancing"
-   causes=("The Lambda resource-based policy is missing the ALB permission" "The ALB target group has not been registered")
-   actions=("Re-run Terraform to configure ALB permissions" "Verify the ALB target group references this function")
-fi
+integration=""
+echo "$permissions" | grep -q "apigateway" && integration="API Gateway"
+echo "$permissions" | grep -q "elasticloadbalancing" && integration="${integration:+$integration + }ALB"
 
-echo "   Checking $integration integration (visibility: $visibility)..."
+echo "   Checking HTTP integration (visibility: $visibility)..."
 
 details=$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" --arg v "$visibility" --arg i "$integration" \
    '{function_name: $f, visibility: $v, integration: $i}')
 
-if echo "$permissions" | grep -q "$principal"; then
+if [ -n "$integration" ]; then
    echo "   $integration permission configured for $LAMBDA_FUNCTION_NAME"
 
    update_check_result --status "success" --evidence "$(evidence_json \
@@ -52,14 +45,17 @@ if echo "$permissions" | grep -q "$principal"; then
    return 0
 fi
 
-echo "❌ $integration permission may not be configured for '$LAMBDA_FUNCTION_NAME'" >&2
+causes=("The main alias resource-based policy has no API Gateway or ALB permission" "The HTTP integration has not been created")
+actions=("Re-run the scope workflow to recreate the invoke permission" "Verify the API Gateway integration or ALB target group references this function")
+
+echo "❌ No HTTP invoke permission configured for '$LAMBDA_FUNCTION_NAME'" >&2
 echo "💡 Possible causes:" >&2
 printf '   - %s\n' "${causes[@]}" >&2
 echo "🔧 How to fix:" >&2
 printf '   - %s\n' "${actions[@]}" >&2
 
 update_check_result --status "warning" --evidence "$(evidence_json \
-   "$integration permission may not be configured for '$LAMBDA_FUNCTION_NAME'" \
+   "No HTTP invoke permission configured for '$LAMBDA_FUNCTION_NAME'" \
    "warning" \
    "$(jq -nc --arg f "$LAMBDA_FUNCTION_NAME" '[$f]')" \
    "$details" \

@@ -8,13 +8,23 @@ setup() {
   export CONTEXT='{"scope":{"id":"scope-123","capabilities":{"visibility":"public"}}}'
 }
 
-@test "checks: every check fails when LAMBDA_FUNCTION_NAME is empty" {
+@test "checks: a failed check does not stop an && chain" {
   unset LAMBDA_FUNCTION_NAME
+
+  run bash -c "source '$DIAGNOSE_UTILS'; source '$CHECKS/lambda_exists' && echo NEXT_STEP"
+
+  assert_output_contains "NEXT_STEP"
+  [ "$(check_status)" = "failed" ]
+}
+
+@test "checks: every check reports failed when LAMBDA_FUNCTION_NAME is empty" {
+  unset LAMBDA_FUNCTION_NAME
+  export SCOPE_ID="scope-123"
   for check in lambda_exists lambda_active provisioned_concurrency iam_role_valid networking_healthy; do
     run_check "$CHECKS/$check"
-    assert_failure
+    assert_success
     [ "$(check_status)" = "failed" ]
-    [ "$(check_evidence .evidence.summary)" = "Lambda function name not configured" ]
+    [ "$(check_evidence .evidence.summary)" = "No Lambda function found for scope scope-123" ]
   done
 }
 
@@ -33,7 +43,7 @@ setup() {
 
   run_check "$CHECKS/lambda_exists"
 
-  assert_failure
+  assert_success
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence .evidence.severity)" = "critical" ]
   [ "$(check_evidence '.evidence.affected[0]')" = "$LAMBDA_FUNCTION_NAME" ]
@@ -55,14 +65,14 @@ setup() {
 
   run_check "$CHECKS/lambda_active"
 
-  assert_failure
+  assert_success
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence .evidence.details.state)" = "Failed" ]
 }
 
-@test "iam_role_valid: success when the role exists" {
+@test "iam_role_valid: success when the role exists and trusts Lambda" {
   mock_aws_cmd lambda get-function-configuration '{"Role":"arn:aws:iam::123:role/my-role"}'
-  mock_aws_cmd iam get-role '{"Role":{"RoleName":"my-role"}}'
+  mock_aws_cmd iam get-role '{"Role":{"RoleName":"my-role","AssumeRolePolicyDocument":{"Statement":[{"Effect":"Allow","Principal":{"Service":["edgelambda.amazonaws.com","lambda.amazonaws.com"]},"Action":"sts:AssumeRole"}]}}}'
 
   run_check "$CHECKS/iam_role_valid"
 
@@ -71,13 +81,24 @@ setup() {
   [ "$(check_evidence .evidence.details.role_name)" = "my-role" ]
 }
 
+@test "iam_role_valid: failed when the role does not trust Lambda" {
+  mock_aws_cmd lambda get-function-configuration '{"Role":"arn:aws:iam::123:role/my-role"}'
+  mock_aws_cmd iam get-role '{"Role":{"RoleName":"my-role","AssumeRolePolicyDocument":{"Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}}}'
+
+  run_check "$CHECKS/iam_role_valid"
+
+  assert_success
+  [ "$(check_status)" = "failed" ]
+  [ "$(check_evidence '.evidence.summary')" = "IAM role 'my-role' does not trust lambda.amazonaws.com" ]
+}
+
 @test "iam_role_valid: failed when the role does not exist" {
   mock_aws_cmd lambda get-function-configuration '{"Role":"arn:aws:iam::123:role/my-role"}'
   mock_aws_cmd iam get-role "An error occurred (NoSuchEntity)" 254
 
   run_check "$CHECKS/iam_role_valid"
 
-  assert_failure
+  assert_success
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence '.evidence.affected[0]')" = "my-role" ]
 }
@@ -92,15 +113,26 @@ setup() {
   [ "$(check_evidence .evidence.details.integration)" = "API Gateway" ]
 }
 
-@test "networking_healthy: warning when a private function lacks the ALB permission" {
+@test "networking_healthy: success when a public function sits behind an ALB" {
+  mock_aws_cmd lambda get-policy '{"Policy":"{\"Principal\":{\"Service\":\"elasticloadbalancing.amazonaws.com\"}}"}'
+
+  run_check "$CHECKS/networking_healthy"
+
+  assert_success
+  [ "$(check_status)" = "success" ]
+  [ "$(check_evidence .evidence.details.integration)" = "ALB" ]
+  grep -q -- "--qualifier main" "$MOCK_BIN_DIR/aws_calls.log"
+}
+
+@test "networking_healthy: warning when the main alias has no invoke permission" {
   export CONTEXT='{"scope":{"id":"scope-123","capabilities":{"visibility":"private"}}}'
-  mock_aws_cmd lambda get-policy '{"Policy":"{}"}'
+  mock_aws_cmd lambda get-policy "An error occurred (ResourceNotFoundException)" 254
 
   run_check "$CHECKS/networking_healthy"
 
   assert_success
   [ "$(check_status)" = "warning" ]
-  [ "$(check_evidence .evidence.details.integration)" = "ALB" ]
+  [ "$(check_evidence .evidence.details.integration)" = "" ]
 }
 
 @test "networking_healthy: skipped when HTTP is disabled" {
@@ -137,7 +169,7 @@ setup() {
 
   run_check "$CHECKS/provisioned_concurrency"
 
-  assert_failure
+  assert_success
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence .evidence.details.allocated)" = "0" ]
 }
@@ -177,7 +209,17 @@ setup() {
 
   run_check "$CHECKS/dns_resolves"
 
-  assert_failure
+  assert_success
   [ "$(check_status)" = "failed" ]
   [ "$(check_evidence '.evidence.affected[0]')" = "my-scope.example.com" ]
+}
+
+@test "dns_resolves: failed when no DNS server answers" {
+  export SCOPE_DOMAIN="my-scope.example.com"
+  mock_bin dig ";; communications error to 10.0.0.2#53: timed out" 9
+
+  run_check "$CHECKS/dns_resolves"
+
+  assert_success
+  [ "$(check_status)" = "failed" ]
 }
