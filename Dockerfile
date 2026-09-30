@@ -4,7 +4,7 @@
 # worker bridge. The bridge dials over gRPC and runs the bash entrypoint on each
 # package-exec action; this image adds the cloud tooling the lambda steps need
 # and bakes the scope in, so the package-exec channel needs no cmdline.
-FROM public.ecr.aws/nullplatform/scopes/worker-bridge:1.1.1
+FROM public.ecr.aws/nullplatform/scopes/worker-bridge:2.0.1
 
 # Cloud tooling the lambda steps call (the bridge base stays minimal on purpose):
 # aws, gomplate and dig (bind-tools) from apk. bash, jq, np, base64 and curl ship in the base.
@@ -18,12 +18,6 @@ ARG TARGETARCH
 RUN curl -fsSL --retry 3 --retry-delay 2 "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local/bin tofu \
     && tofu version
-
-# np CLI pinned over the one shipped in the base image.
-ARG NP_CLI_VERSION=2.11.0
-RUN curl -fsSL --retry 3 --retry-delay 2 -o /root/.local/bin/np "https://cli.nullplatform.com/${NP_CLI_VERSION}/np-Linux-${TARGETARCH%64}" \
-    && chmod +x /root/.local/bin/np \
-    && np version
 
 # Bake the scope in and point the bridge at the lambda entrypoint + service path.
 COPY . /app/pkg
