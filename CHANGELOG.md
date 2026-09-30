@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/nullplatform/scopes-lambda/compare/v0.8.1...v0.8.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* **scope:** make the diagnose actions run and report results ([#78](https://github.com/nullplatform/scopes-lambda/issues/78)) ([689186b](https://github.com/nullplatform/scopes-lambda/commit/689186b65f6015cff0a638c54fc6356d0a7b5aad))
+
 ## [0.8.1](https://github.com/nullplatform/scopes-lambda/compare/v0.8.0...v0.8.1) (2026-09-23)
 
 
