@@ -1,17 +1,21 @@
 #!/bin/bash
 # Check: DNS record resolves (if domain configured)
 
-CHECK_NAME="DNS Resolution"
-
 if [ -z "${SCOPE_DOMAIN:-}" ] || [ "$SCOPE_DOMAIN" = "null" ]; then
    echo "   No domain configured, skipping DNS check"
-   exit 0
+
+   update_check_result --status "skipped" --evidence "$(evidence_json \
+      "No domain configured, check skipped" \
+      "info" \
+      "[]" \
+      "{}" \
+      "[]")"
+   return 0
 fi
 
 echo "   Checking domain: $SCOPE_DOMAIN"
 
-# Try to resolve the domain
-dns_result=$(dig +short "$SCOPE_DOMAIN" 2>/dev/null || echo "")
+dns_result=$(dig +short "$SCOPE_DOMAIN" 2>/dev/null | grep -v '^;;') || dns_result=""
 
 if [ -z "$dns_result" ]; then
    echo "❌ Domain '$SCOPE_DOMAIN' does not resolve" >&2
@@ -23,8 +27,21 @@ if [ -z "$dns_result" ]; then
    echo "   - Wait a few minutes for DNS propagation" >&2
    echo "   - Verify the Route53 record exists for '$SCOPE_DOMAIN'" >&2
    echo "   - Check that the hosted zone is correctly configured" >&2
-   exit 1
+
+   update_check_result --status "failed" --evidence "$(evidence_json \
+      "Domain '$SCOPE_DOMAIN' does not resolve" \
+      "critical" \
+      "$(jq -nc --arg d "$SCOPE_DOMAIN" '[$d]')" \
+      "$(jq -nc --arg d "$SCOPE_DOMAIN" '{domain: $d}')" \
+      "$(jq -nc --arg d "$SCOPE_DOMAIN" '["Wait a few minutes for DNS propagation", "Verify the Route53 record exists for \($d)", "Check that the hosted zone is correctly configured"]')")"
+   return 1
 fi
 
 echo "   Domain resolves to: $dns_result"
-exit 0
+
+update_check_result --status "success" --evidence "$(evidence_json \
+   "Domain '$SCOPE_DOMAIN' resolves" \
+   "info" \
+   "[]" \
+   "$(jq -nc --arg d "$SCOPE_DOMAIN" --arg r "$dns_result" '{domain: $d, records: ($r | split("\n") | map(select(length > 0)))}')" \
+   "[]")"

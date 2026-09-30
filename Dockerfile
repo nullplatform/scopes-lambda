@@ -4,11 +4,11 @@
 # worker bridge. The bridge dials over gRPC and runs the bash entrypoint on each
 # package-exec action; this image adds the cloud tooling the lambda steps need
 # and bakes the scope in, so the package-exec channel needs no cmdline.
-FROM public.ecr.aws/nullplatform/scopes/worker-bridge:1.1.1
+FROM public.ecr.aws/nullplatform/scopes/worker-bridge:2.0.1
 
 # Cloud tooling the lambda steps call (the bridge base stays minimal on purpose):
-# aws + gomplate from apk. bash, jq, np, base64 and curl ship in the base.
-RUN apk add --no-cache aws-cli gomplate
+# aws, gomplate and dig (bind-tools) from apk. bash, jq, np, base64 and curl ship in the base.
+RUN apk add --no-cache aws-cli gomplate bind-tools
 
 # OpenTofu >= 1.10 — the scope inits its S3 backend with use_lockfile=true
 # (lambda/scope/tofu/provider/aws/setup), which needs tofu 1.10+. alpine 3.20

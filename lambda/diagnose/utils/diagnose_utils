@@ -1,0 +1,226 @@
+#!/bin/bash
+# Helpers to record diagnose check results and report them to the action.
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Usage: evidence_json <summary> <severity> <affected_json> <details_json> <actions_json>
+evidence_json() {
+    local summary="$1"
+    local severity="$2"
+    local affected="$3"
+    local details="$4"
+    local actions="$5"
+
+    [[ -z "$affected" ]] && affected="[]"
+    [[ -z "$details"  ]] && details="{}"
+    [[ -z "$actions"  ]] && actions="[]"
+
+    jq -n \
+        --arg summary "$summary" \
+        --arg severity "$severity" \
+        --argjson affected "$affected" \
+        --argjson details "$details" \
+        --argjson actions "$actions" \
+        '{
+            summary: $summary,
+            severity: $severity,
+            affected: $affected,
+            details: $details,
+            suggested_actions: $actions
+        }'
+}
+
+# Newline-delimited stdin to a JSON array of non-empty, length-capped strings.
+lines_to_json_array() {
+    local max="${EVIDENCE_LOG_LINE_MAX_CHARS:-2000}"
+    jq -R -s --argjson max "$max" '
+        split("\n")
+        | map(select(length > 0))
+        | map(if length > $max then .[:$max] + "…[truncated]" else . end)
+    '
+}
+
+print_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+print_info() {
+    echo -e "${CYAN}ℹ${NC} $1"
+}
+
+print_action() {
+    echo -e "${CYAN}🔧${NC} $1"
+}
+
+# Fails the current check when build_context could not resolve the function.
+require_function_name() {
+    [[ -n "${LAMBDA_FUNCTION_NAME:-}" ]] && return 0
+
+    echo "❌ No Lambda function found for scope ${SCOPE_ID:-}" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   - The function was deleted outside of Terraform" >&2
+    echo "   - No Lambda function is tagged with nullplatform:scope-id=${SCOPE_ID:-}" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   - Check that build_context ran successfully" >&2
+    echo "   - Re-run the scope provisioning workflow" >&2
+
+    update_check_result --status "failed" --evidence "$(evidence_json \
+        "No Lambda function found for scope ${SCOPE_ID:-}" \
+        "critical" \
+        "[]" \
+        "$(jq -nc --arg scope_id "${SCOPE_ID:-}" '{scope_id: $scope_id}')" \
+        '["Check that build_context ran successfully","Re-run the scope provisioning workflow"]')"
+    return 1
+}
+
+update_check_result() {
+    # Usage: update_check_result --status <status> --evidence <json> [--log-tail-lines N]
+    local status="" evidence="" log_tail_lines=20
+
+    if [[ "$1" == --* ]]; then
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --status) status="$2"; shift 2 ;;
+                --evidence) evidence="$2"; shift 2 ;;
+                --log-tail-lines) log_tail_lines="$2"; shift 2 ;;
+                *) echo "Unknown parameter: $1" >&2; return 1 ;;
+            esac
+        done
+    else
+        status="$1"
+        evidence="$2"
+    fi
+
+    if [[ -z "$status" || -z "$evidence" ]]; then
+        echo "Error: status and evidence are required" >&2
+        return 1
+    fi
+
+    local output_file="$SCRIPT_OUTPUT_FILE"
+
+    if [[ ! -f "$output_file" ]]; then
+        echo "Error: File not found: $output_file" >&2
+        return 1
+    fi
+
+    local log_array="[]"
+    if [[ -n "$SCRIPT_LOG_FILE" && -f "$SCRIPT_LOG_FILE" ]]; then
+        if ! log_array=$(grep -v '^[[:space:]]*$' "$SCRIPT_LOG_FILE" | tail -n "$log_tail_lines" | lines_to_json_array); then
+            echo "Error: Failed to read log file: $SCRIPT_LOG_FILE" >&2
+            return 1
+        fi
+    fi
+
+    local timestamp status_lower tmpfile
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    status_lower=$(echo "$status" | tr '[:upper:]' '[:lower:]')
+    tmpfile="$(mktemp)"
+
+    local jq_filter='.status = ($status | ascii_downcase) | .evidence = $evidence | .logs = $logs'
+
+    if [[ "$status_lower" == "running" ]]; then
+        jq_filter="$jq_filter | .start_at = \$timestamp"
+    elif [[ "$status_lower" == "success" || "$status_lower" == "failed" ]]; then
+        jq_filter="$jq_filter | .end_at = \$timestamp"
+    fi
+
+    if ! jq \
+        --arg status "$status" \
+        --argjson evidence "$evidence" \
+        --argjson logs "$log_array" \
+        --arg timestamp "$timestamp" \
+        "$jq_filter" \
+        "$output_file" > "$tmpfile"; then
+        echo "Error: Failed to update JSON (is evidence valid JSON?)" >&2
+        rm -f "$tmpfile"
+        return 1
+    fi
+
+    mv "$tmpfile" "$output_file"
+
+    _np_trace_check_result "$status_lower" "$evidence"
+}
+
+_np_trace_check_result() {
+    local _cr_status="$1" _cr_evidence="$2" _cr_severity="" _cr_summary="" _cr_action=""
+    command -v np_scope_explain >/dev/null 2>&1 || return 0
+
+    case "$_cr_status" in
+        failed)  _cr_severity="error" ;;
+        warning) _cr_severity="warn" ;;
+        *)       return 0 ;;
+    esac
+
+    _cr_summary=$(printf '%s' "$_cr_evidence" | jq -r '.summary // empty' 2>/dev/null) || _cr_summary=""
+    _cr_action=$(printf '%s' "$_cr_evidence" | jq -r '(.suggested_actions // [])[0] // empty' 2>/dev/null) || _cr_action=""
+    [ -n "$_cr_summary" ] || return 0
+
+    np_scope_explain --severity "$_cr_severity" --what "$_cr_summary" ${_cr_action:+--next "$_cr_action"}
+    np_scope_output check_evidence "$_cr_evidence" 2>/dev/null || true
+    return 0
+}
+
+notify_results() {
+    local json_files
+    json_files=$(find "$NP_OUTPUT_DIR" -type f -name "*.json" ! -path "*/data/*")
+
+    if [[ -z "$json_files" ]]; then
+        print_warning "No JSON result files found in $NP_OUTPUT_DIR"
+        return 1
+    fi
+
+    local work_dir results_file body_file rc action_id service_id
+    work_dir="$(mktemp -d)"
+    results_file="$work_dir/results.json"
+    body_file="$work_dir/body.json"
+
+    if ! echo "$json_files" | xargs jq -s '
+      def cat: .category // "unknown";
+      sort_by(cat)
+      | group_by(cat)
+      | map({
+          category: (.[0].category // "unknown"),
+          summary: {
+            pending: (map(select((.status // "UNKNOWN") == "pending")) | length),
+            running: (map(select((.status // "UNKNOWN") == "running")) | length),
+            success: (map(select((.status // "UNKNOWN") == "success")) | length),
+            failed:  (map(select((.status // "UNKNOWN") == "failed"))  | length),
+            warning: (map(select((.status // "UNKNOWN") == "warning"))  | length),
+            skipped: (map(select((.status // "UNKNOWN") == "skipped"))  | length)
+          },
+          checks: .
+        })
+    ' > "$results_file"; then
+        print_error "Failed to group check results from $NP_OUTPUT_DIR"
+        rm -rf "$work_dir"
+        return 1
+    fi
+
+    action_id=$(echo "$NP_ACTION_CONTEXT" | jq -r '.notification.id')
+    service_id=$(echo "$NP_ACTION_CONTEXT" | jq -r '.notification.service.id')
+
+    if ! jq -nc --slurpfile result "$results_file" \
+            '{results: {categories: $result[0]}}' > "$body_file"; then
+        print_error "Failed to build the action body"
+        rm -rf "$work_dir"
+        return 1
+    fi
+
+    np service action patch --id "$action_id" --serviceId "$service_id" --body "$body_file" --no-output
+    rc=$?
+
+    rm -rf "$work_dir"
+    return $rc
+}

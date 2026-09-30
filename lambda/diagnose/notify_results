@@ -1,8 +1,3 @@
 #!/bin/bash
-# Notify the results of a diagnostic check
 
-if [ "${CHECK_RESULT:-0}" -eq 0 ]; then
-   echo "   PASSED: $CHECK_NAME"
-else
-   echo "   FAILED: $CHECK_NAME"
-fi
+notify_results

@@ -1,0 +1,31 @@
+steps:
+  - name: Lambda Function Exists
+    description: Verifies that the Lambda function exists
+    category: Function
+    type: script
+    file: "$SERVICE_PATH/diagnose/checks/lambda_exists"
+  - name: Lambda Function Active
+    description: Verifies that the Lambda function is in the Active state
+    category: Function
+    type: script
+    file: "$SERVICE_PATH/diagnose/checks/lambda_active"
+  - name: Provisioned Concurrency
+    description: Verifies provisioned concurrency is allocated on the main alias
+    category: Function
+    type: script
+    file: "$SERVICE_PATH/diagnose/checks/provisioned_concurrency"
+  - name: IAM Role Valid
+    description: Verifies that the function's execution role exists
+    category: Permissions
+    type: script
+    file: "$SERVICE_PATH/diagnose/checks/iam_role_valid"
+  - name: Networking Health
+    description: Verifies API Gateway or ALB is allowed to invoke the function
+    category: Networking
+    type: script
+    file: "$SERVICE_PATH/diagnose/checks/networking_healthy"
+  - name: DNS Resolution
+    description: Verifies the scope domain resolves
+    category: Networking
+    type: script
+    file: "$SERVICE_PATH/diagnose/checks/dns_resolves"
