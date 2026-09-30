@@ -19,6 +19,12 @@ RUN curl -fsSL --retry 3 --retry-delay 2 "https://github.com/opentofu/opentofu/r
       | tar -xz -C /usr/local/bin tofu \
     && tofu version
 
+# np CLI pinned over the one shipped in the base image.
+ARG NP_CLI_VERSION=2.11.0
+RUN curl -fsSL --retry 3 --retry-delay 2 -o /root/.local/bin/np "https://cli.nullplatform.com/${NP_CLI_VERSION}/np-Linux-${TARGETARCH%64}" \
+    && chmod +x /root/.local/bin/np \
+    && np version
+
 # Bake the scope in and point the bridge at the lambda entrypoint + service path.
 COPY . /app/pkg
 ENV NP_PACKAGE_NAME=scopes-lambda \
