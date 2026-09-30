@@ -146,13 +146,17 @@ lambda/
 │   ├── build_context
 │   ├── notify_check_running
 │   ├── notify_results
-│   └── checks/
-│       ├── lambda_exists
-│       ├── lambda_active
-│       ├── iam_role_valid
-│       ├── dns_resolves
-│       ├── networking_healthy
-│       └── provisioned_concurrency
+│   ├── checks/
+│   │   ├── workflow.yml
+│   │   ├── lambda_exists
+│   │   ├── lambda_active
+│   │   ├── iam_role_valid
+│   │   ├── dns_resolves
+│   │   ├── networking_healthy
+│   │   └── provisioned_concurrency
+│   ├── utils/
+│   │   └── diagnose_utils
+│   └── tests/
 │
 ├── instance/                           # Execution listing
 │   ├── build_context
