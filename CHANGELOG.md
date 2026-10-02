@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/nullplatform/scopes-lambda/compare/v0.8.2...v0.8.3) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** update dependency opentofu/opentofu to v1.13.1 ([#82](https://github.com/nullplatform/scopes-lambda/issues/82)) ([c740042](https://github.com/nullplatform/scopes-lambda/commit/c7400428e1a584ef42a3ad6e0ea3130170a45efc))
+
 ## [0.8.2](https://github.com/nullplatform/scopes-lambda/compare/v0.8.1...v0.8.2) (2026-09-30)
 
 
