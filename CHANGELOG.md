@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/nullplatform/scopes-lambda/compare/v0.8.3...v0.9.0) (2026-10-06)
+
+
+### Features
+
+* run the worker image as a non-root user ([#85](https://github.com/nullplatform/scopes-lambda/issues/85)) ([b0e6ffd](https://github.com/nullplatform/scopes-lambda/commit/b0e6ffd8eac09bd3697401e001784600931ca663))
+
 ## [0.8.3](https://github.com/nullplatform/scopes-lambda/compare/v0.8.2...v0.8.3) (2026-10-02)
 
 
