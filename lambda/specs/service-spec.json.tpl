@@ -1,3 +1,18 @@
+{{- /* LAMBDA_DEPLOYMENT_TYPES: comma-separated packaging types offered by the spec, first one is the default.
+       Allowed: docker-image, zip. Unknown, empty or repeated entries fail the render. */ -}}
+{{- $titles := coll.Dict "docker-image" "Docker Image (ECR)" "zip" "ZIP Package (S3)" -}}
+{{- $types := strings.Split "," (strings.ReplaceAll " " "" (env.Getenv "LAMBDA_DEPLOYMENT_TYPES" "docker-image,zip")) -}}
+{{- range $t := $types -}}
+{{- if not (coll.Has $titles $t) -}}
+{{- test.Fail (printf "LAMBDA_DEPLOYMENT_TYPES: unknown deployment type %q (allowed: docker-image, zip)" $t) -}}
+{{- end -}}
+{{- end -}}
+{{- if ne (len $types) (len (coll.Uniq $types)) -}}
+{{- test.Fail "LAMBDA_DEPLOYMENT_TYPES: repeated deployment type" -}}
+{{- end -}}
+{{- $default := index $types 0 -}}
+{{- $assetDefault := "docker-image" -}}
+{{- if eq $default "zip" }}{{ $assetDefault = "lambda" }}{{ end -}}
 {
   "available_actions": [
     "create-scope",
@@ -241,17 +256,18 @@
           "type": "string",
           "title": "Deployment Type",
           "description": "Choose how your Lambda function is packaged and deployed. Cannot be changed after scope creation.",
-          "default": "docker-image",
+          "default": "{{ $default }}",
           "editableOn": ["create"],
           "oneOf": [
-            { "const": "docker-image", "title": "Docker Image (ECR)" },
-            { "const": "zip", "title": "ZIP Package (S3)" }
+            {{- range $i, $t := $types }}{{ if $i }},{{ end }}
+            { "const": "{{ $t }}", "title": "{{ index $titles $t }}" }
+            {{- end }}
           ]
         },
         "asset_type": {
           "type": "string",
           "export": true,
-          "default": "docker-image"
+          "default": "{{ $assetDefault }}"
         },
         "runtime": {
           "type": "string",
