@@ -17,6 +17,7 @@
 #
 #   scope-configurations category:
 #     TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state
+#     TOFU_STATE_BUCKET_REGION - Region of that bucket (optional, defaults to AWS_REGION)
 #     PLACEHOLDER_IMAGE_URI    - ECR image URI used during scope creation
 #     NULL_AGENT_LAYER_ARN     - ARN of nullplatform agent Lambda layer (if USE_NULL_AGENT=true)
 

@@ -21,6 +21,11 @@
             "type": "string",
             "title": "OpenTofu state bucket",
             "description": "S3 bucket where per-scope OpenTofu state files are stored by the create/delete workflows. Can be shared across scope types — each scope writes under its own key prefix."
+          },
+          "tofu_state_bucket_region": {
+            "type": "string",
+            "title": "OpenTofu state bucket region",
+            "description": "AWS region of the OpenTofu state bucket. Optional; defaults to the region of the cloud-providers account."
           }
         }
       },
@@ -119,6 +124,10 @@
                 {
                   "type": "Control",
                   "scope": "#/properties/state/properties/tofu_state_bucket"
+                },
+                {
+                  "type": "Control",
+                  "scope": "#/properties/state/properties/tofu_state_bucket_region"
                 }
               ]
             },

@@ -104,6 +104,9 @@ log debug "   ✅ hosted_private_zone_id=$HOSTED_PRIVATE_ZONE_ID"
 TOFU_STATE_BUCKET=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket // .provider.aws_state_bucket // empty')
 log debug "   ✅ tofu_state_bucket=$TOFU_STATE_BUCKET"
 
+TOFU_STATE_BUCKET_REGION=$(echo "$SCOPE_CONFIG" | jq -r '.state.tofu_state_bucket_region // empty')
+log debug "   ✅ tofu_state_bucket_region=${TOFU_STATE_BUCKET_REGION:-(not set, using aws_region)}"
+
 PLACEHOLDER_IMAGE_URI=$(echo "$SCOPE_CONFIG" | jq -r '.deployment.placeholder_image_uri // empty')
 # Fallback to env var set in values.yaml when the provider does not supply it.
 PLACEHOLDER_IMAGE_URI="${PLACEHOLDER_IMAGE_URI:-${PLACEHOLDER_IMAGE_URI_DEFAULT:-}}"
@@ -127,6 +130,7 @@ export AWS_REGION
 export HOSTED_PUBLIC_ZONE_ID
 export HOSTED_PRIVATE_ZONE_ID
 export TOFU_STATE_BUCKET
+export TOFU_STATE_BUCKET_REGION
 export PLACEHOLDER_IMAGE_URI
 export NULL_AGENT_LAYER_ARN
 

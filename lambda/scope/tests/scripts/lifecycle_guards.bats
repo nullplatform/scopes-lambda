@@ -42,6 +42,13 @@ run_fetch_scope_configuration() {
   source "$LAMBDA_DIR/utils/fetch_scope_configuration"
 }
 
+# printenv only sees exported variables.
+run_fetch_scope_configuration_exports() {
+  run_fetch_scope_configuration || return $?
+  echo "TOFU_STATE_BUCKET_REGION=$(printenv TOFU_STATE_BUCKET_REGION)"
+  echo "AWS_REGION=$(printenv AWS_REGION)"
+}
+
 # The marker would only print if the step returned; with `exit` it never runs.
 run_assume_role_step() {
   source "$LAMBDA_DIR/utils/assume_role_step"
@@ -173,6 +180,16 @@ run_assume_role_step() {
   assert_success
   assert_line "✨ Placeholder image resolved: 084420143809.dkr.ecr.us-east-1.amazonaws.com/prd-registry-cross-account:placeholder"
   assert_output_not_contains "Placeholder image not found"
+}
+
+@test "fetch_scope_configuration: exports the optional state bucket region" {
+  np() { echo '{"results":[{"category":"cloud-providers","attributes":{"account":{"id":"111122223333","region":"us-west-2"}}},{"category":"scope-configurations","attributes":{"state":{"tofu_state_bucket":"np-state","tofu_state_bucket_region":"us-east-1"}}}]}'; }
+
+  run run_fetch_scope_configuration_exports
+
+  assert_success
+  assert_line "TOFU_STATE_BUCKET_REGION=us-east-1"
+  assert_line "AWS_REGION=us-west-2"
 }
 
 @test "fetch_scope_configuration: an empty result set names the missing providers" {

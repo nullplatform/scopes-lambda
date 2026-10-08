@@ -60,7 +60,7 @@ if ! tofu -chdir="$TF_WORKING_DIR" init -input=false $TOFU_INIT_VARIABLES; then
   echo "❌ Tofu init failed" >&2
   echo "" >&2
   echo "💡 Possible causes:" >&2
-  echo "   - The state bucket does not exist or is not readable in this region" >&2
+  echo "   - The state bucket does not exist or is not readable in this region (set state.tofu_state_bucket_region if it lives elsewhere)" >&2
   echo "   - The assumed role lacks s3:GetObject/PutObject on the state bucket" >&2
   echo "" >&2
   exit 1
