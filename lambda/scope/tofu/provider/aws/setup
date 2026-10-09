@@ -47,7 +47,7 @@ TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
   '. + {aws_provider: {region: $aws_region, state_bucket: $tf_state_bucket}, provider_resource_tags_json: $resource_tags_json}')
 
 TOFU_INIT_VARIABLES="$TOFU_INIT_VARIABLES -backend-config=bucket=$TOFU_STATE_BUCKET"
-TOFU_INIT_VARIABLES="$TOFU_INIT_VARIABLES -backend-config=region=$AWS_REGION"
+TOFU_INIT_VARIABLES="$TOFU_INIT_VARIABLES -backend-config=region=${TOFU_STATE_BUCKET_REGION:-$AWS_REGION}"
 TOFU_INIT_VARIABLES="$TOFU_INIT_VARIABLES -backend-config=use_lockfile=true"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -7,7 +7,7 @@
 #   PACKAGE_TYPE, RESOURCE_TAGS_JSON, CONTEXT
 #
 # Assumes fetch_scope_configuration has exported:
-#   AWS_REGION, TOFU_STATE_BUCKET
+#   AWS_REGION, TOFU_STATE_BUCKET, TOFU_STATE_BUCKET_REGION
 
 source "$SERVICE_PATH/utils/log"
 
