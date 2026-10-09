@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/nullplatform/scopes-lambda/compare/v0.9.0...v0.9.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **scope:** allow the state bucket to live in another region ([#88](https://github.com/nullplatform/scopes-lambda/issues/88)) ([6d4ad6c](https://github.com/nullplatform/scopes-lambda/commit/6d4ad6ca6691e8123d7361964feb44df56e34046))
+
 ## [0.9.0](https://github.com/nullplatform/scopes-lambda/compare/v0.8.3...v0.9.0) (2026-10-06)
 
 
