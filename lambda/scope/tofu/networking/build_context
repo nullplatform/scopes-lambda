@@ -1,0 +1,49 @@
+#!/bin/bash
+# Build the tofu context for the scope's networking (ALB or API Gateway, plus DNS).
+# Networking keeps its own state so update-scope can re-apply it without touching the function.
+#
+# Assumes scope/build_context has already run and exported:
+#   SCOPE_ID, OUTPUT_DIR, VISIBILITY, NETWORKING_MODE, CONTEXT
+
+source "$SERVICE_PATH/utils/log"
+
+log info "🔍 Building networking tofu context..."
+
+if [ "$NETWORKING_MODE" = "alb" ]; then
+  if [ "$VISIBILITY" = "private" ]; then
+    listeners="${ALB_PRIVATE_LISTENER_ARNS:-}"
+  else
+    listeners="${ALB_PUBLIC_LISTENER_ARNS:-}"
+  fi
+  # Installations without ALBs keep working: the scope just gets no HTTP exposure, as before.
+  if [ -z "$listeners" ]; then
+    log warn "   ⚠️  No load_balancer.$VISIBILITY listener configured - the scope gets no HTTP exposure"
+    NETWORKING_MODE="none"
+  fi
+fi
+
+TF_WORKING_DIR="$OUTPUT_DIR/terraform-networking"
+TOFU_MODULE_DIR="$TF_WORKING_DIR"
+mkdir -p "$TF_WORKING_DIR"
+# Leftover modules from another mode would be re-applied instead of destroyed.
+rm -f "$TF_WORKING_DIR"/*.tf
+
+STATE_KEY="lambda/${SCOPE_ID}/networking.tfstate"
+
+TOFU_INIT_VARIABLES="-backend-config=key=$STATE_KEY"
+TOFU_VARIABLES="{}"
+MODULES_TO_USE=""
+LAMBDA_MAIN_ALIAS_NAME="${LAMBDA_MAIN_ALIAS_NAME:-main}"
+
+export NETWORKING_MODE
+export TF_WORKING_DIR
+export TOFU_MODULE_DIR
+export STATE_KEY
+export TOFU_INIT_VARIABLES
+export TOFU_VARIABLES
+export MODULES_TO_USE
+export LAMBDA_MAIN_ALIAS_NAME
+
+log debug "   ✅ networking_mode=$NETWORKING_MODE"
+log debug "   ✅ state_key=$STATE_KEY"
+log info "✨ Networking tofu context built successfully"

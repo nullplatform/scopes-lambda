@@ -90,40 +90,27 @@ HANDLER=$(echo "$CONTEXT" | jq -r '.scope.capabilities.handler // "index.handler
 log debug "   ✅ package_type=$PACKAGE_TYPE"
 log debug "   ✅ architecture=$ARCHITECTURE"
 
-#ALB listener rule capacity validation (private scopes use internal ALB)
-if [ "$VISIBILITY" = "private" ] && [ "${TOFU_ACTION:-}" = "apply" ]; then
-  ALB_LISTENER_RULE_CAPACITY=$(get_config_value \
-    --provider '.providers["scope-configurations"].networking.alb_listener_rule_capacity' \
-    --env ALB_LISTENER_RULE_CAPACITY \
-    --default "100"
+#Networking: how HTTP traffic reaches the function (alb | api_gateway | none)
+if [ "$VISIBILITY" = "event-driven" ]; then
+  NETWORKING_MODE="none"
+elif [ "$VISIBILITY" = "private" ]; then
+  NETWORKING_MODE="alb"
+else
+  NETWORKING_MODE=$(get_config_value \
+    --provider '.providers["scope-configurations"].networking.public_exposure' \
+    --env LAMBDA_PUBLIC_EXPOSURE \
+    --default "api_gateway"
   )
-
-  ALB_LISTENER_RULE_ALERT_THRESHOLD=$(get_config_value \
-    --provider '.providers["scope-configurations"].networking.alb_listener_rule_alert_threshold' \
-    --env ALB_LISTENER_RULE_ALERT_THRESHOLD \
-    --default "80"
-  )
-
-  log debug "   ✅ alb_listener_rule_capacity=$ALB_LISTENER_RULE_CAPACITY"
-  log debug "   ✅ alb_listener_rule_alert_threshold=$ALB_LISTENER_RULE_ALERT_THRESHOLD"
-
-  if [ "$ALB_LISTENER_RULE_CAPACITY" -le "$ALB_LISTENER_RULE_ALERT_THRESHOLD" ] 2>/dev/null; then
-    echo "❌ ALB listener rule capacity ($ALB_LISTENER_RULE_CAPACITY) is at or below the alert threshold ($ALB_LISTENER_RULE_ALERT_THRESHOLD)" >&2
-    echo "" >&2
-    echo "💡 Possible causes:" >&2
-    echo "   Too many private scopes sharing the same internal ALB" >&2
-    echo "   The ALB listener has a hard limit of rules per listener" >&2
+  # Delete tears networking down from its state, so a bad value must not block it.
+  if [ "$NETWORKING_MODE" != "alb" ] && [ "$NETWORKING_MODE" != "api_gateway" ] && [ "${TOFU_ACTION:-}" != "destroy" ]; then
+    echo "❌ Invalid public exposure '$NETWORKING_MODE'" >&2
     echo "" >&2
     echo "🔧 How to fix:" >&2
-    echo "   • Increase ALB_LISTENER_RULE_CAPACITY if the ALB supports more rules" >&2
-    echo "   • Remove unused scopes to free up listener rule slots" >&2
-    echo "   • Provision an additional internal ALB for this account" >&2
+    echo "   • Set networking.public_exposure (scope-configurations) or LAMBDA_PUBLIC_EXPOSURE to 'alb' or 'api_gateway'" >&2
     exit 1
   fi
-
-  export ALB_LISTENER_RULE_CAPACITY
-  export ALB_LISTENER_RULE_ALERT_THRESHOLD
 fi
+log debug "   ✅ networking_mode=$NETWORKING_MODE"
 
 #Output directory
 OUTPUT_DIR="$SERVICE_PATH/output/$SCOPE_ID"
@@ -167,6 +154,7 @@ export APPLICATION_SLUG
 export ACCOUNT_SLUG
 export LAMBDA_FUNCTION_NAME
 export VISIBILITY
+export NETWORKING_MODE
 export PACKAGE_TYPE
 export ASSET_TYPE
 export RUNTIME

@@ -3,23 +3,17 @@ variable "dns_hosted_zone_id" {
   type        = string
 }
 
-variable "dns_domain" {
-  description = "Base domain name"
-  type        = string
-}
-
-variable "dns_subdomain" {
-  description = "Subdomain prefix"
-  type        = string
-}
-
 variable "dns_full_domain" {
-  description = "Full domain name (subdomain.domain)"
+  description = "Full domain name of the scope"
   type        = string
 }
 
-variable "dns_resource_tags_json" {
-  description = "Tags for DNS resources"
-  type        = map(string)
-  default     = {}
+variable "dns_alb_dns_name" {
+  description = "DNS name of the ALB the scope's rule lives on"
+  type        = string
+}
+
+variable "dns_alb_zone_id" {
+  description = "Canonical hosted zone ID of that ALB"
+  type        = string
 }

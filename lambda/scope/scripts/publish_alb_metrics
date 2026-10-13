@@ -1,0 +1,44 @@
+#!/bin/bash
+# Publish the listener rule count of the ALBs this run touched, for alarms ahead of the 100-rule cap.
+# Covers the scope's current ALB and the one in NRN metadata (a move or a delete frees a rule there).
+# Best-effort: a failed publish never fails the workflow.
+
+source "$SERVICE_PATH/utils/log"
+source "$SERVICE_PATH/utils/alb_rules"
+
+stored=$(np nrn read --nrn "$SCOPE_NRN" --ids "lambda.alb_arn,lambda.alb_visibility" --format json 2>/dev/null) || stored=""
+stored_alb=$(echo "$stored" | jq -r '.namespaces.lambda.alb_arn // empty' 2>/dev/null)
+stored_visibility=$(echo "$stored" | jq -r '.namespaces.lambda.alb_visibility // empty' 2>/dev/null)
+
+targets=()
+[ -n "${ALB_ARN:-}" ] && targets+=("$ALB_ARN|$VISIBILITY")
+[ -n "$stored_alb" ] && [ "$stored_alb" != "${ALB_ARN:-}" ] && targets+=("$stored_alb|${stored_visibility:-$VISIBILITY}")
+
+if [ ${#targets[@]} -eq 0 ]; then
+  log debug "   ⏭️  No ALB touched - skipping rule metrics"
+  return 0
+fi
+
+log info "📊 Publishing ALB rule metrics..."
+
+for target in "${targets[@]}"; do
+  alb_arn="${target%%|*}"
+  visibility="${target#*|}"
+
+  if ! count=$(alb_rule_count "$alb_arn"); then
+    log warn "   ⚠️  Could not count rules on $alb_arn - metric not published"
+    continue
+  fi
+
+  # CloudWatch identifies an ALB by the ARN suffix (app/<name>/<id>), as AWS/ApplicationELB does.
+  load_balancer="${alb_arn#*:loadbalancer/}"
+  metric_data=$(jq -nc --arg lb "$load_balancer" --arg v "$visibility" --argjson c "$count" \
+    '[{MetricName: "ListenerRuleCount", Unit: "Count", Value: $c,
+       Dimensions: [{Name: "LoadBalancer", Value: $lb}, {Name: "Visibility", Value: $v}]}]')
+
+  if aws cloudwatch put-metric-data --namespace "Nullplatform/Lambda" --metric-data "$metric_data" >/dev/null 2>&1; then
+    log info "   ✅ $load_balancer rules=$count"
+  else
+    log warn "   ⚠️  Failed to publish ListenerRuleCount for $load_balancer (needs cloudwatch:PutMetricData)"
+  fi
+done

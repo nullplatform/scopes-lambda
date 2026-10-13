@@ -3,8 +3,8 @@
 # The following values are fetched automatically from provider categories:
 #
 #   vpc category:
-#     ALB_PUBLIC_LISTENER_ARN  - ALB listener ARN for public (internet-facing) scopes
-#     ALB_PRIVATE_LISTENER_ARN - ALB listener ARN for private (internal) scopes
+#     ALB_PUBLIC_LISTENER_ARNS  - ALB listeners for public scopes (load_balancer.public.listener_arns)
+#     ALB_PRIVATE_LISTENER_ARNS - ALB listeners for private scopes (load_balancer.private.listener_arns)
 #     VPC_ID                   - VPC ID for Lambda network placement
 #     AWS_SUBNET_IDS           - Comma-separated subnet IDs
 #     SECURITY_GROUP_IDS       - Comma-separated security group IDs
@@ -34,10 +34,16 @@ configuration:
   # ── Domain / DNS ───────────────────────────────────────────────────────────
   USE_ACCOUNT_SLUG: false
 
+  # ── Networking ─────────────────────────────────────────────────────────────
+  # Public scopes: api_gateway or alb. Private scopes always use an ALB.
+  LAMBDA_PUBLIC_EXPOSURE: "api_gateway"
+
   # ── ALB ────────────────────────────────────────────────────────────────────
+  # AWS caps an ALB at 100 rules. New scopes go to the least-loaded ALB below
+  # ALERT_THRESHOLD; no new rule is added once an ALB reaches CAPACITY.
   ALB_LISTENER_RULE_PRIORITY_START: 100
-  ALB_LISTENER_RULE_CAPACITY: 100
-  ALB_LISTENER_RULE_ALERT_THRESHOLD: 80
+  ALB_LISTENER_RULE_CAPACITY: 98
+  ALB_LISTENER_RULE_ALERT_THRESHOLD: 75
 
   # ── Null Agent ─────────────────────────────────────────────────────────────
   USE_NULL_AGENT: false

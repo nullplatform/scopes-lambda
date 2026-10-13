@@ -259,6 +259,7 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "cloudwatch:GetMetricStatistics",
           "cloudwatch:ListMetrics",
           "cloudwatch:GetMetricData",
+          "cloudwatch:PutMetricData",
         ]
         Resource = "*"
       },

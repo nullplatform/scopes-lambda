@@ -24,7 +24,7 @@ output "lambda_alb_arn" {
 }
 
 output "lambda_alb_listener_arn" {
-  description = "ARN of the HTTPS:443 listener on the Lambda ALB. Publish to the aws-networking-configuration provider (load_balancer.public.listener_arn) so the Lambda scope workflow can attach per-scope rules. Empty when install_alb = false."
+  description = "ARN of the HTTPS:443 listener on the Lambda ALB. Publish to the aws-networking-configuration provider (load_balancer.public.listener_arns) so the Lambda scope workflow can attach per-scope rules. Empty when install_alb = false."
   value       = local.alb_create ? aws_lb_listener.lambda_public_https[0].arn : ""
 }
 

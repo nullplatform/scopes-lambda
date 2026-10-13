@@ -1,102 +1,46 @@
 #!/bin/bash
+# Configure the scope's target group and listener rule on the ALB picked by select_alb.
 
-echo "🔍 Validating ALB configuration..."
+source "$SERVICE_PATH/utils/log"
 
-# Check visibility - ALB is only for private scopes
-visibility=$(echo "$CONTEXT" | jq -r '.scope.visibility // "public"')
+log info "🔍 Validating ALB configuration..."
 
-if [ "$visibility" != "private" ] && [ "$visibility" != "internal" ]; then
-  echo ""
-  echo "   ⏭️  Skipping ALB - visibility is '$visibility' (not private/internal)"
-  echo ""
-  return 0
-fi
-
-echo "   ✅ visibility=$visibility"
-
-# Get ALB listener ARN from context or environment
-alb_listener_arn=$(echo "$CONTEXT" | jq -r '.providers["cloud-providers"].alb.listener_arn // empty')
-
-if [ -z "$alb_listener_arn" ] || [ "$alb_listener_arn" = "null" ]; then
-  # Try environment variable as fallback
-  alb_listener_arn="${ALB_LISTENER_ARN:-}"
-fi
-
-if [ -z "$alb_listener_arn" ]; then
-  echo ""
-  echo "   ❌ ALB listener ARN not found"
-  echo ""
-  echo "  💡 Possible causes:"
-  echo "    • ALB listener ARN not configured in cloud-provider"
-  echo "    • ALB_LISTENER_ARN environment variable not set"
-  echo ""
-  echo "  🔧 How to fix:"
-  echo "    • Configure alb.listener_arn in the cloud-provider settings"
-  echo "    • Or set ALB_LISTENER_ARN environment variable in Helm values"
-  echo ""
+if [ -z "${ALB_LISTENER_ARN:-}" ] || [ -z "${ALB_RULE_PRIORITY:-}" ]; then
+  echo "❌ No ALB listener selected for this scope" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Ensure the select_alb step runs before setup_networking" >&2
   exit 1
 fi
 
-echo "   ✅ alb_listener_arn=$alb_listener_arn"
-
-# Extract scope information for naming
-scope_id=$(echo "$CONTEXT" | jq -r '.scope.id')
-scope_slug=$(echo "$CONTEXT" | jq -r '.scope.slug')
-application_slug=$(echo "$CONTEXT" | jq -r '.application.slug')
-namespace_slug=$(echo "$CONTEXT" | jq -r '.namespace.slug')
-
-# Target group name (max 32 chars for ALB)
-target_group_name="${namespace_slug:0:10}-${application_slug:0:10}-${scope_slug:0:8}"
+# Target group names are unique per account and region, capped at 32 chars.
+target_group_name="lmb-${SCOPE_ID}"
 target_group_name="${target_group_name:0:32}"
-echo "   ✅ target_group_name=$target_group_name"
 
-# Host header for routing
-scope_domain=$(echo "$CONTEXT" | jq -r '.scope.domain // empty')
-if [ -z "$scope_domain" ] || [ "$scope_domain" = "null" ]; then
-  # Generate a default host header pattern
-  host_header="${application_slug}-${scope_slug}.internal"
-else
-  host_header="$scope_domain"
-fi
-echo "   ✅ host_header=$host_header"
-
-# Rule priority - get from context or use default
-rule_priority=$(echo "$CONTEXT" | jq -r '.scope.alb_rule_priority // empty')
-if [ -z "$rule_priority" ] || [ "$rule_priority" = "null" ]; then
-  rule_priority="${ALB_LISTENER_RULE_PRIORITY_START:-100}"
-fi
-echo "   ✅ rule_priority=$rule_priority"
-
-# Health check configuration
 health_check_path=$(echo "$CONTEXT" | jq -r '.scope.capabilities.health_check.path // "/health"')
 health_check_enabled="true"
-if [ "$health_check_path" = "" ] || [ "$health_check_path" = "null" ]; then
+if [ -z "$health_check_path" ] || [ "$health_check_path" = "null" ]; then
   health_check_enabled="false"
   health_check_path="/health"
 fi
-echo "   ✅ health_check_path=$health_check_path (enabled=$health_check_enabled)"
 
-# Get Lambda information from context
-lambda_function_name=$(echo "$CONTEXT" | jq -r '.lambda.function_name // empty')
-
-if [ -z "$lambda_function_name" ]; then
-  echo ""
-  echo "   ❌ Lambda function name not found in context"
-  echo ""
-  exit 1
-fi
-
-echo "   ✅ lambda_function_name=$lambda_function_name"
+log debug "   ✅ listener_arn=$ALB_LISTENER_ARN"
+log debug "   ✅ rule_priority=$ALB_RULE_PRIORITY"
+log debug "   ✅ target_group_name=$target_group_name"
+log debug "   ✅ host_header=$SCOPE_DOMAIN"
+log debug "   ✅ health_check_path=$health_check_path (enabled=$health_check_enabled)"
 
 RESOURCE_TAGS_JSON=${RESOURCE_TAGS_JSON:-"{}"}
 
 TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
-  --arg listener_arn "$alb_listener_arn" \
+  --arg listener_arn "$ALB_LISTENER_ARN" \
   --arg target_group_name "$target_group_name" \
-  --arg host_header "$host_header" \
-  --argjson priority "$rule_priority" \
+  --arg host_header "$SCOPE_DOMAIN" \
+  --argjson priority "$ALB_RULE_PRIORITY" \
   --arg health_check_path "$health_check_path" \
   --argjson health_check_enabled "$health_check_enabled" \
+  --arg function_name "$LAMBDA_FUNCTION_NAME" \
+  --arg alias_name "${LAMBDA_MAIN_ALIAS_NAME:-main}" \
   --argjson resource_tags_json "$RESOURCE_TAGS_JSON" \
   '. + {
     alb_listener_arn: $listener_arn,
@@ -105,14 +49,13 @@ TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq \
     alb_rule_priority: $priority,
     alb_health_check_path: $health_check_path,
     alb_health_check_enabled: $health_check_enabled,
+    alb_lambda_function_name: $function_name,
+    alb_lambda_alias_name: $alias_name,
     alb_resource_tags_json: $resource_tags_json
   }')
 
-echo ""
-echo "✨ ALB configured successfully"
-echo ""
+log info "✨ ALB configured successfully"
 
-# Add module to composition list
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 module_name="${script_dir}/modules"
 

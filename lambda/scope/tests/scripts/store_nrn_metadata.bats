@@ -115,6 +115,31 @@ with_tofu_outputs() {
   assert_np_body_contains '"lambda.alb_rule_priority":142'
 }
 
+@test "store_nrn_metadata: records which ALB the scope's rule lives on" {
+  with_tofu_outputs
+  export ALB_LISTENER_ARN="arn:aws:elasticloadbalancing:us-east-1:1:listener/app/alb-a/aaa/l1"
+  export ALB_ARN="arn:aws:elasticloadbalancing:us-east-1:1:loadbalancer/app/alb-a/aaa"
+  export VISIBILITY="private"
+
+  run_step
+
+  assert_success
+  assert_np_body_contains '"lambda.alb_listener_arn":"arn:aws:elasticloadbalancing:us-east-1:1:listener/app/alb-a/aaa/l1"'
+  assert_np_body_contains '"lambda.alb_arn":"arn:aws:elasticloadbalancing:us-east-1:1:loadbalancer/app/alb-a/aaa"'
+  assert_np_body_contains '"lambda.alb_visibility":"private"'
+}
+
+@test "store_nrn_metadata: records no ALB for scopes without one" {
+  with_tofu_outputs
+  export VISIBILITY="public"
+
+  run_step
+
+  assert_success
+  run bash -c "grep -qF 'alb_visibility' '$MOCK_BIN_DIR/np_calls'"
+  assert_failure
+}
+
 # The update path: no tofu run, so identity has to come from AWS. This is also
 # what backfills scopes created before this script published identity.
 @test "store_nrn_metadata: backfills identity from AWS when tofu outputs are absent" {

@@ -1,118 +1,84 @@
 #!/bin/bash
-# Generate domain for Lambda scope
-# Based on k8s domain generation pattern
+# Resolve the scope domain and the hosted zone its record lives in.
+# The scope is patched with the domain only after networking applies (see apply_networking).
 
-echo "🔍 Generating scope domain..."
+source "$SERVICE_PATH/utils/log"
 
-# Get hosted zone ID exported by fetch_scope_configuration
-hosted_zone_id="${HOSTED_PUBLIC_ZONE_ID:-}"
+log info "🔍 Generating scope domain..."
 
-if [ -z "$hosted_zone_id" ] || [ "$hosted_zone_id" = "null" ]; then
-  echo "   ✅ No hosted_public_zone_id configured - skipping domain generation"
-  SCOPE_DOMAIN=""
-  export SCOPE_DOMAIN
+SCOPE_DOMAIN=""
+DNS_HOSTED_ZONE_ID=""
+export SCOPE_DOMAIN DNS_HOSTED_ZONE_ID
+
+if [ "${NETWORKING_MODE:-none}" = "none" ]; then
+  log info "   ⏭️  No HTTP exposure - skipping domain generation"
   return 0
 fi
 
-echo "   📋 hosted_zone_id=$hosted_zone_id"
+if [ "$VISIBILITY" = "private" ]; then
+  DNS_HOSTED_ZONE_ID="${HOSTED_PRIVATE_ZONE_ID:-${HOSTED_PUBLIC_ZONE_ID:-}}"
+else
+  DNS_HOSTED_ZONE_ID="${HOSTED_PUBLIC_ZONE_ID:-}"
+fi
 
-# Get domain from Route53
-echo ""
-echo "   📡 Fetching domain from Route 53 hosted zone..."
+if [ -z "$DNS_HOSTED_ZONE_ID" ]; then
+  if [ "$NETWORKING_MODE" = "alb" ]; then
+    echo "❌ No hosted zone configured for a $VISIBILITY scope behind an ALB" >&2
+    echo "" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   The ALB routes by host header, so the scope needs a domain" >&2
+    echo "" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   • Set networking.hosted_public_zone_id (and hosted_zone_id for private scopes) in the cloud-providers provider" >&2
+    exit 1
+  fi
+  log info "   ⏭️  No hosted zone configured - the API Gateway endpoint is the scope domain"
+  return 0
+fi
 
-aws_output=$(aws route53 get-hosted-zone --id "$hosted_zone_id" 2>&1)
+log debug "   ✅ hosted_zone_id=$DNS_HOSTED_ZONE_ID"
+
+aws_output=$(aws route53 get-hosted-zone --id "$DNS_HOSTED_ZONE_ID" --output json 2>&1)
 aws_exit_code=$?
 
 if [ $aws_exit_code -ne 0 ]; then
-  echo "❌ Failed to fetch Route 53 hosted zone '$hosted_zone_id'" >&2
+  echo "❌ Failed to fetch Route 53 hosted zone '$DNS_HOSTED_ZONE_ID'" >&2
+  echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   - Invalid hosted zone ID" >&2
-  echo "   - Insufficient Route 53 permissions" >&2
-  echo "   - Hosted zone was deleted" >&2
+  echo "   - Missing route53:GetHostedZone permission" >&2
+  echo "" >&2
   echo "🔧 How to fix:" >&2
-  echo "   - Verify hosted_public_zone_id in cloud-provider context" >&2
-  echo "   - Ensure the agent has route53:GetHostedZone permission" >&2
-  echo "   - AWS error: $aws_output" >&2
-  SCOPE_DOMAIN=""
-  export SCOPE_DOMAIN
-  return 0
+  echo "   • Verify the hosted zone IDs in the cloud-providers provider" >&2
+  echo "   📋 AWS error: $aws_output" >&2
+  exit 1
 fi
 
-domain=$(echo "$aws_output" | jq -r '.HostedZone.Name' | sed 's/\.$//')
+base_domain=$(echo "$aws_output" | jq -r '.HostedZone.Name // empty' | sed 's/\.$//')
 
-if [ -z "$domain" ] || [ "$domain" = "null" ]; then
-  echo "❌ Could not extract domain name from hosted zone response" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - Hosted zone has no Name field" >&2
-  echo "   - Unexpected API response format" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Verify hosted zone '$hosted_zone_id' is correctly configured in AWS" >&2
-  SCOPE_DOMAIN=""
-  export SCOPE_DOMAIN
-  return 0
+if [ -z "$base_domain" ]; then
+  echo "❌ Could not read the domain name of hosted zone '$DNS_HOSTED_ZONE_ID'" >&2
+  exit 1
 fi
 
-echo "   📋 base_domain=$domain"
-
-# Generate subdomain
-use_account_slug="${USE_ACCOUNT_SLUG:-true}"
-
-if [ "$use_account_slug" = "true" ]; then
+if [ "${USE_ACCOUNT_SLUG:-true}" = "true" ]; then
   subdomain="${NAMESPACE_SLUG}-${APPLICATION_SLUG}-${SCOPE_SLUG}.${ACCOUNT_SLUG}"
 else
   subdomain="${NAMESPACE_SLUG}-${APPLICATION_SLUG}-${SCOPE_SLUG}"
 fi
 
-echo "   📋 subdomain=$subdomain"
+SCOPE_DOMAIN="${subdomain}.${base_domain}"
 
-# Full domain
-SCOPE_DOMAIN="${subdomain}.${domain}"
-echo "   📋 full_domain=$SCOPE_DOMAIN"
-
-# Domain validation (warn but don't fail)
-echo ""
-echo "   🔍 Validating domain..."
-
-domain_length=${#SCOPE_DOMAIN}
-if [ "$domain_length" -gt 253 ]; then
-  echo "   ⚠️ WARNING: Domain length ($domain_length chars) exceeds DNS maximum of 253 characters" >&2
-fi
-
-# Check each label length (max 63 chars per label)
+# DNS caps a label at 63 chars; route53 rejects longer ones at apply time.
 IFS='.' read -ra labels <<< "$SCOPE_DOMAIN"
 for label in "${labels[@]}"; do
-  label_length=${#label}
-  if [ "$label_length" -gt 63 ]; then
-    echo "   ⚠️ WARNING: Label '$label' ($label_length chars) exceeds DNS maximum of 63 characters per label" >&2
+  if [ "${#label}" -gt 63 ]; then
+    echo "❌ Domain label '$label' exceeds 63 characters" >&2
+    echo "" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   • Shorten the namespace, application or scope slug" >&2
+    exit 1
   fi
 done
 
-# Check for invalid DNS characters
-if echo "$SCOPE_DOMAIN" | grep -qE '[^a-zA-Z0-9.\-]'; then
-  echo "   ⚠️ WARNING: Domain '$SCOPE_DOMAIN' contains characters outside valid DNS range (a-z, 0-9, -, .)" >&2
-fi
-
-# Update scope with domain
-echo ""
-echo "   📡 Updating scope domain..."
-
-np_output=$(np scope patch --id "$SCOPE_ID" --body "{\"domain\":\"$SCOPE_DOMAIN\"}" --format json 2>&1)
-np_exit_code=$?
-
-if [ $np_exit_code -ne 0 ]; then
-  echo "❌ Failed to update scope domain in nullplatform" >&2
-  echo "💡 Possible causes:" >&2
-  echo "   - nullplatform API is unavailable" >&2
-  echo "   - Invalid scope ID: $SCOPE_ID" >&2
-  echo "🔧 How to fix:" >&2
-  echo "   - Check nullplatform API connectivity" >&2
-  echo "   - API error: $np_output" >&2
-  # Don't fail - domain is optional
-else
-  echo "   ✅ Scope domain updated in nullplatform"
-fi
-
-export SCOPE_DOMAIN
-
-echo ""
-echo "✨ Domain generation complete: domain=$SCOPE_DOMAIN"
+log info "   ✅ scope_domain=$SCOPE_DOMAIN"

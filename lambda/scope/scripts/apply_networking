@@ -1,0 +1,103 @@
+#!/bin/bash
+# Apply the networking stack, then publish the scope domain.
+# A new ALB rule re-checks the hard cap before every attempt, and a priority taken by a
+# concurrent scope (PriorityInUse) is recomputed and retried.
+
+source "$SERVICE_PATH/utils/log"
+source "$SERVICE_PATH/utils/alb_rules"
+
+max_attempts="${ALB_RULE_PRIORITY_MAX_ATTEMPTS:-3}"
+
+# delete-scope sets TOFU_ACTION=destroy; create and update apply.
+TOFU_ACTION="${TOFU_ACTION:-apply}"
+export TOFU_ACTION TOFU_VARIABLES
+
+check_hard_cap() {
+  local count
+  count=$(alb_rule_count "$ALB_ARN") || {
+    echo "❌ Failed to count the listener rules of $ALB_ARN" >&2
+    exit 1
+  }
+  if [ "$count" -ge "$ALB_LISTENER_RULE_CAPACITY" ]; then
+    echo "❌ ALB $ALB_ARN has $count listener rules, at or above the cap of $ALB_LISTENER_RULE_CAPACITY" >&2
+    echo "" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   Other scopes took the remaining rules since this one was assigned" >&2
+    echo "" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   • Re-run the action so another ALB is picked" >&2
+    echo "   • Add another ALB listener to load_balancer.$VISIBILITY.listener_arns" >&2
+    exit 1
+  fi
+}
+
+# Nothing to create and no state to empty: skip tofu. Only a 404 skips, so an unreadable
+# bucket still runs tofu instead of leaving resources behind on delete.
+if [ "${NETWORKING_MODE:-none}" = "none" ] || [ "$TOFU_ACTION" = "destroy" ]; then
+  head_output=$(aws s3api head-object --bucket "$TOFU_STATE_BUCKET" --key "$STATE_KEY" \
+    --region "${TOFU_STATE_BUCKET_REGION:-$AWS_REGION}" 2>&1) || {
+    if [[ "$head_output" == *"Not Found"* || "$head_output" == *"404"* ]]; then
+      log info "   ⏭️  No networking state - nothing to remove"
+      return 0
+    fi
+  }
+fi
+
+tofu_log="$TF_WORKING_DIR/apply.log"
+attempt=1
+while :; do
+  [ "$TOFU_ACTION" = "apply" ] && [ "${ALB_RULE_IS_NEW:-false}" = "true" ] && check_hard_cap
+
+  # The exit code goes through a file: a pipeline only reports tee's.
+  { bash "$SERVICE_PATH/scope/tofu/do_tofu"; echo $? > "$tofu_log.exit"; } 2>&1 | tee "$tofu_log"
+  [ "$(cat "$tofu_log.exit")" = "0" ] && break
+
+  if [ "${ALB_RULE_IS_NEW:-false}" = "true" ] && grep -q "PriorityInUse" "$tofu_log" && [ "$attempt" -lt "$max_attempts" ]; then
+    attempt=$((attempt + 1))
+    ALB_RULE_PRIORITY=$(alb_free_priority "$ALB_LISTENER_ARN" "$ALB_LISTENER_RULE_PRIORITY_START") || exit 1
+    TOFU_VARIABLES=$(echo "$TOFU_VARIABLES" | jq --argjson p "$ALB_RULE_PRIORITY" '.alb_rule_priority = $p')
+    export ALB_RULE_PRIORITY TOFU_VARIABLES
+    log warn "   ⚠️  Rule priority taken concurrently - retrying with $ALB_RULE_PRIORITY (attempt $attempt/$max_attempts)"
+    continue
+  fi
+
+  echo "❌ Networking tofu $TOFU_ACTION failed" >&2
+  exit 1
+done
+
+export ALB_RULE_PRIORITY
+[ "$TOFU_ACTION" = "destroy" ] && return 0
+
+case "${NETWORKING_MODE:-none}" in
+  alb)
+    domain="$SCOPE_DOMAIN"
+    ;;
+  api_gateway)
+    domain="${API_GATEWAY_CUSTOM_DOMAIN:-}"
+    if [ -z "$domain" ]; then
+      domain=$(jq -r '.api_gateway_endpoint.value // empty' "$TF_WORKING_DIR/outputs.json" 2>/dev/null)
+      domain="${domain#https://}"
+    fi
+    ;;
+  *)
+    domain=""
+    ;;
+esac
+
+if [ -z "$domain" ]; then
+  log debug "   ⏭️  No domain to publish"
+  return 0
+fi
+
+log info "   📝 Setting scope domain to '$domain'..."
+
+if ! np_output=$(np scope patch --id "$SCOPE_ID" --body "{\"domain\":\"$domain\"}" --format json 2>&1); then
+  echo "❌ Failed to update the scope domain" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The nullplatform API Key lacks 'Developer' permissions" >&2
+  echo "   📋 Error: $np_output" >&2
+  exit 1
+fi
+
+log info "✨ Networking applied successfully"

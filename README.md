@@ -49,8 +49,10 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 1. **Provider**: Configures AWS credentials, region, and Terraform state backend
 2. **IAM**: Creates/updates Lambda execution role with required policies
 3. **Compute (Lambda)**: Deploys function code, versions, aliases, and concurrency settings
-4. **Networking**: Sets up API Gateway (public) or ALB target group (private)
-5. **DNS (Route53)**: Creates DNS records pointing to the networking endpoint
+4. **Networking**: Sets up API Gateway (public) or an ALB target group and listener rule (private, or public with `public_exposure = alb`)
+5. **DNS (Route53)**: Creates an alias record pointing to the networking endpoint
+
+Networking and DNS live in their own state (`lambda/<scope_id>/networking.tfstate`), so `update-scope` re-applies them without touching the function.
 
 ---
 
@@ -301,9 +303,13 @@ API_GATEWAY_STAGE_NAME: "main"
 API_GATEWAY_THROTTLING_BURST_LIMIT: 5000
 API_GATEWAY_THROTTLING_RATE_LIMIT: 10000
 
-# ALB (Private)
-ALB_LISTENER_RULE_CAPACITY: 100
-ALB_LISTENER_RULE_ALERT_THRESHOLD: 80
+# Networking
+LAMBDA_PUBLIC_EXPOSURE: "api_gateway"   # or "alb"
+
+# ALB
+ALB_LISTENER_RULE_PRIORITY_START: 100
+ALB_LISTENER_RULE_CAPACITY: 98          # no new rule on an ALB with this many
+ALB_LISTENER_RULE_ALERT_THRESHOLD: 75   # new scopes skip ALBs with this many
 
 # CloudWatch
 LOG_RETENTION_DAYS: 30
@@ -469,12 +475,11 @@ All AWS resources are tagged with:
 
 ### Initial Deployment
 
-Full infrastructure setup on first deployment:
+Infrastructure is created by `create-scope`; a deployment only ships code:
 
 ```
-build_context → sync_parameters → setup_provider → setup_iam → setup_compute
-→ setup_networking (api_gateway | alb) → setup_dns → compose_modules
-→ tofu apply → wait_provisioned_concurrency → store_metadata
+build_context → sync_parameters → update_function_code → update_function_configuration
+→ publish_version → update_alias → wait_provisioned_concurrency
 ```
 
 ### Blue-Green Deployment
@@ -756,8 +761,18 @@ export TOFU_LOCK_TABLE=my-lock-table
 
 | Mode | Networking | Use Case |
 |------|------------|----------|
-| **Public** | API Gateway + Route53 | Internet-facing APIs and webhooks |
-| **Private** | ALB + Route53 | Internal microservices and backend functions |
+| **Public** | API Gateway, or ALB with `public_exposure = alb` | Internet-facing APIs and webhooks |
+| **Private** | ALB + Route53 alias | Internal microservices and backend functions |
+
+ALB scopes are balanced across `load_balancer.<visibility>.listener_arns`:
+
+| Step | Behavior |
+|------|----------|
+| Assignment | A new rule goes to the ALB with the fewest rules (all listeners counted) below the alert threshold |
+| Re-runs | The scope keeps its listener (`lambda.alb_listener_arn` in NRN), even if removed from the list |
+| Hard cap | No new rule on an ALB at `ALB_LISTENER_RULE_CAPACITY` |
+| Concurrency | A priority taken meanwhile (`PriorityInUse`) is recomputed and retried up to 3 times |
+| Metrics | `Nullplatform/Lambda` · `ListenerRuleCount` per `LoadBalancer` and `Visibility` on every create/update/delete |
 
 ### Troubleshooting
 
@@ -766,6 +781,7 @@ export TOFU_LOCK_TABLE=my-lock-table
 | "Function name too long" | Name exceeds 64 chars | Shorten namespace/application/scope slugs |
 | "Placeholder image not found" | Image scope with no private placeholder published | Run `lambda/scope/placeholder/publish` and set `PLACEHOLDER_IMAGE_URI_DEFAULT` (see [Placeholder Image](#placeholder-image-scope-bootstrap)) |
 | "Provisioned concurrency timeout" | Warmup taking too long | Increase `PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS` |
-| "ALB listener rule capacity" | Too many rules on ALB | Increase `ALB_LISTENER_RULE_CAPACITY` in values.yaml |
+| "Every private ALB has 75 or more listener rules" | All ALBs past the alert threshold | Add a listener to `load_balancer.private.listener_arns` or remove unused scopes |
+| "at or above the cap" | Rules taken by other scopes meanwhile | Re-run the action so another ALB is picked |
 | "Module not composed" | `MODULES_TO_USE` not updated | Verify setup script appends to `MODULES_TO_USE` |
 | "Backend not configured" | Missing provider setup | Ensure provider setup runs before other modules |

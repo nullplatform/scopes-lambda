@@ -1,209 +1,123 @@
 #!/usr/bin/env bats
-# Unit tests for scope/scripts/generate_domain script
-
-SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-HELPERS_DIR="$SCRIPT_DIR/helpers"
-LAMBDA_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-GENERATE_DOMAIN_SCRIPT="$LAMBDA_DIR/scope/scripts/generate_domain"
-
-load "$HELPERS_DIR/test_helper.bash"
-load "$HELPERS_DIR/mock_context.bash"
 
 setup() {
+  TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  HELPERS_DIR="$TEST_DIR/helpers"
+  LAMBDA_DIR="$(cd "$TEST_DIR/../../.." && pwd)"
+
+  load "$HELPERS_DIR/test_helper.bash"
+  load "$HELPERS_DIR/aws_cli_mock.bash"
+
   setup_test_env
+  export SERVICE_PATH="$LAMBDA_DIR"
+
+  MOCK_BIN_DIR="$(mktemp -d)"
+  export PATH="$MOCK_BIN_DIR:$PATH"
+  unset -f aws np
+  setup_aws_cli_mock
+  aws_mock_response "route53 get-hosted-zone" 0 '{"HostedZone":{"Name":"example.com."}}'
+
+  export NETWORKING_MODE="alb"
+  export VISIBILITY="private"
+  export HOSTED_PUBLIC_ZONE_ID="ZPUBLIC"
+  export HOSTED_PRIVATE_ZONE_ID="ZPRIVATE"
+  export NAMESPACE_SLUG="ns"
+  export APPLICATION_SLUG="app"
+  export SCOPE_SLUG="api"
+  export ACCOUNT_SLUG="acc"
+  export USE_ACCOUNT_SLUG="false"
 }
 
 teardown() {
   teardown_test_env
+  [ -d "$MOCK_BIN_DIR" ] && rm -rf "$MOCK_BIN_DIR"
 }
 
-# Domain generation
-@test "scope/scripts/generate_domain: generates domain with account slug" {
-  export ACCOUNT_SLUG="my-account"
-  export NAMESPACE_SLUG="my-namespace"
-  export APPLICATION_SLUG="my-app"
-  export SCOPE_SLUG="my-scope"
-  export DOMAIN="nullapps.io"
+run_generate_domain() {
+  source "$LAMBDA_DIR/scope/scripts/generate_domain" || return $?
+  echo "RESULT domain=$SCOPE_DOMAIN zone=$DNS_HOSTED_ZONE_ID"
+}
+
+@test "generate_domain: private scopes use the private zone" {
+  run run_generate_domain
+
+  assert_success
+  assert_line "RESULT domain=ns-app-api.example.com zone=ZPRIVATE"
+  assert_aws_cli_called "route53 get-hosted-zone --id ZPRIVATE"
+}
+
+@test "generate_domain: private scopes fall back to the public zone" {
+  export HOSTED_PRIVATE_ZONE_ID=""
+
+  run run_generate_domain
+
+  assert_success
+  assert_line "RESULT domain=ns-app-api.example.com zone=ZPUBLIC"
+}
+
+@test "generate_domain: public scopes use the public zone" {
+  export VISIBILITY="public"
+
+  run run_generate_domain
+
+  assert_success
+  assert_line "RESULT domain=ns-app-api.example.com zone=ZPUBLIC"
+}
+
+@test "generate_domain: adds the account slug when enabled" {
   export USE_ACCOUNT_SLUG="true"
 
-  local domain="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${ACCOUNT_SLUG}.${DOMAIN}"
+  run run_generate_domain
 
-  assert_equal "$domain" "my-scope.my-app.my-namespace.my-account.nullapps.io"
+  assert_success
+  assert_output_contains "RESULT domain=ns-app-api.acc.example.com"
 }
 
-@test "scope/scripts/generate_domain: generates domain without account slug when USE_ACCOUNT_SLUG is false" {
-  export ACCOUNT_SLUG="my-account"
-  export NAMESPACE_SLUG="my-namespace"
-  export APPLICATION_SLUG="my-app"
-  export SCOPE_SLUG="my-scope"
-  export DOMAIN="nullapps.io"
-  export USE_ACCOUNT_SLUG="false"
+@test "generate_domain: an ALB scope without a hosted zone fails" {
+  export HOSTED_PRIVATE_ZONE_ID=""
+  export HOSTED_PUBLIC_ZONE_ID=""
 
-  local domain
-  if [ "$USE_ACCOUNT_SLUG" = "true" ]; then
-    domain="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${ACCOUNT_SLUG}.${DOMAIN}"
-  else
-    domain="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${DOMAIN}"
-  fi
-
-  assert_equal "$domain" "my-scope.my-app.my-namespace.nullapps.io"
-}
-
-@test "scope/scripts/generate_domain: uses custom domain template when provided" {
-  export ACCOUNT_SLUG="my-account"
-  export NAMESPACE_SLUG="my-namespace"
-  export APPLICATION_SLUG="my-app"
-  export SCOPE_SLUG="my-scope"
-  export DOMAIN_TEMPLATE="{scope}.{app}.example.com"
-
-  local domain="$DOMAIN_TEMPLATE"
-  domain="${domain//\{scope\}/$SCOPE_SLUG}"
-  domain="${domain//\{app\}/$APPLICATION_SLUG}"
-  domain="${domain//\{namespace\}/$NAMESPACE_SLUG}"
-  domain="${domain//\{account\}/$ACCOUNT_SLUG}"
-
-  assert_equal "$domain" "my-scope.my-app.example.com"
-}
-
-# Special characters handling
-@test "scope/scripts/generate_domain: handles hyphens and version suffixes in slugs" {
-  export SCOPE_SLUG="my-scope-v2"
-  export APPLICATION_SLUG="my-app"
-  export NAMESPACE_SLUG="prod"
-  export ACCOUNT_SLUG="acme-corp"
-  export DOMAIN="nullapps.io"
-  export USE_ACCOUNT_SLUG="true"
-
-  local domain="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${ACCOUNT_SLUG}.${DOMAIN}"
-
-  assert_equal "$domain" "my-scope-v2.my-app.prod.acme-corp.nullapps.io"
-}
-
-@test "scope/scripts/generate_domain: converts underscores to hyphens in domain" {
-  export SCOPE_SLUG="my_scope"
-
-  local sanitized_slug="${SCOPE_SLUG//_/-}"
-
-  assert_equal "$sanitized_slug" "my-scope"
-}
-
-@test "scope/scripts/generate_domain: lowercases the domain" {
-  export SCOPE_SLUG="My-Scope"
-  export APPLICATION_SLUG="My-App"
-  export NAMESPACE_SLUG="Prod"
-  export DOMAIN="nullapps.io"
-
-  local domain="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${DOMAIN}"
-  domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]')
-
-  assert_equal "$domain" "my-scope.my-app.prod.nullapps.io"
-}
-
-# np CLI integration
-@test "scope/scripts/generate_domain: calls np scope patch to update domain" {
-  export SCOPE_ID="scope-123"
-  export SCOPE_DOMAIN="my-scope.my-app.nullapps.io"
-
-  mock_np '{"id": "scope-123", "domain": "my-scope.my-app.nullapps.io"}'
-
-  np scope patch --id "$SCOPE_ID" --domain "$SCOPE_DOMAIN"
-
-  [ $? -eq 0 ]
-  assert_np_called "scope patch"
-  assert_np_called "--id scope-123"
-  assert_np_called "--domain"
-}
-
-@test "scope/scripts/generate_domain: handles np CLI errors" {
-  export SCOPE_ID="scope-123"
-  export SCOPE_DOMAIN="my-scope.my-app.nullapps.io"
-
-  mock_np_error "Scope not found"
-
-  run np scope patch --id "$SCOPE_ID" --domain "$SCOPE_DOMAIN"
+  run run_generate_domain
 
   assert_failure
+  assert_output_contains "No hosted zone configured for a private scope behind an ALB"
 }
 
-# Environment variable export
-@test "scope/scripts/generate_domain: exports SCOPE_DOMAIN variable" {
-  export SCOPE_SLUG="my-scope"
-  export APPLICATION_SLUG="my-app"
-  export NAMESPACE_SLUG="prod"
-  export ACCOUNT_SLUG="acme"
-  export DOMAIN="nullapps.io"
-  export USE_ACCOUNT_SLUG="true"
+@test "generate_domain: API Gateway without a hosted zone keeps no domain" {
+  export NETWORKING_MODE="api_gateway"
+  export VISIBILITY="public"
+  export HOSTED_PUBLIC_ZONE_ID=""
 
-  SCOPE_DOMAIN="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${ACCOUNT_SLUG}.${DOMAIN}"
-  export SCOPE_DOMAIN
+  run run_generate_domain
 
-  assert_not_empty "$SCOPE_DOMAIN" "SCOPE_DOMAIN"
-  assert_equal "$SCOPE_DOMAIN" "my-scope.my-app.prod.acme.nullapps.io"
+  assert_success
+  assert_line "RESULT domain= zone="
 }
 
-# Domain validation
-@test "scope/scripts/generate_domain: validates domain length under 253 chars" {
-  local domain="my-scope.my-app.prod.acme.nullapps.io"
+@test "generate_domain: fails when the hosted zone cannot be read" {
+  aws_mock_response "route53 get-hosted-zone" 254 'NoSuchHostedZone'
 
-  assert_less_than "${#domain}" "253" "domain length"
+  run run_generate_domain
+
+  assert_failure
+  assert_output_contains "Failed to fetch Route 53 hosted zone 'ZPRIVATE'"
 }
 
-@test "scope/scripts/generate_domain: detects label exceeding 63 chars" {
-  local label="this-is-a-very-long-label-that-exceeds-the-maximum-allowed-length-for-dns"
-  local max_label_length=63
+@test "generate_domain: fails on a DNS label over 63 characters" {
+  export APPLICATION_SLUG="an-application-slug-long-enough-to-overflow-a-single-dns-label"
 
-  assert_greater_than "${#label}" "$max_label_length" "label length"
+  run run_generate_domain
+
+  assert_failure
+  assert_output_contains "exceeds 63 characters"
 }
 
-@test "scope/scripts/generate_domain: rejects invalid DNS characters" {
-  local invalid_slug="my_scope@invalid"
+@test "generate_domain: does nothing without HTTP exposure" {
+  export NETWORKING_MODE="none"
 
-  if [[ "$invalid_slug" =~ ^[a-zA-Z0-9-]+$ ]]; then
-    valid=true
-  else
-    valid=false
-  fi
+  run run_generate_domain
 
-  assert_false "$valid" "DNS character validation"
-}
-
-# Context extraction
-@test "scope/scripts/generate_domain: extracts slugs from context" {
-  set_context "public"
-
-  assert_json_path_equal "$CONTEXT" '.account.slug' "my-account"
-  assert_json_path_equal "$CONTEXT" '.namespace.slug' "my-namespace"
-  assert_json_path_equal "$CONTEXT" '.application.slug' "my-app"
-  assert_json_path_equal "$CONTEXT" '.scope.slug' "my-scope"
-}
-
-@test "scope/scripts/generate_domain: uses hosted zone domain from providers" {
-  set_context "public"
-
-  assert_json_path_equal "$CONTEXT" '.providers["cloud-providers"].networking.hosted_public_zone_id' "Z1234567890ABC"
-}
-
-# Wildcard domain
-@test "scope/scripts/generate_domain: does not generate wildcard domain" {
-  export SCOPE_SLUG="my-scope"
-  export DOMAIN="nullapps.io"
-
-  local domain="${SCOPE_SLUG}.${DOMAIN}"
-
-  [[ "$domain" != \*.* ]]
-}
-
-# Idempotency
-@test "scope/scripts/generate_domain: generates same domain for same inputs" {
-  export SCOPE_SLUG="my-scope"
-  export APPLICATION_SLUG="my-app"
-  export NAMESPACE_SLUG="prod"
-  export ACCOUNT_SLUG="acme"
-  export DOMAIN="nullapps.io"
-  export USE_ACCOUNT_SLUG="true"
-
-  local domain1="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${ACCOUNT_SLUG}.${DOMAIN}"
-  local domain2="${SCOPE_SLUG}.${APPLICATION_SLUG}.${NAMESPACE_SLUG}.${ACCOUNT_SLUG}.${DOMAIN}"
-
-  assert_equal "$domain1" "$domain2"
+  assert_success
+  assert_line "RESULT domain= zone="
+  assert_aws_cli_not_called "get-hosted-zone"
 }

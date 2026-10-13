@@ -16,12 +16,9 @@ setup() {
 
   PROVIDERS_JSON='{"results":[{"category":"cloud-providers","attributes":{"account":{"id":"111122223333","region":"us-east-1"}}},{"category":"scope-configurations","attributes":{"state":{"tofu_state_bucket":"np-state"}}}]}'
 
-  # Private scope: the visibility that triggers the ALB capacity guard.
   export CONTEXT='{"scope":{"id":"scope-1","slug":"api","nrn":"organization=1:account=2:namespace=3:application=4:scope=5","capabilities":{"visibility":"private","architecture":"arm64","deployment_type":"docker-image"}},"namespace":{"slug":"ns"},"application":{"slug":"app"},"account":{"slug":"acc"}}'
 
-  # Capacity below the alert threshold — the condition that trips the guard.
-  export ALB_LISTENER_RULE_CAPACITY="50"
-  export ALB_LISTENER_RULE_ALERT_THRESHOLD="80"
+  unset LAMBDA_PUBLIC_EXPOSURE
 }
 
 teardown() {
@@ -57,46 +54,41 @@ run_assume_role_step() {
   return $rc
 }
 
-@test "build_context: ALB capacity guard does not block a destroy" {
-  mock_np "$PROVIDERS_JSON"
-  export TOFU_ACTION="destroy"
-
-  run run_build_context
-
-  assert_success
-  assert_line "🔍 Building scope context..."
-  assert_line "📋 Function: scope-1-app-api | Visibility: private"
-  assert_line "✨ Scope context built successfully"
-  assert_output_not_contains "ALB listener rule capacity"
-}
-
-@test "build_context: ALB capacity guard still blocks an apply" {
+@test "build_context: private scopes are routed through an ALB" {
+  export LOG_LEVEL=debug
   mock_np "$PROVIDERS_JSON"
   export TOFU_ACTION="apply"
 
   run run_build_context
 
+  assert_success
+  assert_line "📋 Function: scope-1-app-api | Visibility: private"
+  assert_output_contains "networking_mode=alb"
+}
+
+@test "build_context: an invalid public exposure blocks an apply" {
+  mock_np "$PROVIDERS_JSON"
+  export CONTEXT=$(echo "$CONTEXT" | jq '.scope.capabilities.visibility = "public"')
+  export LAMBDA_PUBLIC_EXPOSURE="cloudfront"
+  export TOFU_ACTION="apply"
+
+  run run_build_context
+
   assert_failure
-  assert_line "❌ ALB listener rule capacity (50) is at or below the alert threshold (80)"
-  assert_line "💡 Possible causes:"
-  assert_line "   Too many private scopes sharing the same internal ALB"
-  assert_line "   The ALB listener has a hard limit of rules per listener"
-  assert_line "🔧 How to fix:"
-  assert_line "   • Increase ALB_LISTENER_RULE_CAPACITY if the ALB supports more rules"
-  assert_line "   • Remove unused scopes to free up listener rule slots"
-  assert_line "   • Provision an additional internal ALB for this account"
+  assert_line "❌ Invalid public exposure 'cloudfront'"
   assert_output_not_contains "Scope context built successfully"
 }
 
-@test "build_context: ALB capacity guard does not run for workflows without TOFU_ACTION" {
+@test "build_context: an invalid public exposure does not block a destroy" {
   mock_np "$PROVIDERS_JSON"
-  unset TOFU_ACTION
+  export CONTEXT=$(echo "$CONTEXT" | jq '.scope.capabilities.visibility = "public"')
+  export LAMBDA_PUBLIC_EXPOSURE="cloudfront"
+  export TOFU_ACTION="destroy"
 
   run run_build_context
 
   assert_success
   assert_line "✨ Scope context built successfully"
-  assert_output_not_contains "ALB listener rule capacity"
 }
 
 @test "fetch_scope_configuration: surfaces an np failure instead of an empty config" {

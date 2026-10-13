@@ -1,0 +1,58 @@
+#!/bin/bash
+# ALB listener/rule helpers shared by select_alb, apply_networking and publish_alb_metrics.
+# Every function returns non-zero when AWS cannot be read, so callers never act on a guessed count.
+
+# Load balancer ARN that owns a listener; empty when the listener does not exist.
+alb_listener_lb_arn() {
+  local out
+  if ! out=$(aws elbv2 describe-listeners --listener-arns "$1" --output json 2>&1); then
+    [[ "$out" == *ListenerNotFound* ]] && return 0
+    return 1
+  fi
+  echo "$out" | jq -r '.Listeners[0].LoadBalancerArn // empty'
+}
+
+# Non-default rules of a listener as a JSON array.
+alb_listener_rules() {
+  local out
+  out=$(aws elbv2 describe-rules --listener-arn "$1" --output json 2>/dev/null) || return 1
+  echo "$out" | jq -c '[.Rules[]? | select(.IsDefault | not)]'
+}
+
+# Non-default rules across every listener of a load balancer: what the AWS per-ALB quota counts.
+alb_rule_count() {
+  local out listener rules count=0
+  out=$(aws elbv2 describe-listeners --load-balancer-arn "$1" --output json 2>/dev/null) || return 1
+  for listener in $(echo "$out" | jq -r '.Listeners[]?.ListenerArn'); do
+    rules=$(alb_listener_rules "$listener") || return 1
+    count=$((count + $(echo "$rules" | jq 'length')))
+  done
+  echo "$count"
+}
+
+# Priority of the listener rule routing a host header; empty when there is none.
+alb_scope_rule_priority() {
+  local rules
+  rules=$(alb_listener_rules "$1") || return 1
+  echo "$rules" | jq -r --arg host "$2" '
+    [.[] | select(any(.Conditions[]?;
+      .Field == "host-header" and any((.HostHeaderConfig.Values // .Values // [])[]; . == $host)))
+    ][0].Priority // empty'
+}
+
+# Lowest priority at or above $2 not taken on the listener.
+alb_free_priority() {
+  local rules priority="$2"
+  rules=$(alb_listener_rules "$1") || return 1
+  while echo "$rules" | jq -e --arg p "$priority" 'any(.[]; .Priority == $p)' >/dev/null; do
+    priority=$((priority + 1))
+  done
+  echo "$priority"
+}
+
+# "<dns_name> <canonical_zone_id>" of a load balancer.
+alb_dns_target() {
+  local out
+  out=$(aws elbv2 describe-load-balancers --load-balancer-arns "$1" --output json 2>/dev/null) || return 1
+  echo "$out" | jq -r '.LoadBalancers[0] | "\(.DNSName) \(.CanonicalHostedZoneId)"'
+}
