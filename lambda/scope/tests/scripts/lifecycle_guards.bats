@@ -66,6 +66,30 @@ run_assume_role_step() {
   assert_output_contains "networking_mode=alb"
 }
 
+@test "build_context: an unknown visibility fails closed instead of going public" {
+  mock_np "$PROVIDERS_JSON"
+  export CONTEXT=$(echo "$CONTEXT" | jq '.scope.capabilities.visibility = "partner"')
+  export TOFU_ACTION="apply"
+
+  run run_build_context
+
+  assert_failure
+  assert_output_contains "Invalid networking for visibility 'partner'"
+}
+
+@test "build_context: internal visibility is treated as private" {
+  mock_np "$PROVIDERS_JSON"
+  export LOG_LEVEL=debug
+  export CONTEXT=$(echo "$CONTEXT" | jq '.scope.capabilities.visibility = "internal"')
+  export TOFU_ACTION="apply"
+
+  run run_build_context
+
+  assert_success
+  assert_output_contains "networking_mode=alb"
+  assert_line "📋 Function: scope-1-app-api | Visibility: private"
+}
+
 @test "build_context: an invalid public exposure blocks an apply" {
   mock_np "$PROVIDERS_JSON"
   export CONTEXT=$(echo "$CONTEXT" | jq '.scope.capabilities.visibility = "public"')
@@ -75,7 +99,7 @@ run_assume_role_step() {
   run run_build_context
 
   assert_failure
-  assert_line "❌ Invalid public exposure 'cloudfront'"
+  assert_line "❌ Invalid networking for visibility 'public' (public exposure 'cloudfront')"
   assert_output_not_contains "Scope context built successfully"
 }
 

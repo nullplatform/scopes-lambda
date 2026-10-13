@@ -91,21 +91,36 @@ log debug "   ✅ package_type=$PACKAGE_TYPE"
 log debug "   ✅ architecture=$ARCHITECTURE"
 
 #Networking: how HTTP traffic reaches the function (alb | api_gateway | none)
-if [ "$VISIBILITY" = "event-driven" ]; then
-  NETWORKING_MODE="none"
-elif [ "$VISIBILITY" = "private" ]; then
-  NETWORKING_MODE="alb"
-else
-  NETWORKING_MODE=$(get_config_value \
-    --provider '.providers["scope-configurations"].networking.public_exposure' \
-    --env LAMBDA_PUBLIC_EXPOSURE \
-    --default "api_gateway"
-  )
-  # Delete tears networking down from its state, so a bad value must not block it.
-  if [ "$NETWORKING_MODE" != "alb" ] && [ "$NETWORKING_MODE" != "api_gateway" ] && [ "${TOFU_ACTION:-}" != "destroy" ]; then
-    echo "❌ Invalid public exposure '$NETWORKING_MODE'" >&2
+# Unknown visibilities fail closed instead of defaulting to a public endpoint.
+[ "$VISIBILITY" = "internal" ] && VISIBILITY="private"
+case "$VISIBILITY" in
+  event-driven)
+    NETWORKING_MODE="none"
+    ;;
+  private)
+    NETWORKING_MODE="alb"
+    ;;
+  public)
+    NETWORKING_MODE=$(get_config_value \
+      --provider '.providers["scope-configurations"].networking.public_exposure' \
+      --env LAMBDA_PUBLIC_EXPOSURE \
+      --default "api_gateway"
+    )
+    ;;
+  *)
+    NETWORKING_MODE="invalid"
+    ;;
+esac
+
+# Delete tears networking down from its state, so a bad value must not block it.
+if [ "$NETWORKING_MODE" != "alb" ] && [ "$NETWORKING_MODE" != "api_gateway" ] && [ "$NETWORKING_MODE" != "none" ]; then
+  if [ "${TOFU_ACTION:-}" = "destroy" ]; then
+    NETWORKING_MODE="none"
+  else
+    echo "❌ Invalid networking for visibility '$VISIBILITY' (public exposure '${NETWORKING_MODE}')" >&2
     echo "" >&2
     echo "🔧 How to fix:" >&2
+    echo "   • Use visibility 'public' or 'private'" >&2
     echo "   • Set networking.public_exposure (scope-configurations) or LAMBDA_PUBLIC_EXPOSURE to 'alb' or 'api_gateway'" >&2
     exit 1
   fi
