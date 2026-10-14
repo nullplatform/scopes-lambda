@@ -773,6 +773,7 @@ ALB scopes are balanced across `load_balancer.<visibility>.listener_arns`:
 | Hard cap | No new rule on an ALB at `ALB_LISTENER_RULE_CAPACITY` |
 | Concurrency | A priority taken meanwhile (`PriorityInUse`) is recomputed and retried up to 3 times |
 | Metrics | `Nullplatform/Lambda` · `ListenerRuleCount` per `LoadBalancer` and `Visibility` on every create/update/delete |
+| Override | The `scopes-networking` Lambda override must be disabled (`overrides_enabled = false`); create and update fail while it is active |
 | Migration | Scopes whose ALB resources live in the main state have them removed from it (`handover_networking_state`, no AWS change) and imported by the networking stack, keeping their rule, priority and target group |
 
 ### Troubleshooting

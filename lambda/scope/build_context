@@ -130,6 +130,26 @@ if [ "$NETWORKING_MODE" != "alb" ] && [ "$NETWORKING_MODE" != "api_gateway" ] &&
 fi
 log debug "   ✅ networking_mode=$NETWORKING_MODE"
 
+#Networking overrides: scopes-networking/lambda wired ALB + DNS into the main stack.
+# Networking is built in now, and both would manage the same rule. Delete still runs.
+if [ "${TOFU_ACTION:-}" != "destroy" ]; then
+  IFS=',' read -ra override_paths <<< "${OVERRIDES_PATH:-}"
+  for override_path in "${override_paths[@]}"; do
+    override_path=$(echo "$override_path" | xargs)
+    if [ -n "$override_path" ] && [ -e "$override_path/scope/tofu/networking/alb/setup" ]; then
+      echo "❌ The networking override at $override_path is no longer supported" >&2
+      echo "" >&2
+      echo "💡 Possible causes:" >&2
+      echo "   The agent still runs the scopes-networking Lambda override, which networking now replaces" >&2
+      echo "" >&2
+      echo "🔧 How to fix:" >&2
+      echo "   • Disable overrides on the agent (overrides_enabled = false) and re-run the action" >&2
+      echo "   • Existing scopes keep their ALB rule: the next create or update adopts it" >&2
+      exit 1
+    fi
+  done
+fi
+
 #Output directory
 OUTPUT_DIR="$SERVICE_PATH/output/$SCOPE_ID"
 if [ -n "${NP_OUTPUT_DIR:-}" ]; then

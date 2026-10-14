@@ -90,6 +90,43 @@ run_assume_role_step() {
   assert_line "📋 Function: scope-1-app-api | Visibility: private"
 }
 
+@test "build_context: the scopes-networking override blocks an apply" {
+  mock_np "$PROVIDERS_JSON"
+  mkdir -p "$BATS_TEST_TMPDIR/networking/lambda/scope/tofu/networking/alb"
+  touch "$BATS_TEST_TMPDIR/networking/lambda/scope/tofu/networking/alb/setup"
+  export OVERRIDES_PATH="$BATS_TEST_TMPDIR/networking/lambda"
+  export TOFU_ACTION="apply"
+
+  run run_build_context
+
+  assert_failure
+  assert_output_contains "The networking override at $BATS_TEST_TMPDIR/networking/lambda is no longer supported"
+  assert_output_contains "Disable overrides on the agent (overrides_enabled = false)"
+}
+
+@test "build_context: the scopes-networking override does not block a destroy" {
+  mock_np "$PROVIDERS_JSON"
+  mkdir -p "$BATS_TEST_TMPDIR/networking/lambda/scope/tofu/networking/alb"
+  touch "$BATS_TEST_TMPDIR/networking/lambda/scope/tofu/networking/alb/setup"
+  export OVERRIDES_PATH="other/path, $BATS_TEST_TMPDIR/networking/lambda"
+  export TOFU_ACTION="destroy"
+
+  run run_build_context
+
+  assert_success
+}
+
+@test "build_context: overrides without networking are allowed" {
+  mock_np "$PROVIDERS_JSON"
+  mkdir -p "$BATS_TEST_TMPDIR/other/scope/workflows"
+  export OVERRIDES_PATH="$BATS_TEST_TMPDIR/other"
+  export TOFU_ACTION="apply"
+
+  run run_build_context
+
+  assert_success
+}
+
 @test "build_context: an invalid public exposure blocks an apply" {
   mock_np "$PROVIDERS_JSON"
   export CONTEXT=$(echo "$CONTEXT" | jq '.scope.capabilities.visibility = "public"')

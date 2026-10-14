@@ -363,6 +363,10 @@ an ALB at `ALB_LISTENER_RULE_CAPACITY` (98). Each run publishes
 
 Without listeners for a visibility, its scopes get no HTTP exposure.
 
+This replaces the `scopes-networking` Lambda override: disable it on the
+agent (`overrides_enabled = false`), or create and update fail. Scopes it
+created keep their rule; the next create or update adopts it.
+
 ### 3. Provider configurations
 
 The `create-scope` workflow reads two `nullplatform_provider_config`s
