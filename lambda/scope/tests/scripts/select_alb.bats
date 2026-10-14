@@ -42,6 +42,7 @@ run_select_alb() {
   source "$LAMBDA_DIR/scope/scripts/select_alb" || return $?
   echo "RESULT listener=$ALB_LISTENER_ARN priority=$ALB_RULE_PRIORITY new=$ALB_RULE_IS_NEW"
   echo "RESULT alb=$ALB_ARN dns=$ALB_DNS_NAME zone=$ALB_ZONE_ID"
+  echo "RESULT target_group=$ALB_TARGET_GROUP_NAME"
 }
 
 stored_assignment() {
@@ -163,6 +164,27 @@ stored_assignment() {
 
   assert_success
   assert_line "RESULT listener=$LISTENER_B priority=130 new=false"
+}
+
+@test "select_alb: an existing rule keeps the target group it forwards to" {
+  mock_alb "$LB_A" "$LISTENER_A" 10
+  mock_scope_rule "$LISTENER_A" "$SCOPE_DOMAIN" 102 "223816164-lambdaand-lambdasco"
+  export ALB_PRIVATE_LISTENER_ARNS="$LISTENER_A"
+
+  run run_select_alb
+
+  assert_success
+  assert_line "RESULT target_group=223816164-lambdaand-lambdasco"
+}
+
+@test "select_alb: a new rule leaves the target group name to the setup" {
+  mock_alb "$LB_A" "$LISTENER_A" 10
+  export ALB_PRIVATE_LISTENER_ARNS="$LISTENER_A"
+
+  run run_select_alb
+
+  assert_success
+  assert_line "RESULT target_group="
 }
 
 @test "select_alb: skips a configured listener that does not exist" {

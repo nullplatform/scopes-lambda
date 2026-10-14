@@ -133,11 +133,17 @@ if [ -z "$ALB_LISTENER_ARN" ]; then
   ALB_RULE_PRIORITY=$(alb_free_priority "$ALB_LISTENER_ARN" "$ALB_LISTENER_RULE_PRIORITY_START") || fail_aws_read "$ALB_LISTENER_ARN"
 fi
 
+# An existing rule keeps its target group, whatever naming created it.
+ALB_TARGET_GROUP_NAME=""
+if [ "$ALB_RULE_IS_NEW" = "false" ]; then
+  ALB_TARGET_GROUP_NAME=$(alb_scope_rule_target_group "$ALB_LISTENER_ARN" "$SCOPE_DOMAIN") || fail_aws_read "$ALB_LISTENER_ARN"
+fi
+
 ALB_ARN=$(alb_listener_lb_arn "$ALB_LISTENER_ARN") || fail_aws_read "$ALB_LISTENER_ARN"
 dns_target=$(alb_dns_target "$ALB_ARN") || fail_aws_read "$ALB_ARN"
 read -r ALB_DNS_NAME ALB_ZONE_ID <<< "$dns_target"
 
-export ALB_LISTENER_ARN ALB_ARN ALB_DNS_NAME ALB_ZONE_ID ALB_RULE_PRIORITY ALB_RULE_IS_NEW
+export ALB_LISTENER_ARN ALB_ARN ALB_DNS_NAME ALB_ZONE_ID ALB_RULE_PRIORITY ALB_RULE_IS_NEW ALB_TARGET_GROUP_NAME
 export ALB_LISTENER_RULE_CAPACITY ALB_LISTENER_RULE_ALERT_THRESHOLD ALB_LISTENER_RULE_PRIORITY_START
 
 log info "   ✅ listener=$ALB_LISTENER_ARN priority=$ALB_RULE_PRIORITY new_rule=$ALB_RULE_IS_NEW"

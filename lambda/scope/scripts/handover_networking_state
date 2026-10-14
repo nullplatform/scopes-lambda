@@ -1,0 +1,68 @@
+#!/bin/bash
+# Scopes created before networking had its own state keep their ALB resources in the main
+# state. Drop them from it, without touching AWS, so the main stack never destroys them;
+# the networking stack imports them on its next apply.
+# Delete skips this step: there the main stack still destroys what it holds.
+
+source "$SERVICE_PATH/utils/log"
+
+# Only a scope that stays behind an ALB has a networking stack to take them over.
+if [ "$VISIBILITY" = "private" ]; then
+  listeners="${ALB_PRIVATE_LISTENER_ARNS:-}"
+else
+  listeners="${ALB_PUBLIC_LISTENER_ARNS:-}"
+fi
+if [ "${NETWORKING_MODE:-none}" != "alb" ] || [ -z "$listeners" ]; then
+  return 0
+fi
+
+main_key="lambda/${SCOPE_ID}/terraform.tfstate"
+region="${TOFU_STATE_BUCKET_REGION:-$AWS_REGION}"
+handover_addresses='["aws_lb_listener_rule.lambda","aws_lb_target_group.lambda","aws_lb_target_group_attachment.lambda","aws_lambda_permission.alb","aws_route53_record.alb"]'
+
+if ! state=$(aws s3 cp "s3://$TOFU_STATE_BUCKET/$main_key" - --region "$region" 2>/dev/null); then
+  log debug "   ⏭️  No main state yet - nothing to hand over"
+  return 0
+fi
+
+addresses=$(echo "$state" | jq -r --argjson h "$handover_addresses" \
+  '.resources[]? | select(.mode == "managed") | "\(.type).\(.name)" | select(. as $a | $h | index($a))')
+
+if [ -z "$addresses" ]; then
+  log debug "   ⏭️  Main state holds no networking resources"
+  return 0
+fi
+
+log info "🔀 Handing networking resources over to the networking state..."
+
+if command -v mise &> /dev/null; then
+  tofu() { mise x opentofu@latest -- tofu "$@"; }
+fi
+
+handover_dir="$OUTPUT_DIR/terraform-handover"
+mkdir -p "$handover_dir"
+rm -f "$handover_dir"/*.tf
+cp "$SERVICE_PATH/scope/tofu/provider/aws/modules/"*.tf "$handover_dir/"
+
+if ! tofu -chdir="$handover_dir" init -input=false \
+    -backend-config="bucket=$TOFU_STATE_BUCKET" \
+    -backend-config="key=$main_key" \
+    -backend-config="region=$region" \
+    -backend-config="use_lockfile=true" >/dev/null; then
+  echo "❌ Failed to open the main state $main_key" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC2086 # one address per word
+if ! tofu -chdir="$handover_dir" state rm $addresses; then
+  echo "❌ Failed to remove networking resources from $main_key" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   The main stack would destroy them on its next apply, so the workflow stops here" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Check the agent's s3:PutObject access to the state bucket and re-run" >&2
+  exit 1
+fi
+
+log info "   ✅ Handed over: $(echo "$addresses" | tr '\n' ' ')"

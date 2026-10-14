@@ -138,6 +138,23 @@ teardown() {
   assert_output_contains "visibility=public"
 }
 
+@test "scope/build_context: public scopes default to ALB when public listeners exist" {
+  export LOG_LEVEL=debug
+  set_context "public"
+  unset LAMBDA_PUBLIC_EXPOSURE
+  cat > "$MOCK_BIN_DIR/np" <<'NP_MOCK'
+#!/bin/bash
+echo '{"results":[{"category":"cloud-providers","attributes":{"account":{"id":"111122223333","region":"us-east-1"}}},{"category":"vpc","attributes":{"load_balancer":{"public":{"listener_arn":"arn:listener-public"}}}}]}'
+NP_MOCK
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
+  _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
+
+  run_step "$LAMBDA_DIR/scope/build_context"
+
+  assert_success
+  assert_output_contains "networking_mode=alb"
+}
+
 @test "scope/build_context: public scopes default to API Gateway" {
   export LOG_LEVEL=debug
   set_context "public"

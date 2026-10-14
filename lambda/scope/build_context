@@ -101,10 +101,13 @@ case "$VISIBILITY" in
     NETWORKING_MODE="alb"
     ;;
   public)
+    # Installations that already publish public ALB listeners keep their scopes on them.
+    default_exposure="api_gateway"
+    [ -n "${ALB_PUBLIC_LISTENER_ARNS:-}" ] && default_exposure="alb"
     NETWORKING_MODE=$(get_config_value \
       --provider '.providers["scope-configurations"].networking.public_exposure' \
       --env LAMBDA_PUBLIC_EXPOSURE \
-      --default "api_gateway"
+      --default "$default_exposure"
     )
     ;;
   *)

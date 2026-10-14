@@ -35,8 +35,9 @@ configuration:
   USE_ACCOUNT_SLUG: false
 
   # ── Networking ─────────────────────────────────────────────────────────────
-  # Public scopes: api_gateway or alb. Private scopes always use an ALB.
-  LAMBDA_PUBLIC_EXPOSURE: "api_gateway"
+  # Public scopes: api_gateway or alb; defaults to alb when public ALB listeners
+  # are configured. Private scopes always use an ALB.
+  # LAMBDA_PUBLIC_EXPOSURE: "api_gateway"
 
   # ── ALB ────────────────────────────────────────────────────────────────────
   # AWS caps an ALB at 100 rules. New scopes go to the least-loaded ALB below

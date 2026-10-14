@@ -30,14 +30,31 @@ alb_rule_count() {
   echo "$count"
 }
 
-# Priority of the listener rule routing a host header; empty when there is none.
-alb_scope_rule_priority() {
+# The listener rule routing exactly this host header, as JSON; empty when there is none.
+alb_scope_rule() {
   local rules
   rules=$(alb_listener_rules "$1") || return 1
-  echo "$rules" | jq -r --arg host "$2" '
+  echo "$rules" | jq -c --arg host "$2" '
     [.[] | select(any(.Conditions[]?;
       .Field == "host-header" and any((.HostHeaderConfig.Values // .Values // [])[]; . == $host)))
-    ][0].Priority // empty'
+    ][0] // empty'
+}
+
+# Priority of the host's rule; empty when there is none.
+alb_scope_rule_priority() {
+  local rule
+  rule=$(alb_scope_rule "$1" "$2") || return 1
+  [ -n "$rule" ] && echo "$rule" | jq -r '.Priority'
+  return 0
+}
+
+# Name of the target group the host's rule forwards to; empty when there is none.
+alb_scope_rule_target_group() {
+  local rule
+  rule=$(alb_scope_rule "$1" "$2") || return 1
+  [ -n "$rule" ] && echo "$rule" | jq -r \
+    '[.Actions[]? | .TargetGroupArn // .ForwardConfig.TargetGroups[0].TargetGroupArn // empty][0] // empty | split("/")[1]'
+  return 0
 }
 
 # Lowest priority at or above $2 not taken on the listener.

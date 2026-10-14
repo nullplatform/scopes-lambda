@@ -60,6 +60,9 @@ steps:
   - name: sync_dead_letter_queue
     type: script
     file: "$SERVICE_PATH/scope/scripts/sync_dead_letter_queue"
+  - name: handover_networking_state
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/handover_networking_state"
   - name: build_networking_context
     type: script
     file: "$SERVICE_PATH/scope/tofu/networking/build_context"
@@ -103,6 +106,8 @@ steps:
       - name: ALB_RULE_PRIORITY
         type: environment
       - name: ALB_RULE_IS_NEW
+        type: environment
+      - name: ALB_TARGET_GROUP_NAME
         type: environment
       - name: ALB_LISTENER_RULE_CAPACITY
         type: environment

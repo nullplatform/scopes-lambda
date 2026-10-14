@@ -14,7 +14,8 @@ if [ -z "${ALB_LISTENER_ARN:-}" ] || [ -z "${ALB_RULE_PRIORITY:-}" ]; then
 fi
 
 # Target group names are unique per account and region, capped at 32 chars.
-target_group_name="lmb-${SCOPE_ID}"
+# A rule that already exists keeps its target group (scopes created by earlier versions).
+target_group_name="${ALB_TARGET_GROUP_NAME:-lmb-${SCOPE_ID}}"
 target_group_name="${target_group_name:0:32}"
 
 health_check_path=$(echo "$CONTEXT" | jq -r '.scope.capabilities.health_check.path // "/health"')

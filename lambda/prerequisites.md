@@ -379,7 +379,7 @@ manually. The expected attribute schema:
 | `deployment.placeholder_image_uri` | string | yes | Full URI of the placeholder image you published in step 1, **without** the architecture suffix. The workflow appends `-arm64` or `-amd64` based on the scope's architecture. |
 | `state.tofu_state_bucket` | string | yes | S3 bucket where each Lambda scope writes its OpenTofu state. Each scope uses a unique key prefix, so a single bucket can be shared across all Lambda scopes (and across scope types — e.g. `static-files` reuses the same bucket convention). |
 | `state.tofu_state_bucket_region` | string | no | AWS region of the state bucket. Defaults to the `cloud-providers` account region. |
-| `networking.public_exposure` | string | no | `api_gateway` (default) or `alb` for public scopes. |
+| `networking.public_exposure` | string | no | `alb` or `api_gateway` for public scopes. Defaults to `alb` when `load_balancer.public` listeners are configured, else `api_gateway`. |
 | `networking.alb_listener_rule_alert_threshold` | number | no | Rules at which an ALB stops taking new scopes. Default `75`. |
 | `networking.alb_listener_rule_capacity` | number | no | Hard cap of rules per ALB, at most `100`. Default `98`. |
 | `networking.api_gateway_certificate_arn` | string | no | ACM certificate for API Gateway custom domains; without it public scopes use the `execute-api` endpoint. |

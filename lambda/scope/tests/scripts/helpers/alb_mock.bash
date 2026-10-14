@@ -83,12 +83,13 @@ mock_alb() {
     > "$ALB_MOCK_DIR/lb_$(_alb_key "$lb")"
 }
 
-# mock_scope_rule <listener_arn> <host> <priority>: add the scope's own rule to a listener.
+# mock_scope_rule <listener_arn> <host> <priority> [target_group_name]: add the scope's own rule.
 mock_scope_rule() {
   local file
   file="$ALB_MOCK_DIR/rules_$(_alb_key "$1")"
-  jq -c --arg h "$2" --arg p "$3" '.Rules += [{Priority: $p, IsDefault: false,
-    Conditions: [{Field: "host-header", HostHeaderConfig: {Values: [$h]}}]}]' "$file" > "$file.tmp"
+  jq -c --arg h "$2" --arg p "$3" --arg tg "${4:-tg-$3}" '.Rules += [{Priority: $p, IsDefault: false,
+    Conditions: [{Field: "host-header", HostHeaderConfig: {Values: [$h]}}],
+    Actions: [{Type: "forward", TargetGroupArn: "arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/\($tg)/abc"}]}]' "$file" > "$file.tmp"
   mv "$file.tmp" "$file"
 }
 

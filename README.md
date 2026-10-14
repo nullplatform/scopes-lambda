@@ -304,7 +304,7 @@ API_GATEWAY_THROTTLING_BURST_LIMIT: 5000
 API_GATEWAY_THROTTLING_RATE_LIMIT: 10000
 
 # Networking
-LAMBDA_PUBLIC_EXPOSURE: "api_gateway"   # or "alb"
+LAMBDA_PUBLIC_EXPOSURE: "alb"           # or "api_gateway"; default: alb when public listeners exist
 
 # ALB
 ALB_LISTENER_RULE_PRIORITY_START: 100
@@ -773,6 +773,7 @@ ALB scopes are balanced across `load_balancer.<visibility>.listener_arns`:
 | Hard cap | No new rule on an ALB at `ALB_LISTENER_RULE_CAPACITY` |
 | Concurrency | A priority taken meanwhile (`PriorityInUse`) is recomputed and retried up to 3 times |
 | Metrics | `Nullplatform/Lambda` · `ListenerRuleCount` per `LoadBalancer` and `Visibility` on every create/update/delete |
+| Migration | Scopes whose ALB resources live in the main state have them removed from it (`handover_networking_state`, no AWS change) and imported by the networking stack, keeping their rule, priority and target group |
 
 ### Troubleshooting
 

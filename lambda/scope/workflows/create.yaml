@@ -120,6 +120,9 @@ steps:
   - name: compose_modules
     type: script
     file: "$SERVICE_PATH/scope/tofu/compose_modules"
+  - name: handover_networking_state
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/handover_networking_state"
   - name: tofu
     type: script
     file: "$SERVICE_PATH/scope/tofu/do_tofu"
@@ -183,6 +186,8 @@ steps:
       - name: ALB_RULE_PRIORITY
         type: environment
       - name: ALB_RULE_IS_NEW
+        type: environment
+      - name: ALB_TARGET_GROUP_NAME
         type: environment
       - name: ALB_LISTENER_RULE_CAPACITY
         type: environment
