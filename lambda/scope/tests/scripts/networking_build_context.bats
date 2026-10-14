@@ -40,7 +40,7 @@ run_networking_context() {
   run run_networking_context
 
   assert_success
-  assert_output_contains "No load_balancer.public listener configured - the scope gets no HTTP exposure"
+  assert_output_contains "No ALB listener configured for public scopes - the scope gets no HTTP exposure"
   assert_output_contains "RESULT mode=none"
 }
 

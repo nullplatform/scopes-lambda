@@ -72,13 +72,18 @@ SCOPE_CONFIG=$(echo "$PROVIDER_RESPONSE" | jq -r \
   '[.results[] | select(.category == "scope-configurations") | .attributes] | reduce .[] as $item ({}; . * $item)')
 
 # From vpc category
-# listener_arns lists the ALBs a scope can be balanced across; listener_arn is the single-ALB form.
-ALB_PUBLIC_LISTENER_ARNS=$(echo "$VPC_CONFIG" | jq -r \
-  '(.load_balancer.public.listener_arns // [.load_balancer.public.listener_arn // empty]) | join(",")')
+# The ALBs a scope can be balanced across. scope-configurations holds the list (the
+# aws-networking-configuration spec drops unknown keys); vpc listener_arn is the single-ALB form.
+alb_listeners() {
+  jq -nr --argjson scope "$SCOPE_CONFIG" --argjson vpc "$VPC_CONFIG" --arg v "$1" '
+    ($scope.networking["alb_\($v)_listener_arns"] // $vpc.load_balancer[$v].listener_arns
+      // [$vpc.load_balancer[$v].listener_arn // empty]) | join(",")'
+}
+
+ALB_PUBLIC_LISTENER_ARNS=$(alb_listeners public)
 log debug "   ✅ alb_public_listener_arns=$ALB_PUBLIC_LISTENER_ARNS"
 
-ALB_PRIVATE_LISTENER_ARNS=$(echo "$VPC_CONFIG" | jq -r \
-  '(.load_balancer.private.listener_arns // [.load_balancer.private.listener_arn // empty]) | join(",")')
+ALB_PRIVATE_LISTENER_ARNS=$(alb_listeners private)
 log debug "   ✅ alb_private_listener_arns=$ALB_PRIVATE_LISTENER_ARNS"
 
 VPC_ID=$(echo "$VPC_CONFIG" | jq -r '.vpc.id // empty')

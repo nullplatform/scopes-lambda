@@ -17,7 +17,7 @@ if [ "$NETWORKING_MODE" = "alb" ]; then
   fi
   # Installations without ALBs keep working: the scope just gets no HTTP exposure, as before.
   if [ -z "$listeners" ]; then
-    log warn "   ⚠️  No load_balancer.$VISIBILITY listener configured - the scope gets no HTTP exposure"
+    log warn "   ⚠️  No ALB listener configured for $VISIBILITY scopes - the scope gets no HTTP exposure"
     NETWORKING_MODE="none"
   fi
 fi

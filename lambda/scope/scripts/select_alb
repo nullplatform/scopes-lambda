@@ -61,7 +61,7 @@ if [ ${#candidates[@]} -eq 0 ]; then
   echo "❌ No ALB listener configured for $VISIBILITY scopes" >&2
   echo "" >&2
   echo "🔧 How to fix:" >&2
-  echo "   • Set load_balancer.$VISIBILITY.listener_arns in the vpc / aws-networking-configuration provider" >&2
+  echo "   • Set networking.alb_${VISIBILITY}_listener_arns in the scope-configurations provider" >&2
   exit 1
 fi
 
@@ -124,7 +124,7 @@ if [ -z "$ALB_LISTENER_ARN" ]; then
     echo "   AWS caps an ALB at 100 rules; new scopes stop at the alert threshold to keep headroom" >&2
     echo "" >&2
     echo "🔧 How to fix:" >&2
-    echo "   • Add another ALB listener to load_balancer.$VISIBILITY.listener_arns" >&2
+    echo "   • Add another ALB listener to networking.alb_${VISIBILITY}_listener_arns (scope-configurations)" >&2
     echo "   • Remove unused scopes to free listener rules" >&2
     exit 1
   fi

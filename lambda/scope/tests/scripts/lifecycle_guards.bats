@@ -245,6 +245,32 @@ run_assume_role_step() {
   assert_line "AWS_REGION=us-west-2"
 }
 
+run_fetch_listeners() {
+  run_fetch_scope_configuration || return $?
+  echo "PUBLIC=$(printenv ALB_PUBLIC_LISTENER_ARNS)"
+  echo "PRIVATE=$(printenv ALB_PRIVATE_LISTENER_ARNS)"
+}
+
+@test "fetch_scope_configuration: listener lists come from scope-configurations first" {
+  np() { echo '{"results":[{"category":"cloud-providers","attributes":{"account":{"region":"us-east-1"}}},{"category":"vpc","attributes":{"load_balancer":{"public":{"listener_arn":"arn:vpc-public"},"private":{"listener_arn":"arn:vpc-private"}}}},{"category":"scope-configurations","attributes":{"networking":{"alb_public_listener_arns":["arn:a","arn:b"]}}}]}'; }
+
+  run run_fetch_listeners
+
+  assert_success
+  assert_line "PUBLIC=arn:a,arn:b"
+  assert_line "PRIVATE=arn:vpc-private"
+}
+
+@test "fetch_scope_configuration: no listeners configured exports empty lists" {
+  np() { echo '{"results":[{"category":"cloud-providers","attributes":{"account":{"region":"us-east-1"}}}]}'; }
+
+  run run_fetch_listeners
+
+  assert_success
+  assert_line "PUBLIC="
+  assert_line "PRIVATE="
+}
+
 @test "fetch_scope_configuration: an empty result set names the missing providers" {
   np() { echo '{"results":[]}'; }
 

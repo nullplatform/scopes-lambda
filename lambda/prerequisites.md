@@ -351,7 +351,8 @@ when `networking.public_exposure = "alb"`):
   internet-facing for public).
 - An HTTPS:443 listener on each, with a certificate covering the scope
   domains (typically a wildcard). The workflow does not check it.
-- Their listener ARNs under `load_balancer.<visibility>.listener_arns`
+- Their listener ARNs under `networking.alb_<visibility>_listener_arns`
+  in the `scope-configurations` provider
   (see step 3).
 
 AWS caps an ALB at 100 rules across all its listeners, counting rules
@@ -383,6 +384,8 @@ manually. The expected attribute schema:
 | `deployment.placeholder_image_uri` | string | yes | Full URI of the placeholder image you published in step 1, **without** the architecture suffix. The workflow appends `-arm64` or `-amd64` based on the scope's architecture. |
 | `state.tofu_state_bucket` | string | yes | S3 bucket where each Lambda scope writes its OpenTofu state. Each scope uses a unique key prefix, so a single bucket can be shared across all Lambda scopes (and across scope types — e.g. `static-files` reuses the same bucket convention). |
 | `state.tofu_state_bucket_region` | string | no | AWS region of the state bucket. Defaults to the `cloud-providers` account region. |
+| `networking.alb_public_listener_arns` | list | no | Listeners public ALB scopes are balanced across. |
+| `networking.alb_private_listener_arns` | list | no | Same, for private scopes. |
 | `networking.public_exposure` | string | no | `alb` or `api_gateway` for public scopes. Defaults to `alb` when `load_balancer.public` listeners are configured, else `api_gateway`. |
 | `networking.alb_listener_rule_alert_threshold` | number | no | Rules at which an ALB stops taking new scopes. Default `75`. |
 | `networking.alb_listener_rule_capacity` | number | no | Hard cap of rules per ALB, at most `100`. Default `98`. |
@@ -410,52 +413,15 @@ resource "nullplatform_provider_config" "scope_configurations" {
 
 #### `vpc` / `aws-networking-configuration`
 
-`lambda/utils/fetch_scope_configuration` reads the ALB listeners from a
-`nullplatform_provider_config` of category `vpc` (the legacy name) or
-`aws-networking-configuration` (newer schemas):
-
-| Path | Description |
-|---|---|
-| `load_balancer.private.listener_arns` | Listeners private scopes are balanced across |
-| `load_balancer.public.listener_arns` | Same, for public scopes behind an ALB |
-| `load_balancer.<visibility>.listener_arn` | Single-listener form, used when the list is absent |
+`load_balancer.<visibility>.listener_arn` of a `nullplatform_provider_config`
+of category `vpc` (the legacy name) or `aws-networking-configuration` is the
+single-ALB fallback when `networking.alb_<visibility>_listener_arns` is not set
+in `scope-configurations`. That spec drops keys it does not declare, so the
+list lives in `scope-configurations`.
 
 Recent schema versions also require `vpc.id`, `vpc.subnets`, and
 `vpc.security_groups` on the same config — check the spec your
 installation has by querying the API.
-
-Other scope types (notably `nullplatform/cloud/aws/vpc` and
-`nullplatform/scopes-static-files`) may already create a `vpc` provider
-for general networking. You have two options:
-
-- **Add `load_balancer` to the existing config** (preferred, when not
-  blocked by `lifecycle.ignore_changes` on the upstream module).
-- **Create a second provider config of the same category** with a
-  distinct `dimensions` map — the agent merges attributes across all
-  configs that match the scope's NRN at resolution time.
-
-Example dedicated config:
-
-```hcl
-resource "nullplatform_provider_config" "lambda_networking" {
-  nrn        = "organization=<org-id>:account=<account-id>"
-  type       = "aws-networking-configuration"
-  dimensions = { environment = "development" }
-
-  attributes = jsonencode({
-    vpc = {
-      id              = aws_vpc.main.id
-      subnets         = [for s in aws_subnet.private : s.id]
-      security_groups = [aws_security_group.lambda.id]
-    }
-    load_balancer = {
-      private = {
-        listener_arns = [aws_lb_listener.lambda_internal_a.arn, aws_lb_listener.lambda_internal_b.arn]
-      }
-    }
-  })
-}
-```
 
 Private scopes get their record in `networking.hosted_zone_id` of the
 `cloud-providers` config, falling back to `hosted_public_zone_id`.

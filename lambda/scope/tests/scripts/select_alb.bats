@@ -89,7 +89,7 @@ stored_assignment() {
 
   assert_failure
   assert_output_contains "Every private ALB has 75 or more listener rules"
-  assert_output_contains "Add another ALB listener to load_balancer.private.listener_arns"
+  assert_output_contains "Add another ALB listener to networking.alb_private_listener_arns (scope-configurations)"
 }
 
 @test "select_alb: the provider threshold wins over the environment" {

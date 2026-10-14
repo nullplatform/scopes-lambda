@@ -26,7 +26,7 @@ check_hard_cap() {
     echo "" >&2
     echo "🔧 How to fix:" >&2
     echo "   • Re-run the action so another ALB is picked" >&2
-    echo "   • Add another ALB listener to load_balancer.$VISIBILITY.listener_arns" >&2
+    echo "   • Add another ALB listener to networking.alb_${VISIBILITY}_listener_arns (scope-configurations)" >&2
     exit 1
   fi
 }

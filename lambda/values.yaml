@@ -3,8 +3,8 @@
 # The following values are fetched automatically from provider categories:
 #
 #   vpc category:
-#     ALB_PUBLIC_LISTENER_ARNS  - ALB listeners for public scopes (load_balancer.public.listener_arns)
-#     ALB_PRIVATE_LISTENER_ARNS - ALB listeners for private scopes (load_balancer.private.listener_arns)
+#     ALB_PUBLIC_LISTENER_ARNS  - fallback: load_balancer.public.listener_arn
+#     ALB_PRIVATE_LISTENER_ARNS - fallback: load_balancer.private.listener_arn
 #     VPC_ID                   - VPC ID for Lambda network placement
 #     AWS_SUBNET_IDS           - Comma-separated subnet IDs
 #     SECURITY_GROUP_IDS       - Comma-separated security group IDs
@@ -16,6 +16,7 @@
 #     HOSTED_PRIVATE_ZONE_ID   - Route53 private hosted zone ID
 #
 #   scope-configurations category:
+#     ALB_*_LISTENER_ARNS      - networking.alb_{public,private}_listener_arns (ALBs to balance across)
 #     TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state
 #     TOFU_STATE_BUCKET_REGION - Region of that bucket (optional, defaults to AWS_REGION)
 #     PLACEHOLDER_IMAGE_URI    - ECR image URI used during scope creation

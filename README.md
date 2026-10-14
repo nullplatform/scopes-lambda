@@ -764,7 +764,7 @@ export TOFU_LOCK_TABLE=my-lock-table
 | **Public** | API Gateway, or ALB with `public_exposure = alb` | Internet-facing APIs and webhooks |
 | **Private** | ALB + Route53 alias | Internal microservices and backend functions |
 
-ALB scopes are balanced across `load_balancer.<visibility>.listener_arns`:
+ALB scopes are balanced across `networking.alb_<visibility>_listener_arns` (scope-configurations; `load_balancer.<visibility>.listener_arn` of the vpc provider is the single-ALB fallback):
 
 | Step | Behavior |
 |------|----------|
@@ -783,7 +783,7 @@ ALB scopes are balanced across `load_balancer.<visibility>.listener_arns`:
 | "Function name too long" | Name exceeds 64 chars | Shorten namespace/application/scope slugs |
 | "Placeholder image not found" | Image scope with no private placeholder published | Run `lambda/scope/placeholder/publish` and set `PLACEHOLDER_IMAGE_URI_DEFAULT` (see [Placeholder Image](#placeholder-image-scope-bootstrap)) |
 | "Provisioned concurrency timeout" | Warmup taking too long | Increase `PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS` |
-| "Every private ALB has 75 or more listener rules" | All ALBs past the alert threshold | Add a listener to `load_balancer.private.listener_arns` or remove unused scopes |
+| "Every private ALB has 75 or more listener rules" | All ALBs past the alert threshold | Add a listener to `networking.alb_private_listener_arns` or remove unused scopes |
 | "at or above the cap" | Rules taken by other scopes meanwhile | Re-run the action so another ALB is picked |
 | "Module not composed" | `MODULES_TO_USE` not updated | Verify setup script appends to `MODULES_TO_USE` |
 | "Backend not configured" | Missing provider setup | Ensure provider setup runs before other modules |
