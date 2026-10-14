@@ -140,6 +140,30 @@ with_tofu_outputs() {
   assert_failure
 }
 
+@test "store_nrn_metadata: clears the ALB keys when the scope leaves the ALB" {
+  with_tofu_outputs
+  export NETWORKING_MODE="none"
+
+  run_step
+
+  assert_success
+  assert_np_body_contains '"lambda.alb_listener_arn":null'
+  assert_np_body_contains '"lambda.alb_rule_priority":null'
+  assert_np_body_contains '"lambda.alb_visibility":null'
+}
+
+@test "store_nrn_metadata: keeps the ALB keys while the scope is on an ALB" {
+  with_tofu_outputs
+  export NETWORKING_MODE="alb"
+  export ALB_LISTENER_ARN="arn:listener"
+
+  run_step
+
+  assert_success
+  run bash -c "grep -qF ':null' '$MOCK_BIN_DIR/np_calls'"
+  assert_failure
+}
+
 # The update path: no tofu run, so identity has to come from AWS. This is also
 # what backfills scopes created before this script published identity.
 @test "store_nrn_metadata: backfills identity from AWS when tofu outputs are absent" {
