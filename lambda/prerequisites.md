@@ -360,7 +360,8 @@ of other workloads too. New scopes go to the ALB with the fewest rules
 below `ALB_LISTENER_RULE_ALERT_THRESHOLD` (75); no new rule is added to
 an ALB at `ALB_LISTENER_RULE_CAPACITY` (98). Each run publishes
 `Nullplatform/Lambda` · `ListenerRuleCount` (dimensions `LoadBalancer`,
-`Visibility`) for alarms.
+`Visibility`) for alarms. It is only published on create, update and
+delete, so alarms need `treat-missing-data = ignore` to hold their state.
 
 Without listeners for a visibility, its scopes get no HTTP exposure.
 
