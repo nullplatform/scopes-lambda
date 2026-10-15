@@ -24,7 +24,7 @@ setup() {
 
   export SCOPE_NRN="organization=1:account=2:namespace=3:application=4:scope=5"
   export VISIBILITY="private"
-  unset ALB_ARN
+  unset ALB_ARN ALB_METRICS_PUBLISH_ENABLED ALB_METRICS_PUBLISH_TARGET DATADOG_API_KEY
 }
 
 teardown() {
@@ -40,30 +40,39 @@ metric_calls() {
   grep "cloudwatch put-metric-data" "$MOCK_BIN_DIR/aws_calls" || true
 }
 
-@test "publish_alb_metrics: publishes the rule count of the scope's ALB" {
+create_curl_mock() {
+  cat > "$MOCK_BIN_DIR/curl" << MOCK_SCRIPT
+#!/bin/bash
+printf '%s\n' "\$*" >> "$MOCK_BIN_DIR/curl_calls"
+echo "${1:-202}"
+MOCK_SCRIPT
+  chmod +x "$MOCK_BIN_DIR/curl"
+}
+
+@test "publish_alb_metrics: publishes the rule and target group counts of the scope's ALB" {
   export ALB_ARN="$LB_A"
 
   run run_publish
 
   assert_success
-  assert_aws_call_contains '--namespace Nullplatform/Lambda'
-  assert_aws_call_contains '"MetricName":"ListenerRuleCount","Unit":"Count","Value":42'
-  assert_aws_call_contains '{"Name":"LoadBalancer","Value":"app/alb-a/aaa"},{"Name":"Visibility","Value":"private"}'
+  assert_aws_call_contains '--namespace nullplatform/ApplicationELB'
+  assert_aws_call_contains '{"MetricName":"RuleCount","Value":42,"Unit":"Count","Dimensions":[{"Name":"ALBName","Value":"alb-a"}]}'
+  assert_aws_call_contains '{"MetricName":"TargetGroupCount","Value":42,"Unit":"Count","Dimensions":[{"Name":"ALBName","Value":"alb-a"}]}'
 }
 
 @test "publish_alb_metrics: also refreshes the ALB the scope moved away from" {
   export ALB_ARN="$LB_A"
-  create_nrn_mock "$(jq -nc --arg a "$LB_B" '{namespaces: {lambda: {alb_arn: $a, alb_visibility: "public"}}}')"
+  create_nrn_mock "$(jq -nc --arg a "$LB_B" '{namespaces: {lambda: {alb_arn: $a}}}')"
 
   run run_publish
 
   assert_success
   [ "$(metric_calls | wc -l | tr -d ' ')" = "2" ]
-  assert_aws_call_contains '"Value":7,"Dimensions":[{"Name":"LoadBalancer","Value":"app/alb-b/bbb"},{"Name":"Visibility","Value":"public"}]'
+  assert_aws_call_contains '{"MetricName":"RuleCount","Value":7,"Unit":"Count","Dimensions":[{"Name":"ALBName","Value":"alb-b"}]}'
 }
 
 @test "publish_alb_metrics: on delete, reads the ALB from NRN metadata" {
-  create_nrn_mock "$(jq -nc --arg a "$LB_B" '{namespaces: {lambda: {alb_arn: $a, alb_visibility: "private"}}}')"
+  create_nrn_mock "$(jq -nc --arg a "$LB_B" '{namespaces: {lambda: {alb_arn: $a}}}')"
 
   run run_publish
 
@@ -78,6 +87,52 @@ metric_calls() {
   [ -z "$(metric_calls)" ]
 }
 
+@test "publish_alb_metrics: disabled from scope-configurations with a boolean false" {
+  export ALB_ARN="$LB_A"
+  export CONTEXT='{"providers":{"scope-configurations":{"networking":{"alb_metrics_enabled":false}}}}'
+
+  run run_publish
+
+  assert_success
+  [ -z "$(metric_calls)" ]
+}
+
+@test "publish_alb_metrics: disabled from the agent env" {
+  export ALB_ARN="$LB_A"
+  export ALB_METRICS_PUBLISH_ENABLED="false"
+
+  run run_publish
+
+  assert_success
+  [ -z "$(metric_calls)" ]
+}
+
+@test "publish_alb_metrics: publishes to Datadog when that is the target" {
+  export ALB_ARN="$LB_A"
+  export ALB_METRICS_PUBLISH_TARGET="datadog" DATADOG_API_KEY="dd-key" AWS_REGION="us-east-1"
+  create_curl_mock 202
+
+  run run_publish
+
+  assert_success
+  [ -z "$(metric_calls)" ]
+  grep -qF 'https://api.datadoghq.com/api/v2/series' "$MOCK_BIN_DIR/curl_calls"
+  grep -qF '"metric":"nullplatform.applicationelb.rule_count","type":1,"points":[{"timestamp":' "$MOCK_BIN_DIR/curl_calls"
+  grep -qF '"tags":["alb_name:alb-a","region:us-east-1"]' "$MOCK_BIN_DIR/curl_calls"
+  assert_output_contains "alb-a rules=42 target_groups=42"
+}
+
+@test "publish_alb_metrics: a Datadog failure does not fail the workflow" {
+  export ALB_ARN="$LB_A"
+  export ALB_METRICS_PUBLISH_TARGET="datadog" DATADOG_API_KEY="dd-key"
+  create_curl_mock 403
+
+  run run_publish
+
+  assert_success
+  assert_output_contains "Failed to publish ALB metrics for alb-a to datadog"
+}
+
 @test "publish_alb_metrics: a CloudWatch failure does not fail the workflow" {
   export ALB_ARN="$LB_A"
   mock_cloudwatch_failure
@@ -85,7 +140,19 @@ metric_calls() {
   run run_publish
 
   assert_success
-  assert_output_contains "Failed to publish ListenerRuleCount for app/alb-a/aaa"
+  assert_output_contains "Failed to publish ALB metrics for alb-a to cloudwatch"
+}
+
+@test "publish_alb_metrics: still publishes the rule count when target groups cannot be read" {
+  export ALB_ARN="$LB_A"
+  rm "$MOCK_BIN_DIR"/alb/tgs_*
+
+  run run_publish
+
+  assert_success
+  assert_aws_call_contains '"MetricName":"RuleCount","Value":42'
+  run bash -c "grep -qF TargetGroupCount '$MOCK_BIN_DIR/aws_calls'"
+  assert_failure
 }
 
 @test "publish_alb_metrics: skips an ALB whose rules cannot be read" {

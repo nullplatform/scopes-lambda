@@ -358,10 +358,11 @@ when `networking.public_exposure = "alb"`):
 AWS caps an ALB at 100 rules across all its listeners, counting rules
 of other workloads too. New scopes go to the ALB with the fewest rules
 below `ALB_LISTENER_RULE_ALERT_THRESHOLD` (75); no new rule is added to
-an ALB at `ALB_LISTENER_RULE_CAPACITY` (98). Each run publishes
-`Nullplatform/Lambda` · `ListenerRuleCount` (dimensions `LoadBalancer`,
-`Visibility`) for alarms. It is only published on create, update and
-delete, so alarms need `treat-missing-data = ignore` to hold their state.
+an ALB at `ALB_LISTENER_RULE_CAPACITY` (98). Each create, update and
+delete publishes `nullplatform/ApplicationELB` · `RuleCount` and
+`TargetGroupCount` (dimension `ALBName`), the same metrics as the k8s
+scope. They are only published on those runs, so alarms need
+`treat-missing-data = ignore` to hold their state.
 
 Without listeners for a visibility, its scopes get no HTTP exposure.
 
@@ -390,6 +391,8 @@ manually. The expected attribute schema:
 | `networking.public_exposure` | string | no | `alb` or `api_gateway` for public scopes. Defaults to `alb` when `load_balancer.public` listeners are configured, else `api_gateway`. |
 | `networking.alb_listener_rule_alert_threshold` | number | no | Rules at which an ALB stops taking new scopes. Default `75`. |
 | `networking.alb_listener_rule_capacity` | number | no | Hard cap of rules per ALB, at most `100`. Default `98`. |
+| `networking.alb_metrics_enabled` | bool | no | Publish the ALB metrics. Default `true`. |
+| `networking.alb_metrics_target` | string | no | `cloudwatch` (default) or `datadog`; Datadog needs `DATADOG_API_KEY` (and `DATADOG_SITE` outside `datadoghq.com`) on the agent. |
 | `networking.api_gateway_certificate_arn` | string | no | ACM certificate for API Gateway custom domains; without it public scopes use the `execute-api` endpoint. |
 
 Example:

@@ -44,6 +44,9 @@ case "$1 $2" in
   "elbv2 describe-rules")
     serve "$MOCK_DIR/alb/rules_$(key "$(arg_after --listener-arn "$@")")"
     ;;
+  "elbv2 describe-target-groups")
+    serve "$MOCK_DIR/alb/tgs_$(key "$(arg_after --load-balancer-arn "$@")")"
+    ;;
   "elbv2 describe-load-balancers")
     serve "$MOCK_DIR/alb/lb_$(key "$(arg_after --load-balancer-arns "$@")")"
     ;;
@@ -64,7 +67,8 @@ MOCK_SCRIPT
 _alb_key() { echo "$1" | cksum | cut -d' ' -f1; }
 
 # mock_alb <lb_arn> <listener_arn> <rule_count>: a listener holding <rule_count> host rules
-# with priorities 1..N, plus the default rule. Repeat with the same lb to add listeners.
+# with priorities 1..N, plus the default rule, and as many target groups.
+# Repeat with the same lb to add listeners.
 mock_alb() {
   local lb="$1" listener="$2" count="$3" lb_file
   jq -nc --arg l "$listener" --arg lb "$lb" '{Listeners: [{ListenerArn: $l, LoadBalancerArn: $lb}]}' \
@@ -79,6 +83,7 @@ mock_alb() {
       Conditions: [{Field: "host-header", HostHeaderConfig: {Values: ["other-\(.).example.com"]}}]}]
     + [{Priority: "default", IsDefault: true, Conditions: []}])}' \
     > "$ALB_MOCK_DIR/rules_$(_alb_key "$listener")"
+  jq -nc --argjson n "$count" '{TargetGroups: [range(0; $n) | {}]}' > "$ALB_MOCK_DIR/tgs_$(_alb_key "$lb")"
   jq -nc --arg lb "$lb" '{LoadBalancers: [{LoadBalancerArn: $lb, DNSName: "dns-\($lb | split("/")[2]).elb.amazonaws.com", CanonicalHostedZoneId: "ZALB"}]}' \
     > "$ALB_MOCK_DIR/lb_$(_alb_key "$lb")"
 }

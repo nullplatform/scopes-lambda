@@ -46,6 +46,9 @@ configuration:
   ALB_LISTENER_RULE_PRIORITY_START: 100
   ALB_LISTENER_RULE_CAPACITY: 98
   ALB_LISTENER_RULE_ALERT_THRESHOLD: 75
+  # Rule and target group counts per ALB, same metrics as the k8s scope.
+  ALB_METRICS_PUBLISH_ENABLED: true
+  # ALB_METRICS_PUBLISH_TARGET: cloudwatch # cloudwatch | datadog (needs DATADOG_API_KEY)
 
   # ── Null Agent ─────────────────────────────────────────────────────────────
   USE_NULL_AGENT: false

@@ -772,7 +772,7 @@ ALB scopes are balanced across `networking.alb_<visibility>_listener_arns` (scop
 | Re-runs | The scope keeps its listener (`lambda.alb_listener_arn` in NRN), even if removed from the list |
 | Hard cap | No new rule on an ALB at `ALB_LISTENER_RULE_CAPACITY` |
 | Concurrency | A priority taken meanwhile (`PriorityInUse`) is recomputed and retried up to 3 times |
-| Metrics | `Nullplatform/Lambda` · `ListenerRuleCount` per `LoadBalancer` and `Visibility` on every create/update/delete |
+| Metrics | `nullplatform/ApplicationELB` · `RuleCount` and `TargetGroupCount` per `ALBName` on every create/update/delete, to CloudWatch or Datadog (same as the k8s scope) |
 | Override | The `scopes-networking` Lambda override must be disabled (`overrides_enabled = false`); create and update fail while it is active |
 | Migration | Scopes whose ALB resources live in the main state have them removed from it (`handover_networking_state`, no AWS change) and imported by the networking stack, keeping their rule, priority and target group |
 
