@@ -188,6 +188,22 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
 }
 ```
 
+Only with `networking.alb_autocreate_enabled`:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "elasticloadbalancing:CreateLoadBalancer",
+    "elasticloadbalancing:CreateListener",
+    "elasticloadbalancing:ModifyLoadBalancerAttributes",
+    "elasticloadbalancing:DescribeListenerCertificates",
+    "elasticloadbalancing:AddListenerCertificates"
+  ],
+  "Resource": "*"
+}
+```
+
 ---
 
 ### Route 53
@@ -364,6 +380,17 @@ delete publishes `nullplatform/ApplicationELB` · `RuleCount` and
 scope. They are only published on those runs, so alarms need
 `treat-missing-data = ignore` to hold their state.
 
+With `networking.alb_autocreate_enabled`, a create that finds every ALB
+full clones the first configured one instead of failing: scheme, subnets,
+security groups, attributes, certificates, and listeners whose default
+action is a redirect or fixed response (a forward default becomes a 404).
+It is named `<alb_autocreate_name_prefix><visibility>-<n>`, tagged
+`nullplatform:lambda-autocreated`, appended to
+`networking.alb_<visibility>_listener_arns`, and never deleted by the
+workflow. The agent's API key needs write access on the
+`scope-configurations` provider; without it the ALB is still used, and
+picked up again by name on the next create.
+
 Without listeners for a visibility, its scopes get no HTTP exposure.
 
 This replaces the `scopes-networking` Lambda override: disable it on the
@@ -391,6 +418,8 @@ manually. The expected attribute schema:
 | `networking.public_exposure` | string | no | `alb` or `api_gateway` for public scopes. Defaults to `alb` when `load_balancer.public` listeners are configured, else `api_gateway`. |
 | `networking.alb_listener_rule_alert_threshold` | number | no | Rules at which an ALB stops taking new scopes. Default `75`. |
 | `networking.alb_listener_rule_capacity` | number | no | Hard cap of rules per ALB, at most `100`. Default `98`. |
+| `networking.alb_autocreate_enabled` | bool | no | Clone a new ALB when every ALB is full. Default `false`. |
+| `networking.alb_autocreate_name_prefix` | string | no | Name prefix of autocreated ALBs, `[a-z0-9-]`, at most 21 chars. Default `np-lambda-`. |
 | `networking.alb_metrics_enabled` | bool | no | Publish the ALB metrics. Default `true`. |
 | `networking.alb_metrics_target` | string | no | `cloudwatch` (default) or `datadog`; Datadog needs `DATADOG_API_KEY` (and `DATADOG_SITE` outside `datadoghq.com`) on the agent. |
 | `networking.api_gateway_certificate_arn` | string | no | ACM certificate for API Gateway custom domains; without it public scopes use the `execute-api` endpoint. |

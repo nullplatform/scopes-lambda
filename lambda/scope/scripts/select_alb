@@ -37,6 +37,12 @@ ALB_LISTENER_RULE_ALERT_THRESHOLD=$(get_config_value \
   --default "75"
 )
 ALB_LISTENER_RULE_PRIORITY_START="${ALB_LISTENER_RULE_PRIORITY_START:-100}"
+# tostring keeps a boolean false, which get_config_value's `// empty` would drop.
+ALB_AUTOCREATE_ENABLED=$(get_config_value \
+  --provider '.providers["scope-configurations"].networking.alb_autocreate_enabled | tostring' \
+  --env ALB_AUTOCREATE_ENABLED \
+  --default "false"
+)
 
 if ! [[ "$ALB_LISTENER_RULE_CAPACITY" =~ ^[0-9]+$ && "$ALB_LISTENER_RULE_ALERT_THRESHOLD" =~ ^[0-9]+$ ]] \
   || [ "$ALB_LISTENER_RULE_ALERT_THRESHOLD" -ge "$ALB_LISTENER_RULE_CAPACITY" ] \
@@ -91,6 +97,7 @@ fi
 # 2. The scope's rule already on a candidate (lost metadata), else 3. the least-loaded eligible ALB.
 best_listener=""
 best_count=""
+template_listener=""
 if [ -z "$ALB_LISTENER_ARN" ]; then
   for listener in "${candidates[@]}"; do
     lb=$(alb_listener_lb_arn "$listener") || fail_aws_read "$listener"
@@ -98,6 +105,7 @@ if [ -z "$ALB_LISTENER_ARN" ]; then
       log warn "   ⚠️  Listener $listener not found - skipping"
       continue
     fi
+    [ -z "$template_listener" ] && template_listener="$listener"
 
     priority=$(alb_scope_rule_priority "$listener" "$SCOPE_DOMAIN") || fail_aws_read "$listener"
     if [ -n "$priority" ]; then
@@ -116,6 +124,13 @@ if [ -z "$ALB_LISTENER_ARN" ]; then
   done
 fi
 
+if [ -z "$ALB_LISTENER_ARN" ] && [ -z "$best_listener" ] && [ "$ALB_AUTOCREATE_ENABLED" = "true" ] \
+  && [ -n "$template_listener" ]; then
+  source "$SERVICE_PATH/scope/scripts/autocreate_alb"
+  autocreate_alb "$template_listener" "$candidate_list"
+  best_listener="$AUTOCREATED_LISTENER_ARN"
+fi
+
 if [ -z "$ALB_LISTENER_ARN" ]; then
   if [ -z "$best_listener" ]; then
     echo "❌ Every $VISIBILITY ALB has $ALB_LISTENER_RULE_ALERT_THRESHOLD or more listener rules" >&2
@@ -125,6 +140,7 @@ if [ -z "$ALB_LISTENER_ARN" ]; then
     echo "" >&2
     echo "🔧 How to fix:" >&2
     echo "   • Add another ALB listener to networking.alb_${VISIBILITY}_listener_arns (scope-configurations)" >&2
+    echo "   • Or let the agent clone one: networking.alb_autocreate_enabled = true" >&2
     echo "   • Remove unused scopes to free listener rules" >&2
     exit 1
   fi

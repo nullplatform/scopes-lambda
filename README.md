@@ -771,6 +771,7 @@ ALB scopes are balanced across `networking.alb_<visibility>_listener_arns` (scop
 | Assignment | A new rule goes to the ALB with the fewest rules (all listeners counted) below the alert threshold |
 | Re-runs | The scope keeps its listener (`lambda.alb_listener_arn` in NRN), even if removed from the list |
 | Hard cap | No new rule on an ALB at `ALB_LISTENER_RULE_CAPACITY` |
+| Autocreate | Opt-in (`networking.alb_autocreate_enabled`): when every ALB is full, the first one is cloned and added to the list |
 | Concurrency | A priority taken meanwhile (`PriorityInUse`) is recomputed and retried up to 3 times |
 | Metrics | `nullplatform/ApplicationELB` · `RuleCount` and `TargetGroupCount` per `ALBName` on every create/update/delete, to CloudWatch or Datadog (same as the k8s scope) |
 | Override | The `scopes-networking` Lambda override must be disabled (`overrides_enabled = false`); create and update fail while it is active |

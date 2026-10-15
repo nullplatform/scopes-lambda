@@ -1,0 +1,153 @@
+#!/bin/bash
+# Clone a pool ALB when every ALB of the pool is at the alert threshold (sourced by select_alb).
+# The new ALB copies the template's scheme, subnets, security groups, attributes and listeners,
+# and is appended to networking.alb_<visibility>_listener_arns in scope-configurations.
+# Its name derives from the pool size, so concurrent creates converge on one ALB:
+# CreateLoadBalancer and CreateListener return the existing resource for identical settings.
+
+ALB_AUTOCREATE_TAG="nullplatform:lambda-autocreated"
+
+fail_autocreate() {
+  echo "❌ Failed to autocreate a $VISIBILITY ALB: $1" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The agent role lacks elasticloadbalancing:CreateLoadBalancer/CreateListener" >&2
+  echo "   - The account reached its ALB quota for the region" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Grant the permissions listed in prerequisites.md (ALB autocreate)" >&2
+  echo "   • Or add an ALB listener to networking.alb_${VISIBILITY}_listener_arns and disable networking.alb_autocreate_enabled" >&2
+  exit 1
+}
+
+# Prints the ARN of an ALB we autocreated under that name with room left, "taken" when the
+# name belongs to another or a full ALB, and nothing when the name is free.
+autocreated_alb_with_room() {
+  local name="$1" out arn tag count
+  if ! out=$(aws elbv2 describe-load-balancers --names "$name" --output json 2>&1); then
+    [[ "$out" == *LoadBalancerNotFound* ]] && return 0
+    return 1
+  fi
+  arn=$(echo "$out" | jq -r '.LoadBalancers[0].LoadBalancerArn')
+  tag=$(aws elbv2 describe-tags --resource-arns "$arn" --output json 2>/dev/null \
+    | jq -r --arg k "$ALB_AUTOCREATE_TAG" '.TagDescriptions[0].Tags[]? | select(.Key == $k) | .Value') || return 1
+  [ "$tag" = "$VISIBILITY" ] || { echo "taken"; return 0; }
+  count=$(alb_rule_count "$arn") || return 1
+  if [ "$count" -lt "$ALB_LISTENER_RULE_ALERT_THRESHOLD" ]; then echo "$arn"; else echo "taken"; fi
+}
+
+# Append the new listener to the scope-configurations provider that defines the pool.
+register_autocreated_listener() {
+  local listener="$1" pool="$2" key="alb_${VISIBILITY}_listener_arns" dimensions providers provider_id list body
+  dimensions=$(echo "$CONTEXT" | jq -r '(.scope.dimensions // {}) | to_entries | map("\(.key):\(.value)") | join(",")')
+  if [ -n "$dimensions" ]; then
+    providers=$(np provider list --nrn "$SCOPE_NRN" --categories scope-configurations --dimensions "$dimensions" --format json 2>/dev/null)
+  else
+    providers=$(np provider list --nrn "$SCOPE_NRN" --categories scope-configurations --format json 2>/dev/null)
+  fi
+  # The last provider with the key wins the merge in fetch_scope_configuration.
+  provider_id=$(echo "$providers" | jq -r --arg k "$key" \
+    '[.results[]? | select(.category == "scope-configurations")] | ([.[] | select(.attributes.networking[$k] != null)] | last) // last | .id // empty' 2>/dev/null)
+  if [ -z "$provider_id" ]; then
+    log warn "   ⚠️  No scope-configurations provider to register $listener in - add it to networking.$key"
+    return 0
+  fi
+
+  list=$(echo "$providers" | jq -c --arg id "$provider_id" --arg k "$key" --arg l "$listener" --arg pool "$pool" \
+    '(.results[] | select(.id == $id) | .attributes.networking[$k]) // ($pool | split(",") | map(select(. != "")))
+     | if index($l) then . else . + [$l] end')
+  # Patch merges arrays by index, which is enough to append.
+  body=$(jq -nc --arg k "$key" --argjson l "$list" '{attributes: {networking: {($k): $l}}}')
+  if np provider patch --id "$provider_id" --body "$body" --format json >/dev/null 2>&1; then
+    log info "   📝 Registered $listener in scope-configurations $provider_id"
+  else
+    log warn "   ⚠️  Could not register $listener in scope-configurations $provider_id - add it to networking.$key"
+  fi
+}
+
+# autocreate_alb <template_listener> <pool, comma-separated>: sets AUTOCREATED_LISTENER_ARN.
+autocreate_alb() {
+  local template_listener="$1" pool="$2" pool_size prefix template_lb lb_json name n new_lb="" found attrs
+  local listeners listener port is_template input out new_listener certs
+
+  prefix=$(get_config_value \
+    --provider '.providers["scope-configurations"].networking.alb_autocreate_name_prefix' \
+    --env ALB_AUTOCREATE_NAME_PREFIX \
+    --default "np-lambda-"
+  )
+  # "<prefix><private|public>-<n>" must fit the 32-char ALB name limit.
+  if ! [[ "$prefix" =~ ^[a-z0-9-]+$ ]] || [ "${#prefix}" -gt 21 ]; then
+    fail_autocreate "ALB_AUTOCREATE_NAME_PREFIX must match ^[a-z0-9-]+$ and be at most 21 chars, got '$prefix'"
+  fi
+
+  pool_size=$(echo "$pool" | tr ',' '\n' | grep -c .)
+  template_lb=$(alb_listener_lb_arn "$template_listener") || fail_aws_read "$template_listener"
+  lb_json=$(aws elbv2 describe-load-balancers --load-balancer-arns "$template_lb" --output json 2>/dev/null) \
+    || fail_aws_read "$template_lb"
+  lb_json=$(echo "$lb_json" | jq -c '.LoadBalancers[0]')
+
+  for n in $(seq $((pool_size + 1)) $((pool_size + 10))); do
+    name="${prefix}${VISIBILITY}-${n}"
+    found=$(autocreated_alb_with_room "$name") || fail_aws_read "$name"
+    [ "$found" = "taken" ] && continue
+    new_lb="$found"
+    break
+  done
+  [ "$found" = "taken" ] && fail_autocreate "no free name from ${prefix}${VISIBILITY}-$((pool_size + 1))"
+
+  if [ -n "$new_lb" ]; then
+    log info "   ♻️  Reusing autocreated ALB $name"
+  else
+    log info "   🏗️  Every $VISIBILITY ALB is full - creating $name from $(echo "$template_lb" | cut -d/ -f3)"
+    input=$(echo "$lb_json" | jq -c --arg n "$name" --arg k "$ALB_AUTOCREATE_TAG" --arg v "$VISIBILITY" '{
+      Name: $n, Type: "application", Scheme, IpAddressType,
+      Subnets: [.AvailabilityZones[].SubnetId], SecurityGroups: (.SecurityGroups // []),
+      Tags: [{Key: $k, Value: $v}]}')
+    out=$(aws elbv2 create-load-balancer --cli-input-json "$input" --output json 2>&1) || fail_autocreate "$out"
+    new_lb=$(echo "$out" | jq -r '.LoadBalancers[0].LoadBalancerArn')
+
+    attrs=$(aws elbv2 describe-load-balancer-attributes --load-balancer-arn "$template_lb" --output json 2>/dev/null \
+      | jq -c '.Attributes') || attrs=""
+    if [ -z "$attrs" ] || ! aws elbv2 modify-load-balancer-attributes --load-balancer-arn "$new_lb" \
+      --attributes "$attrs" >/dev/null 2>&1; then
+      log warn "   ⚠️  Could not copy the attributes of the template ALB"
+    fi
+  fi
+
+  listeners=$(aws elbv2 describe-listeners --load-balancer-arn "$template_lb" --output json 2>/dev/null) \
+    || fail_aws_read "$template_lb"
+  AUTOCREATED_LISTENER_ARN=""
+  while IFS= read -r listener; do
+    port=$(echo "$listener" | jq -r '.Port')
+    is_template=$(echo "$listener" | jq --arg t "$template_listener" '.ListenerArn == $t')
+    # Forward and authenticate actions point at the template's own resources: only the
+    # pool listener is cloned then, with a 404 default.
+    if [ "$is_template" = "false" ] && ! echo "$listener" | jq -e \
+      'all(.DefaultActions[]; .Type == "redirect" or .Type == "fixed-response")' >/dev/null; then
+      log warn "   ⚠️  Skipping listener :$port - its default action cannot be cloned"
+      continue
+    fi
+    input=$(echo "$listener" | jq -c --arg lb "$new_lb" '
+      {LoadBalancerArn: $lb, Protocol, Port}
+      + (if .SslPolicy then {SslPolicy} else {} end)
+      + (if .Certificates then {Certificates: [.Certificates[0] | {CertificateArn}]} else {} end)
+      + (if (.AlpnPolicy // []) != [] then {AlpnPolicy} else {} end)
+      + {DefaultActions: (if all(.DefaultActions[]; .Type == "redirect" or .Type == "fixed-response")
+          then [.DefaultActions[] | {Type, Order, RedirectConfig, FixedResponseConfig} | with_entries(select(.value != null))]
+          else [{Type: "fixed-response", FixedResponseConfig: {StatusCode: "404", ContentType: "text/plain"}}] end)}')
+    out=$(aws elbv2 create-listener --cli-input-json "$input" --output json 2>&1) || fail_autocreate "$out"
+    new_listener=$(echo "$out" | jq -r '.Listeners[0].ListenerArn')
+
+    certs=$(aws elbv2 describe-listener-certificates --listener-arn "$(echo "$listener" | jq -r '.ListenerArn')" \
+      --output json 2>/dev/null | jq -c '[.Certificates[]? | select(.IsDefault | not) | {CertificateArn}]') || certs="[]"
+    if [ "$certs" != "[]" ] && [ -n "$certs" ] && ! aws elbv2 add-listener-certificates \
+      --listener-arn "$new_listener" --certificates "$certs" >/dev/null 2>&1; then
+      log warn "   ⚠️  Could not copy the extra certificates of listener :$port"
+    fi
+    [ "$is_template" = "true" ] && AUTOCREATED_LISTENER_ARN="$new_listener"
+  done < <(echo "$listeners" | jq -c '.Listeners[]')
+
+  [ -n "$AUTOCREATED_LISTENER_ARN" ] || fail_autocreate "the template listener was not cloned"
+  log info "   ✅ Autocreated listener $AUTOCREATED_LISTENER_ARN"
+  register_autocreated_listener "$AUTOCREATED_LISTENER_ARN" "$pool"
+}
