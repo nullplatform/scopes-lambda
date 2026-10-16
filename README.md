@@ -310,6 +310,10 @@ LAMBDA_PUBLIC_EXPOSURE: "alb"           # or "api_gateway"; default: alb when pu
 ALB_LISTENER_RULE_PRIORITY_START: 100
 ALB_LISTENER_RULE_CAPACITY: 98          # no new rule on an ALB with this many
 ALB_LISTENER_RULE_ALERT_THRESHOLD: 75   # new scopes skip ALBs with this many
+ALB_AUTOCREATE_ENABLED: false           # clone an ALB when every ALB is full
+ALB_AUTOCREATE_NAME_PREFIX: np-lambda-  # <prefix><visibility>-<n>
+ALB_METRICS_PUBLISH_ENABLED: true
+ALB_METRICS_PUBLISH_TARGET: cloudwatch  # or "datadog" (needs DATADOG_API_KEY)
 
 # CloudWatch
 LOG_RETENTION_DAYS: 30
@@ -777,6 +781,23 @@ ALB scopes are balanced across `networking.alb_<visibility>_listener_arns` (scop
 | Override | The `scopes-networking` Lambda override must be disabled (`overrides_enabled = false`); create and update fail while it is active |
 | Migration | Scopes whose ALB resources live in the main state have them removed from it (`handover_networking_state`, no AWS change) and imported by the networking stack, keeping their rule, priority and target group |
 
+The `scope-configurations` provider overrides the agent values above per NRN (full table and IAM in [prerequisites.md](lambda/prerequisites.md#scope-configurations)):
+
+```json
+"networking": {
+  "alb_public_listener_arns": ["<current listener>", "<another ALB listener>"],
+  "alb_private_listener_arns": ["<listener>"],
+  "alb_listener_rule_alert_threshold": 75,
+  "alb_listener_rule_capacity": 98,
+  "alb_autocreate_enabled": true,
+  "alb_autocreate_name_prefix": "np-lambda-",
+  "alb_metrics_enabled": true,
+  "alb_metrics_target": "cloudwatch"
+}
+```
+
+Alarm on `RuleCount` ≥ 75 per `ALBName` with `treat-missing-data = ignore`: the metric is only published when a scope workflow runs. Autocreated ALBs (tag `nullplatform:lambda-autocreated`) are never deleted by the workflow.
+
 ### Troubleshooting
 
 | Issue | Cause | Solution |
@@ -784,7 +805,10 @@ ALB scopes are balanced across `networking.alb_<visibility>_listener_arns` (scop
 | "Function name too long" | Name exceeds 64 chars | Shorten namespace/application/scope slugs |
 | "Placeholder image not found" | Image scope with no private placeholder published | Run `lambda/scope/placeholder/publish` and set `PLACEHOLDER_IMAGE_URI_DEFAULT` (see [Placeholder Image](#placeholder-image-scope-bootstrap)) |
 | "Provisioned concurrency timeout" | Warmup taking too long | Increase `PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS` |
-| "Every private ALB has 75 or more listener rules" | All ALBs past the alert threshold | Add a listener to `networking.alb_private_listener_arns` or remove unused scopes |
+| "Every private ALB has 75 or more listener rules" | All ALBs past the alert threshold | Add a listener to `networking.alb_private_listener_arns`, enable `alb_autocreate_enabled`, or remove unused scopes |
+| "Failed to autocreate a … ALB" | Missing `CreateLoadBalancer`/`CreateListener`, or the region's ALB quota | Grant the autocreate IAM actions ([prerequisites.md](lambda/prerequisites.md)) or raise the quota |
+| "Could not register … in scope-configurations" | The agent's API key cannot write the provider | Add the listener to the list by hand; meanwhile the next create reuses the ALB by name |
+| "Failed to publish ALB metrics" | Missing `cloudwatch:PutMetricData` or `DATADOG_API_KEY` | Grant it or set the key; the workflow does not fail |
 | "at or above the cap" | Rules taken by other scopes meanwhile | Re-run the action so another ALB is picked |
 | "Module not composed" | `MODULES_TO_USE` not updated | Verify setup script appends to `MODULES_TO_USE` |
 | "Backend not configured" | Missing provider setup | Ensure provider setup runs before other modules |
