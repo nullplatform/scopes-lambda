@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/nullplatform/scopes-lambda/compare/v0.9.1...v0.9.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** bump nullplatform/scopes/worker-bridge from 2.0.1 to 2.0.3 ([#90](https://github.com/nullplatform/scopes-lambda/issues/90)) ([3da98b0](https://github.com/nullplatform/scopes-lambda/commit/3da98b0b5144c57043db253e19ff9853dc5ee2df))
+
 ## [0.9.1](https://github.com/nullplatform/scopes-lambda/compare/v0.9.0...v0.9.1) (2026-10-09)
 
 
