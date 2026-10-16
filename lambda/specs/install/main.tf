@@ -4,7 +4,7 @@
 ################################################################################
 
 module "scope_definition" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v7.0.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.3.0"
 
   nrn        = var.nrn
   np_api_key = var.np_api_key
@@ -71,12 +71,12 @@ module "scope_definition" {
 ################################################################################
 
 module "scope_definition_agent_association" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=v7.0.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=v9.3.0"
 
   nrn     = var.nrn
   api_key = var.np_api_key
 
-  # description = "Notification channel for AWS Lambda scope definition"
+  description = "Notification channel for AWS Lambda scope definition"
 
   scope_specification_id   = module.scope_definition.service_specification_id
   scope_specification_slug = module.scope_definition.service_slug
