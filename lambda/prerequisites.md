@@ -91,7 +91,7 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
 
 ---
 
-### CloudWatch Metrics (diagnose / metric actions)
+### CloudWatch Metrics (diagnose / metric actions, ALB rule count)
 
 ```json
 {
@@ -99,7 +99,8 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
   "Action": [
     "cloudwatch:GetMetricStatistics",
     "cloudwatch:GetMetricData",
-    "cloudwatch:ListMetrics"
+    "cloudwatch:ListMetrics",
+    "cloudwatch:PutMetricData"
   ],
   "Resource": "*"
 }
@@ -182,6 +183,22 @@ Agents run in a Kubernetes pod and authenticate to AWS via a **Service Account**
     "elasticloadbalancing:AddTags",
     "elasticloadbalancing:RemoveTags",
     "elasticloadbalancing:DescribeTags"
+  ],
+  "Resource": "*"
+}
+```
+
+Only with `networking.alb_autocreate_enabled`:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "elasticloadbalancing:CreateLoadBalancer",
+    "elasticloadbalancing:CreateListener",
+    "elasticloadbalancing:ModifyLoadBalancerAttributes",
+    "elasticloadbalancing:DescribeListenerCertificates",
+    "elasticloadbalancing:AddListenerCertificates"
   ],
   "Resource": "*"
 }
@@ -340,22 +357,46 @@ can pull the image.
 ### 2. Application Load Balancer
 
 The bundled ALB tofu module (`lambda/scope/tofu/networking/alb/`)
-registers a target group and a listener rule on an existing ALB. The
-ALB itself is the operator's responsibility — the workflow only
-consumes it.
+registers a target group and a host-header listener rule per scope on
+an existing ALB. The ALBs themselves are the operator's responsibility.
 
-You need:
+You need, per visibility that uses an ALB (`private` always, `public`
+when `networking.public_exposure = "alb"`):
 
-- An `aws_lb` of type `application` (internet-facing or internal, as
-  appropriate for the namespace's traffic profile).
-- An HTTPS:443 listener with a certificate matching the namespace's
-  domain (typically a wildcard).
-- A `nullplatform_provider_config` of category `vpc` /
-  `aws-networking-configuration` exposing the listener's ARN under
-  `load_balancer.public.listener_arn` (see step 3).
+- One or more `aws_lb` of type `application` (internal for private,
+  internet-facing for public).
+- An HTTPS:443 listener on each, with a certificate covering the scope
+  domains (typically a wildcard). The workflow does not check it.
+- Their listener ARNs under `networking.alb_<visibility>_listener_arns`
+  in the `scope-configurations` provider
+  (see step 3).
 
-The ALB does not need to be dedicated to Lambda — the workflow only
-adds rules to the listener you point it at, scoped by host header.
+AWS caps an ALB at 100 rules across all its listeners, counting rules
+of other workloads too. New scopes go to the ALB with the fewest rules
+below `ALB_LISTENER_RULE_ALERT_THRESHOLD` (75); no new rule is added to
+an ALB at `ALB_LISTENER_RULE_CAPACITY` (98). Each create, update and
+delete publishes `nullplatform/ApplicationELB` · `RuleCount` and
+`TargetGroupCount` (dimension `ALBName`), the same metrics as the k8s
+scope. They are only published on those runs, so alarms need
+`treat-missing-data = ignore` to hold their state.
+
+With `networking.alb_autocreate_enabled`, a create that finds every ALB
+full clones the first configured one instead of failing: scheme, subnets,
+security groups, tags, attributes, certificates, mTLS, and listeners whose
+default action is a redirect or fixed response (a forward default becomes
+a 404). It is named `<alb_autocreate_name_prefix><visibility>-<n>`, tagged
+`nullplatform:lambda-autocreated=<visibility>` and
+`nullplatform:lambda-autocreated-from=<template ALB>`, appended to
+`networking.alb_<visibility>_listener_arns`, and never deleted by the
+workflow. The agent's API key needs write access on the
+`scope-configurations` provider; without it the ALB is still used, and
+picked up again by name and tags on the next create, keeping its listeners.
+
+Without listeners for a visibility, its scopes get no HTTP exposure.
+
+This replaces the `scopes-networking` Lambda override: disable it on the
+agent (`overrides_enabled = false`), or create and update fail. Scopes it
+created keep their rule; the next create or update adopts it.
 
 ### 3. Provider configurations
 
@@ -373,6 +414,16 @@ manually. The expected attribute schema:
 | `deployment.placeholder_image_uri` | string | yes | Full URI of the placeholder image you published in step 1, **without** the architecture suffix. The workflow appends `-arm64` or `-amd64` based on the scope's architecture. |
 | `state.tofu_state_bucket` | string | yes | S3 bucket where each Lambda scope writes its OpenTofu state. Each scope uses a unique key prefix, so a single bucket can be shared across all Lambda scopes (and across scope types — e.g. `static-files` reuses the same bucket convention). |
 | `state.tofu_state_bucket_region` | string | no | AWS region of the state bucket. Defaults to the `cloud-providers` account region. |
+| `networking.alb_public_listener_arns` | list | no | Listeners public ALB scopes are balanced across. |
+| `networking.alb_private_listener_arns` | list | no | Same, for private scopes. |
+| `networking.public_exposure` | string | no | `alb` or `api_gateway` for public scopes. Defaults to `alb` when `load_balancer.public` listeners are configured, else `api_gateway`. |
+| `networking.alb_listener_rule_alert_threshold` | number | no | Rules at which an ALB stops taking new scopes. Default `75`. |
+| `networking.alb_listener_rule_capacity` | number | no | Hard cap of rules per ALB, at most `100`. Default `98`. |
+| `networking.alb_autocreate_enabled` | bool | no | Clone a new ALB when every ALB is full. Default `false`. |
+| `networking.alb_autocreate_name_prefix` | string | no | Name prefix of autocreated ALBs, `[a-z0-9-]`, at most 21 chars. Default `np-lambda-`. |
+| `networking.alb_metrics_enabled` | bool | no | Publish the ALB metrics. Default `true`. |
+| `networking.alb_metrics_target` | string | no | `cloudwatch` (default) or `datadog`; Datadog needs `DATADOG_API_KEY` (and `DATADOG_SITE` outside `datadoghq.com`) on the agent. |
+| `networking.api_gateway_certificate_arn` | string | no | ACM certificate for API Gateway custom domains; without it public scopes use the `execute-api` endpoint. |
 
 Example:
 
@@ -396,48 +447,18 @@ resource "nullplatform_provider_config" "scope_configurations" {
 
 #### `vpc` / `aws-networking-configuration`
 
-The `build_context` step (via `lambda/utils/fetch_scope_configuration`)
-reads `.load_balancer.public.listener_arn` from a
-`nullplatform_provider_config` of category `vpc` (the legacy name) or
-`aws-networking-configuration` (newer schemas) and exports it as
-`ALB_PUBLIC_LISTENER_ARN`, which the ALB tofu module then consumes via
-its `alb_listener_arn` variable. Recent schema versions also require
-`vpc.id`, `vpc.subnets`, and `vpc.security_groups` on the same config
-— check the spec your installation has by querying the API.
+`load_balancer.<visibility>.listener_arn` of a `nullplatform_provider_config`
+of category `vpc` (the legacy name) or `aws-networking-configuration` is the
+single-ALB fallback when `networking.alb_<visibility>_listener_arns` is not set
+in `scope-configurations`. That spec drops keys it does not declare, so the
+list lives in `scope-configurations`.
 
-Other scope types (notably `nullplatform/cloud/aws/vpc` and
-`nullplatform/scopes-static-files`) may already create a `vpc` provider
-for general networking. You have two options:
+Recent schema versions also require `vpc.id`, `vpc.subnets`, and
+`vpc.security_groups` on the same config — check the spec your
+installation has by querying the API.
 
-- **Add `load_balancer.public.listener_arn` to the existing config**
-  (preferred, when not blocked by `lifecycle.ignore_changes` on the
-  upstream module).
-- **Create a second provider config of the same category** with a
-  distinct `dimensions` map — the agent merges attributes across all
-  configs that match the scope's NRN at resolution time.
-
-Example dedicated config:
-
-```hcl
-resource "nullplatform_provider_config" "lambda_networking" {
-  nrn        = "organization=<org-id>:account=<account-id>"
-  type       = "aws-networking-configuration"
-  dimensions = { environment = "development" }
-
-  attributes = jsonencode({
-    vpc = {
-      id              = aws_vpc.main.id
-      subnets         = [for s in aws_subnet.private : s.id]
-      security_groups = [aws_security_group.lambda.id]
-    }
-    load_balancer = {
-      public = {
-        listener_arn = aws_lb_listener.lambda_https.arn
-      }
-    }
-  })
-}
-```
+Private scopes get their record in `networking.hosted_zone_id` of the
+`cloud-providers` config, falling back to `hosted_public_zone_id`.
 
 ## ECR Repository Policies (resource policies, not IAM)
 

@@ -38,3 +38,20 @@ variable "api_gateway_resource_tags_json" {
   type        = map(string)
   default     = {}
 }
+
+variable "api_gateway_lambda_function_name" {
+  description = "Name of the scope's Lambda function"
+  type        = string
+}
+
+variable "api_gateway_lambda_alias_name" {
+  description = "Alias API Gateway invokes"
+  type        = string
+  default     = "main"
+}
+
+variable "api_gateway_hosted_zone_id" {
+  description = "Route 53 zone for the custom domain record (empty to skip)"
+  type        = string
+  default     = ""
+}

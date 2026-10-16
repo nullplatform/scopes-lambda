@@ -47,6 +47,22 @@ steps:
         type: environment
       - name: RESOURCE_TAGS_JSON
         type: environment
+      - name: NETWORKING_MODE
+        type: environment
+      - name: ALB_PUBLIC_LISTENER_ARNS
+        type: environment
+      - name: ALB_PRIVATE_LISTENER_ARNS
+        type: environment
+      - name: HOSTED_PUBLIC_ZONE_ID
+        type: environment
+      - name: HOSTED_PRIVATE_ZONE_ID
+        type: environment
+      - name: AWS_REGION
+        type: environment
+      - name: TOFU_STATE_BUCKET
+        type: environment
+      - name: TOFU_STATE_BUCKET_REGION
+        type: environment
   - name: resolve_placeholder_image
     type: script
     file: "$SERVICE_PATH/scope/scripts/resolve_placeholder_image"
@@ -104,6 +120,9 @@ steps:
   - name: compose_modules
     type: script
     file: "$SERVICE_PATH/scope/tofu/compose_modules"
+  - name: handover_networking_state
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/handover_networking_state"
   - name: tofu
     type: script
     file: "$SERVICE_PATH/scope/tofu/do_tofu"
@@ -111,8 +130,6 @@ steps:
       - name: LAMBDA_FUNCTION_ARN
         type: environment
       - name: LAMBDA_CURRENT_VERSION
-        type: environment
-      - name: ALB_RULE_ARN
         type: environment
       - name: LAMBDA_ALIAS_ARN
         type: environment
@@ -126,6 +143,90 @@ steps:
   - name: sync_dead_letter_queue
     type: script
     file: "$SERVICE_PATH/scope/scripts/sync_dead_letter_queue"
+  - name: build_networking_context
+    type: script
+    file: "$SERVICE_PATH/scope/tofu/networking/build_context"
+    output:
+      - name: NETWORKING_MODE
+        type: environment
+      - name: TF_WORKING_DIR
+        type: environment
+      - name: TOFU_MODULE_DIR
+        type: environment
+      - name: STATE_KEY
+        type: environment
+      - name: TOFU_INIT_VARIABLES
+        type: environment
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+      - name: LAMBDA_MAIN_ALIAS_NAME
+        type: environment
+  - name: generate_domain
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/generate_domain"
+    output:
+      - name: SCOPE_DOMAIN
+        type: environment
+      - name: DNS_HOSTED_ZONE_ID
+        type: environment
+  - name: select_alb
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/select_alb"
+    output:
+      - name: ALB_LISTENER_ARN
+        type: environment
+      - name: ALB_ARN
+        type: environment
+      - name: ALB_DNS_NAME
+        type: environment
+      - name: ALB_ZONE_ID
+        type: environment
+      - name: ALB_RULE_PRIORITY
+        type: environment
+      - name: ALB_RULE_IS_NEW
+        type: environment
+      - name: ALB_TARGET_GROUP_NAME
+        type: environment
+      - name: ALB_LISTENER_RULE_CAPACITY
+        type: environment
+      - name: ALB_LISTENER_RULE_ALERT_THRESHOLD
+        type: environment
+      - name: ALB_LISTENER_RULE_PRIORITY_START
+        type: environment
+  - name: setup_networking_provider
+    type: script
+    file: "$SERVICE_PATH/scope/tofu/provider/aws/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: TOFU_INIT_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+  - name: setup_networking
+    type: script
+    file: "$SERVICE_PATH/scope/tofu/networking/setup"
+    output:
+      - name: TOFU_VARIABLES
+        type: environment
+      - name: MODULES_TO_USE
+        type: environment
+      - name: API_GATEWAY_CUSTOM_DOMAIN
+        type: environment
+  - name: compose_networking_modules
+    type: script
+    file: "$SERVICE_PATH/scope/tofu/compose_modules"
+  - name: apply_networking
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/apply_networking"
+    output:
+      - name: ALB_RULE_PRIORITY
+        type: environment
+  - name: publish_alb_metrics
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/publish_alb_metrics"
   - name: store_metadata
     type: script
     file: "$SERVICE_PATH/scope/scripts/store_nrn_metadata"

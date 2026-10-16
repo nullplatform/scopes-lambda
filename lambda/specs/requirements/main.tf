@@ -169,6 +169,11 @@ resource "aws_iam_policy" "nullplatform_lambda_networking_policy" {
           "elasticloadbalancing:ModifyRule",
           "elasticloadbalancing:AddTags",
           "elasticloadbalancing:RemoveTags",
+          # ALB autocreate (networking.alb_autocreate_enabled)
+          "elasticloadbalancing:CreateLoadBalancer",
+          "elasticloadbalancing:CreateListener",
+          "elasticloadbalancing:ModifyLoadBalancerAttributes",
+          "elasticloadbalancing:AddListenerCertificates",
         ]
         Resource = "*"
       },
@@ -259,6 +264,7 @@ resource "aws_iam_policy" "nullplatform_lambda_storage_policy" {
           "cloudwatch:GetMetricStatistics",
           "cloudwatch:ListMetrics",
           "cloudwatch:GetMetricData",
+          "cloudwatch:PutMetricData",
         ]
         Resource = "*"
       },

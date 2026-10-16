@@ -1,0 +1,78 @@
+#!/bin/bash
+# ALB listener/rule helpers shared by select_alb, apply_networking and publish_alb_metrics.
+# Every function returns non-zero when AWS cannot be read, so callers never act on a guessed count.
+
+# Load balancer ARN that owns a listener; empty when the listener does not exist.
+alb_listener_lb_arn() {
+  local out err
+  err=$(mktemp)
+  if ! out=$(aws elbv2 describe-listeners --listener-arns "$1" --output json 2>"$err"); then
+    grep -q ListenerNotFound "$err" && { rm -f "$err"; return 0; }
+    rm -f "$err"
+    return 1
+  fi
+  rm -f "$err"
+  echo "$out" | jq -r '.Listeners[0].LoadBalancerArn // empty'
+}
+
+# Non-default rules of a listener as a JSON array.
+alb_listener_rules() {
+  local out
+  out=$(aws elbv2 describe-rules --listener-arn "$1" --output json 2>/dev/null) || return 1
+  echo "$out" | jq -c '[.Rules[]? | select(.IsDefault | not)]'
+}
+
+# Non-default rules across every listener of a load balancer: what the AWS per-ALB quota counts.
+alb_rule_count() {
+  local out listener rules count=0
+  out=$(aws elbv2 describe-listeners --load-balancer-arn "$1" --output json 2>/dev/null) || return 1
+  for listener in $(echo "$out" | jq -r '.Listeners[]?.ListenerArn'); do
+    rules=$(alb_listener_rules "$listener") || return 1
+    count=$((count + $(echo "$rules" | jq 'length')))
+  done
+  echo "$count"
+}
+
+# The listener rule routing exactly this host header, as JSON; empty when there is none.
+alb_scope_rule() {
+  local rules
+  rules=$(alb_listener_rules "$1") || return 1
+  echo "$rules" | jq -c --arg host "$2" '
+    [.[] | select(any(.Conditions[]?;
+      .Field == "host-header" and any((.HostHeaderConfig.Values // .Values // [])[]; . == $host)))
+    ][0] // empty'
+}
+
+# Priority of the host's rule; empty when there is none.
+alb_scope_rule_priority() {
+  local rule
+  rule=$(alb_scope_rule "$1" "$2") || return 1
+  [ -n "$rule" ] && echo "$rule" | jq -r '.Priority'
+  return 0
+}
+
+# Name of the target group the host's rule forwards to; empty when there is none.
+alb_scope_rule_target_group() {
+  local rule
+  rule=$(alb_scope_rule "$1" "$2") || return 1
+  [ -n "$rule" ] && echo "$rule" | jq -r \
+    '[.Actions[]? | .TargetGroupArn // .ForwardConfig.TargetGroups[0].TargetGroupArn // empty][0] // empty | split("/")[1]'
+  return 0
+}
+
+# Lowest priority at or above $2 not taken on the listener.
+alb_free_priority() {
+  local rules priority="$2"
+  rules=$(alb_listener_rules "$1") || return 1
+  while echo "$rules" | jq -e --arg p "$priority" 'any(.[]; .Priority == $p)' >/dev/null; do
+    priority=$((priority + 1))
+  done
+  echo "$priority"
+}
+
+# "<dns_name> <canonical_zone_id>" of a load balancer.
+alb_dns_target() {
+  local out
+  out=$(aws elbv2 describe-load-balancers --load-balancer-arns "$1" --output json 2>/dev/null) || return 1
+  echo "$out" | jq -r '.LoadBalancers[0] | "\(.DNSName) \(.CanonicalHostedZoneId)"'
+}

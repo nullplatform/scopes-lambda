@@ -1,3 +1,9 @@
+# The function lives in the scope's main state; networking has its own, so it reads the alias.
+data "aws_lambda_alias" "main" {
+  function_name = var.alb_lambda_function_name
+  name          = var.alb_lambda_alias_name
+}
+
 # Lambda target group
 resource "aws_lb_target_group" "lambda" {
   name        = var.alb_target_group_name
@@ -22,7 +28,7 @@ resource "aws_lb_target_group" "lambda" {
 # Attach Lambda to target group
 resource "aws_lb_target_group_attachment" "lambda" {
   target_group_arn = aws_lb_target_group.lambda.arn
-  target_id        = local.lambda_alias_arn
+  target_id        = data.aws_lambda_alias.main.arn
 
   depends_on = [aws_lambda_permission.alb]
 }
@@ -50,8 +56,8 @@ resource "aws_lb_listener_rule" "lambda" {
 resource "aws_lambda_permission" "alb" {
   statement_id  = "AllowALBInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = local.lambda_function_name
-  qualifier     = local.lambda_main_alias_name
+  function_name = var.alb_lambda_function_name
+  qualifier     = var.alb_lambda_alias_name
   principal     = "elasticloadbalancing.amazonaws.com"
   source_arn    = aws_lb_target_group.lambda.arn
 }
