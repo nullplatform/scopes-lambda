@@ -796,7 +796,7 @@ The `scope-configurations` provider overrides the agent values above per NRN (fu
 }
 ```
 
-Alarm on `RuleCount` ≥ 75 per `ALBName` with `treat-missing-data = ignore`: the metric is only published when a scope workflow runs. Autocreated ALBs (tag `nullplatform:lambda-autocreated`) are never deleted by the workflow.
+Alarm on `RuleCount` ≥ 75 per `ALBName` with `treat-missing-data = ignore`: the metric is only published when a scope workflow runs. Autocreated ALBs (tags `nullplatform:lambda-autocreated` and `-from`) are never deleted by the workflow.
 
 ### Troubleshooting
 

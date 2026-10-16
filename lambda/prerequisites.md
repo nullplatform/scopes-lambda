@@ -382,14 +382,15 @@ scope. They are only published on those runs, so alarms need
 
 With `networking.alb_autocreate_enabled`, a create that finds every ALB
 full clones the first configured one instead of failing: scheme, subnets,
-security groups, tags, attributes, certificates, and listeners whose default
-action is a redirect or fixed response (a forward default becomes a 404).
-It is named `<alb_autocreate_name_prefix><visibility>-<n>`, tagged
-`nullplatform:lambda-autocreated`, appended to
+security groups, tags, attributes, certificates, mTLS, and listeners whose
+default action is a redirect or fixed response (a forward default becomes
+a 404). It is named `<alb_autocreate_name_prefix><visibility>-<n>`, tagged
+`nullplatform:lambda-autocreated=<visibility>` and
+`nullplatform:lambda-autocreated-from=<template ALB>`, appended to
 `networking.alb_<visibility>_listener_arns`, and never deleted by the
 workflow. The agent's API key needs write access on the
 `scope-configurations` provider; without it the ALB is still used, and
-picked up again by name on the next create.
+picked up again by name and tags on the next create, keeping its listeners.
 
 Without listeners for a visibility, its scopes get no HTTP exposure.
 
