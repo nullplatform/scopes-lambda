@@ -92,6 +92,15 @@ aws_calls_with() {
   assert_line "RESULT alb=$NEW_LB dns=dns-np-lambda-private-3.elb.amazonaws.com"
 }
 
+@test "autocreate_alb: copies the template ALB tags, except the reserved aws: ones" {
+  mock_alb_tags "$LB_A" '[{"Key":"Purpose","Value":"lambda-public-alb"},{"Key":"aws:cloudformation:stack-name","Value":"x"},{"Key":"nullplatform:lambda-autocreated","Value":"public"}]'
+
+  run run_select_alb
+
+  assert_success
+  assert_aws_call_contains '"Tags":[{"Key":"Purpose","Value":"lambda-public-alb"},{"Key":"nullplatform:lambda-autocreated","Value":"private"}]'
+}
+
 @test "autocreate_alb: registers the new listener in the provider that holds the pool" {
   pool_provider
 

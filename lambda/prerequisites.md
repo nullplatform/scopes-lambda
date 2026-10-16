@@ -382,7 +382,7 @@ scope. They are only published on those runs, so alarms need
 
 With `networking.alb_autocreate_enabled`, a create that finds every ALB
 full clones the first configured one instead of failing: scheme, subnets,
-security groups, attributes, certificates, and listeners whose default
+security groups, tags, attributes, certificates, and listeners whose default
 action is a redirect or fixed response (a forward default becomes a 404).
 It is named `<alb_autocreate_name_prefix><visibility>-<n>`, tagged
 `nullplatform:lambda-autocreated`, appended to

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Clone a pool ALB when every ALB of the pool is at the alert threshold (sourced by select_alb).
-# The new ALB copies the template's scheme, subnets, security groups, attributes and listeners,
+# The new ALB copies the template's scheme, subnets, security groups, tags, attributes and listeners,
 # and is appended to networking.alb_<visibility>_listener_arns in scope-configurations.
 # Its name derives from the pool size, so concurrent creates converge on one ALB:
 # CreateLoadBalancer and CreateListener return the existing resource for identical settings.
@@ -67,7 +67,7 @@ register_autocreated_listener() {
 
 # autocreate_alb <template_listener> <pool, comma-separated>: sets AUTOCREATED_LISTENER_ARN.
 autocreate_alb() {
-  local template_listener="$1" pool="$2" pool_size prefix template_lb lb_json name n new_lb="" found attrs
+  local template_listener="$1" pool="$2" pool_size prefix template_lb lb_json name n new_lb="" found attrs tags
   local listeners listener port is_template input out new_listener certs
 
   prefix=$(get_config_value \
@@ -99,10 +99,15 @@ autocreate_alb() {
     log info "   ♻️  Reusing autocreated ALB $name"
   else
     log info "   🏗️  Every $VISIBILITY ALB is full - creating $name from $(echo "$template_lb" | cut -d/ -f3)"
-    input=$(echo "$lb_json" | jq -c --arg n "$name" --arg k "$ALB_AUTOCREATE_TAG" --arg v "$VISIBILITY" '{
+    # aws: keys are reserved and cannot be set.
+    tags=$(aws elbv2 describe-tags --resource-arns "$template_lb" --output json 2>/dev/null \
+      | jq -c --arg k "$ALB_AUTOCREATE_TAG" '[.TagDescriptions[0].Tags[]? | select((.Key | startswith("aws:")) or .Key == $k | not)]') \
+      || tags=""
+    [ -n "$tags" ] || { log warn "   ⚠️  Could not read the tags of the template ALB"; tags="[]"; }
+    input=$(echo "$lb_json" | jq -c --arg n "$name" --arg k "$ALB_AUTOCREATE_TAG" --arg v "$VISIBILITY" --argjson t "$tags" '{
       Name: $n, Type: "application", Scheme, IpAddressType,
       Subnets: [.AvailabilityZones[].SubnetId], SecurityGroups: (.SecurityGroups // []),
-      Tags: [{Key: $k, Value: $v}]}')
+      Tags: ($t + [{Key: $k, Value: $v}])}')
     out=$(aws elbv2 create-load-balancer --cli-input-json "$input" --output json 2>&1) || fail_autocreate "$out"
     new_lb=$(echo "$out" | jq -r '.LoadBalancers[0].LoadBalancerArn')
 

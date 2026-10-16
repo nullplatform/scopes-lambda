@@ -156,6 +156,11 @@ mock_existing_alb_name() {
   return 0
 }
 
+# mock_alb_tags <lb_arn> '<tags json array>'
+mock_alb_tags() {
+  jq -nc --argjson t "$2" '{TagDescriptions: [{Tags: $t}]}' > "$ALB_MOCK_DIR/tags_$(_alb_key "$1")"
+}
+
 # mock_listener_certificates <listener_arn> <cert_arn>...: extra (non-default) certificates.
 mock_listener_certificates() {
   local listener="$1"; shift
