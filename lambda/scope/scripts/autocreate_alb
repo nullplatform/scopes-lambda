@@ -6,6 +6,7 @@
 # CreateLoadBalancer and CreateListener return the existing resource for identical settings.
 
 ALB_AUTOCREATE_TAG="nullplatform:lambda-autocreated"
+ALB_AUTOCREATE_FROM_TAG="nullplatform:lambda-autocreated-from"
 
 fail_autocreate() {
   echo "❌ Failed to autocreate a $VISIBILITY ALB: $1" >&2
@@ -20,18 +21,26 @@ fail_autocreate() {
   exit 1
 }
 
-# Prints the ARN of an ALB we autocreated under that name with room left, "taken" when the
-# name belongs to another or a full ALB, and nothing when the name is free.
+# Prints the ARN of an ALB we autocreated under that name from the same template with room
+# left, "taken" when the name belongs to another pool or a full ALB, and nothing when it is free.
+# The template check keeps pools of other scope-configurations off each other's ALBs.
 autocreated_alb_with_room() {
-  local name="$1" out arn tag count
-  if ! out=$(aws elbv2 describe-load-balancers --names "$name" --output json 2>&1); then
-    [[ "$out" == *LoadBalancerNotFound* ]] && return 0
+  local name="$1" template_name="$2" out err arn tags count
+  err=$(mktemp)
+  if ! out=$(aws elbv2 describe-load-balancers --names "$name" --output json 2>"$err"); then
+    grep -q LoadBalancerNotFound "$err" && { rm -f "$err"; return 0; }
+    rm -f "$err"
     return 1
   fi
+  rm -f "$err"
   arn=$(echo "$out" | jq -r '.LoadBalancers[0].LoadBalancerArn')
-  tag=$(aws elbv2 describe-tags --resource-arns "$arn" --output json 2>/dev/null \
-    | jq -r --arg k "$ALB_AUTOCREATE_TAG" '.TagDescriptions[0].Tags[]? | select(.Key == $k) | .Value') || return 1
-  [ "$tag" = "$VISIBILITY" ] || { echo "taken"; return 0; }
+  tags=$(aws elbv2 describe-tags --resource-arns "$arn" --output json 2>/dev/null) || return 1
+  if ! echo "$tags" | jq -e --arg k "$ALB_AUTOCREATE_TAG" --arg f "$ALB_AUTOCREATE_FROM_TAG" \
+    --arg v "$VISIBILITY" --arg t "$template_name" \
+    '.TagDescriptions[0].Tags | from_entries | .[$k] == $v and .[$f] == $t' >/dev/null 2>&1; then
+    echo "taken"
+    return 0
+  fi
   count=$(alb_rule_count "$arn") || return 1
   if [ "$count" -lt "$ALB_LISTENER_RULE_ALERT_THRESHOLD" ]; then echo "$arn"; else echo "taken"; fi
 }
@@ -67,8 +76,8 @@ register_autocreated_listener() {
 
 # autocreate_alb <template_listener> <pool, comma-separated>: sets AUTOCREATED_LISTENER_ARN.
 autocreate_alb() {
-  local template_listener="$1" pool="$2" pool_size prefix template_lb lb_json name n new_lb="" found attrs tags
-  local listeners listener port is_template input out new_listener certs
+  local template_listener="$1" pool="$2" pool_size prefix template_lb template_name lb_json name n new_lb="" found attrs tags
+  local listeners existing listener port is_template input out new_listener certs
 
   prefix=$(get_config_value \
     --provider '.providers["scope-configurations"].networking.alb_autocreate_name_prefix' \
@@ -85,10 +94,11 @@ autocreate_alb() {
   lb_json=$(aws elbv2 describe-load-balancers --load-balancer-arns "$template_lb" --output json 2>/dev/null) \
     || fail_aws_read "$template_lb"
   lb_json=$(echo "$lb_json" | jq -c '.LoadBalancers[0]')
+  template_name=$(echo "$template_lb" | cut -d/ -f3)
 
   for n in $(seq $((pool_size + 1)) $((pool_size + 10))); do
     name="${prefix}${VISIBILITY}-${n}"
-    found=$(autocreated_alb_with_room "$name") || fail_aws_read "$name"
+    found=$(autocreated_alb_with_room "$name" "$template_name") || fail_aws_read "$name"
     [ "$found" = "taken" ] && continue
     new_lb="$found"
     break
@@ -98,16 +108,19 @@ autocreate_alb() {
   if [ -n "$new_lb" ]; then
     log info "   ♻️  Reusing autocreated ALB $name"
   else
-    log info "   🏗️  Every $VISIBILITY ALB is full - creating $name from $(echo "$template_lb" | cut -d/ -f3)"
+    log info "   🏗️  Every $VISIBILITY ALB is full - creating $name from $template_name"
     # aws: keys are reserved and cannot be set.
-    tags=$(aws elbv2 describe-tags --resource-arns "$template_lb" --output json 2>/dev/null \
-      | jq -c --arg k "$ALB_AUTOCREATE_TAG" '[.TagDescriptions[0].Tags[]? | select((.Key | startswith("aws:")) or .Key == $k | not)]') \
-      || tags=""
-    [ -n "$tags" ] || { log warn "   ⚠️  Could not read the tags of the template ALB"; tags="[]"; }
-    input=$(echo "$lb_json" | jq -c --arg n "$name" --arg k "$ALB_AUTOCREATE_TAG" --arg v "$VISIBILITY" --argjson t "$tags" '{
+    if tags=$(aws elbv2 describe-tags --resource-arns "$template_lb" --output json 2>/dev/null); then
+      tags=$(echo "$tags" | jq -c '[.TagDescriptions[0].Tags[]? | select((.Key | startswith("aws:") or startswith("nullplatform:lambda-autocreated")) | not)]')
+    else
+      log warn "   ⚠️  Could not read the tags of the template ALB"
+      tags="[]"
+    fi
+    input=$(echo "$lb_json" | jq -c --arg n "$name" --arg k "$ALB_AUTOCREATE_TAG" --arg v "$VISIBILITY" \
+      --arg f "$ALB_AUTOCREATE_FROM_TAG" --arg t "$template_name" --argjson tags "$tags" '{
       Name: $n, Type: "application", Scheme, IpAddressType,
       Subnets: [.AvailabilityZones[].SubnetId], SecurityGroups: (.SecurityGroups // []),
-      Tags: ($t + [{Key: $k, Value: $v}])}')
+      Tags: ($tags + [{Key: $k, Value: $v}, {Key: $f, Value: $t}])}')
     out=$(aws elbv2 create-load-balancer --cli-input-json "$input" --output json 2>&1) || fail_autocreate "$out"
     new_lb=$(echo "$out" | jq -r '.LoadBalancers[0].LoadBalancerArn')
 
@@ -121,6 +134,9 @@ autocreate_alb() {
 
   listeners=$(aws elbv2 describe-listeners --load-balancer-arn "$template_lb" --output json 2>/dev/null) \
     || fail_aws_read "$template_lb"
+  # A reused ALB keeps the listeners it has: the template may have drifted since (certificate, policy).
+  existing=$(aws elbv2 describe-listeners --load-balancer-arn "$new_lb" --output json 2>/dev/null) \
+    || fail_aws_read "$new_lb"
   AUTOCREATED_LISTENER_ARN=""
   while IFS= read -r listener; do
     port=$(echo "$listener" | jq -r '.Port')
@@ -132,11 +148,18 @@ autocreate_alb() {
       log warn "   ⚠️  Skipping listener :$port - its default action cannot be cloned"
       continue
     fi
+    new_listener=$(echo "$existing" | jq -r --argjson p "$port" '[.Listeners[]? | select(.Port == $p)][0].ListenerArn // empty')
+    if [ -n "$new_listener" ]; then
+      [ "$is_template" = "true" ] && AUTOCREATED_LISTENER_ARN="$new_listener"
+      continue
+    fi
     input=$(echo "$listener" | jq -c --arg lb "$new_lb" '
       {LoadBalancerArn: $lb, Protocol, Port}
       + (if .SslPolicy then {SslPolicy} else {} end)
       + (if .Certificates then {Certificates: [.Certificates[0] | {CertificateArn}]} else {} end)
       + (if (.AlpnPolicy // []) != [] then {AlpnPolicy} else {} end)
+      + (if (.MutualAuthentication.Mode // "off") != "off"
+          then {MutualAuthentication: (.MutualAuthentication | with_entries(select(.value != null)))} else {} end)
       + {DefaultActions: (if all(.DefaultActions[]; .Type == "redirect" or .Type == "fixed-response")
           then [.DefaultActions[] | {Type, Order, RedirectConfig, FixedResponseConfig} | with_entries(select(.value != null))]
           else [{Type: "fixed-response", FixedResponseConfig: {StatusCode: "404", ContentType: "text/plain"}}] end)}')

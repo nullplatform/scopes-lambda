@@ -24,6 +24,12 @@ if [ "$ALB_METRICS_PUBLISH_ENABLED" != "true" ]; then
   return 0
 fi
 
+case "$ALB_METRICS_PUBLISH_TARGET" in
+  cloudwatch) publisher=publish_cloudwatch ;;
+  datadog) publisher=publish_datadog ;;
+  *) log warn "   ⚠️  Unknown ALB metrics target '$ALB_METRICS_PUBLISH_TARGET'"; return 0 ;;
+esac
+
 stored=$(np nrn read --nrn "$SCOPE_NRN" --ids "lambda.alb_arn" --format json 2>/dev/null) || stored=""
 stored_alb=$(echo "$stored" | jq -r '.namespaces.lambda.alb_arn // empty' 2>/dev/null)
 
@@ -51,7 +57,7 @@ publish_datadog() {
   body=$(jq -nc --arg alb "$1" --argjson r "$2" --arg tg "$3" --arg region "${AWS_REGION:-}" --argjson ts "$(date +%s)" '
     [{metric: "rule_count", value: $r}]
     + (if $tg == "" then [] else [{metric: "target_group_count", value: ($tg | tonumber)}] end)
-    | {series: map({metric: "nullplatform.applicationelb.\(.metric)", type: 1,
+    | {series: map({metric: "nullplatform.applicationelb.\(.metric)", type: 3,
         points: [{timestamp: $ts, value: .value}], tags: ["alb_name:\($alb)", "region:\($region)"]})}')
   status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.${DATADOG_SITE:-datadoghq.com}/api/v2/series" \
     -H "DD-API-KEY: $DATADOG_API_KEY" -H "Content-Type: application/json" -d "$body" 2>/dev/null)
@@ -69,12 +75,6 @@ for alb_arn in "${targets[@]}"; do
   fi
   target_groups=$(aws elbv2 describe-target-groups --load-balancer-arn "$alb_arn" --output json 2>/dev/null \
     | jq -r '.TargetGroups | length' 2>/dev/null) || target_groups=""
-
-  case "$ALB_METRICS_PUBLISH_TARGET" in
-    cloudwatch) publisher=publish_cloudwatch ;;
-    datadog) publisher=publish_datadog ;;
-    *) log warn "   ⚠️  Unknown ALB metrics target '$ALB_METRICS_PUBLISH_TARGET'"; return 0 ;;
-  esac
 
   if "$publisher" "$alb_name" "$rules" "$target_groups"; then
     log info "   ✅ $alb_name rules=$rules target_groups=${target_groups:-?}"

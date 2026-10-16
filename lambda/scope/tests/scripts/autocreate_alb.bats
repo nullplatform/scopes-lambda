@@ -85,7 +85,7 @@ aws_calls_with() {
 
   assert_success
   assert_output_contains "Every private ALB is full - creating np-lambda-private-3 from alb-a"
-  assert_aws_call_contains '"Name":"np-lambda-private-3","Type":"application","Scheme":"internal","IpAddressType":"ipv4","Subnets":["subnet-1","subnet-2"],"SecurityGroups":["sg-1"],"Tags":[{"Key":"nullplatform:lambda-autocreated","Value":"private"}]'
+  assert_aws_call_contains '"Name":"np-lambda-private-3","Type":"application","Scheme":"internal","IpAddressType":"ipv4","Subnets":["subnet-1","subnet-2"],"SecurityGroups":["sg-1"],"Tags":[{"Key":"nullplatform:lambda-autocreated","Value":"private"},{"Key":"nullplatform:lambda-autocreated-from","Value":"alb-a"}]'
   assert_aws_call_contains "modify-load-balancer-attributes --load-balancer-arn $NEW_LB"
   assert_aws_call_contains '"Protocol":"HTTPS","Port":443,"SslPolicy":"ELBSecurityPolicy-2016-08","Certificates":[{"CertificateArn":"arn:aws:acm:us-east-1:111122223333:certificate/wild"}]'
   assert_line "RESULT listener=$NEW_LISTENER priority=100 new=true"
@@ -98,7 +98,7 @@ aws_calls_with() {
   run run_select_alb
 
   assert_success
-  assert_aws_call_contains '"Tags":[{"Key":"Purpose","Value":"lambda-public-alb"},{"Key":"nullplatform:lambda-autocreated","Value":"private"}]'
+  assert_aws_call_contains '"Tags":[{"Key":"Purpose","Value":"lambda-public-alb"},{"Key":"nullplatform:lambda-autocreated","Value":"private"},{"Key":"nullplatform:lambda-autocreated-from","Value":"alb-a"}]'
 }
 
 @test "autocreate_alb: registers the new listener in the provider that holds the pool" {
@@ -146,8 +146,8 @@ aws_calls_with() {
   [ -z "$(aws_calls_with create-load-balancer)" ]
 }
 
-@test "autocreate_alb: reuses an ALB it created that is not registered yet" {
-  mock_existing_alb_name "np-lambda-private-3" "$NEW_LB" "private"
+@test "autocreate_alb: reuses an ALB it created that is not registered yet, keeping its listeners" {
+  mock_existing_alb_name "np-lambda-private-3" "$NEW_LB" "private" "alb-a"
   mock_alb "$NEW_LB" "$NEW_LISTENER" 5
 
   run run_select_alb
@@ -155,7 +155,39 @@ aws_calls_with() {
   assert_success
   assert_output_contains "Reusing autocreated ALB np-lambda-private-3"
   [ -z "$(aws_calls_with create-load-balancer)" ]
+  [ -z "$(aws_calls_with create-listener)" ]
   assert_line "RESULT listener=$NEW_LISTENER priority=100 new=true"
+}
+
+@test "autocreate_alb: does not reuse an ALB autocreated from another pool's template" {
+  mock_existing_alb_name "np-lambda-private-3" "$NEW_LB" "private" "other-pool-alb"
+  mock_alb "$NEW_LB" "$NEW_LISTENER" 5
+
+  run run_select_alb
+
+  assert_success
+  assert_aws_call_contains '"Name":"np-lambda-private-4"'
+}
+
+@test "autocreate_alb: a failed tag read stops instead of skipping the name" {
+  mock_existing_alb_name "np-lambda-private-3" "$NEW_LB" "private" "alb-a"
+  mock_describe_tags_failure
+
+  run run_select_alb
+
+  assert_failure
+  assert_output_contains "Failed to read ALB listener rules for np-lambda-private-3"
+  [ -z "$(aws_calls_with create-load-balancer)" ]
+}
+
+@test "autocreate_alb: copies mutual TLS from the template listener" {
+  ALB_MOCK_LISTENER_DEFAULTS='{"Port":443,"Protocol":"HTTPS","Certificates":[{"CertificateArn":"arn:cert"}],"MutualAuthentication":{"Mode":"verify","TrustStoreArn":"arn:ts","IgnoreClientCertificateExpiry":false},"DefaultActions":[{"Type":"fixed-response","FixedResponseConfig":{"StatusCode":"404"}}]}' \
+    mock_alb "$LB_A" "$LISTENER_A" 80
+
+  run run_select_alb
+
+  assert_success
+  assert_aws_call_contains '"MutualAuthentication":{"Mode":"verify","TrustStoreArn":"arn:ts","IgnoreClientCertificateExpiry":false}'
 }
 
 @test "autocreate_alb: skips names taken by other or full ALBs" {

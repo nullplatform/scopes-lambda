@@ -4,11 +4,14 @@
 
 # Load balancer ARN that owns a listener; empty when the listener does not exist.
 alb_listener_lb_arn() {
-  local out
-  if ! out=$(aws elbv2 describe-listeners --listener-arns "$1" --output json 2>&1); then
-    [[ "$out" == *ListenerNotFound* ]] && return 0
+  local out err
+  err=$(mktemp)
+  if ! out=$(aws elbv2 describe-listeners --listener-arns "$1" --output json 2>"$err"); then
+    grep -q ListenerNotFound "$err" && { rm -f "$err"; return 0; }
+    rm -f "$err"
     return 1
   fi
+  rm -f "$err"
   echo "$out" | jq -r '.Listeners[0].LoadBalancerArn // empty'
 }
 

@@ -60,6 +60,7 @@ case "$1 $2" in
     serve "$MOCK_DIR/alb/lb_$(key "$(arg_after --load-balancer-arns "$@")")"
     ;;
   "elbv2 describe-tags")
+    [ -f "$MOCK_DIR/alb/describe_tags_fails" ] && { echo "Throttling" >&2; exit 254; }
     f="$MOCK_DIR/alb/tags_$(key "$(arg_after --resource-arns "$@")")"
     if [ -f "$f" ]; then cat "$f"; else echo '{"TagDescriptions":[{"Tags":[]}]}'; fi
     ;;
@@ -148,12 +149,18 @@ mock_create_lb_failure() {
   touch "$ALB_MOCK_DIR/create_lb_fails"
 }
 
-# mock_existing_alb_name <name> <lb_arn> [autocreate tag value]: a load balancer already using that name.
+# mock_existing_alb_name <name> <lb_arn> [visibility] [template name]: a load balancer already using
+# that name, tagged as autocreated when a visibility is given.
 mock_existing_alb_name() {
   jq -nc --arg lb "$2" '{LoadBalancers: [{LoadBalancerArn: $lb}]}' > "$ALB_MOCK_DIR/lb_name_$(_alb_key "$1")"
-  [ -n "${3:-}" ] && jq -nc --arg v "$3" '{TagDescriptions: [{Tags: [{Key: "nullplatform:lambda-autocreated", Value: $v}]}]}' \
+  [ -n "${3:-}" ] && jq -nc --arg v "$3" --arg t "${4:-}" '{TagDescriptions: [{Tags: [
+      {Key: "nullplatform:lambda-autocreated", Value: $v}, {Key: "nullplatform:lambda-autocreated-from", Value: $t}]}]}' \
     > "$ALB_MOCK_DIR/tags_$(_alb_key "$2")"
   return 0
+}
+
+mock_describe_tags_failure() {
+  touch "$ALB_MOCK_DIR/describe_tags_fails"
 }
 
 # mock_alb_tags <lb_arn> '<tags json array>'

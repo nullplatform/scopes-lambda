@@ -84,9 +84,6 @@ steps:
     output:
       - name: ALB_RULE_PRIORITY
         type: environment
-  - name: publish_alb_metrics
-    type: script
-    file: "$SERVICE_PATH/scope/scripts/publish_alb_metrics"
   - name: build_destroy_context
     type: script
     file: "$SERVICE_PATH/scope/scripts/build_destroy_context"
@@ -149,3 +146,6 @@ steps:
   - name: delete_sm_secrets
     type: script
     file: "$SERVICE_PATH/scope/scripts/delete_sm_secret"
+  - name: publish_alb_metrics
+    type: script
+    file: "$SERVICE_PATH/scope/scripts/publish_alb_metrics"

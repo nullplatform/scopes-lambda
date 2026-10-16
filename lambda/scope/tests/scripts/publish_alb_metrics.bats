@@ -117,7 +117,7 @@ MOCK_SCRIPT
   assert_success
   [ -z "$(metric_calls)" ]
   grep -qF 'https://api.datadoghq.com/api/v2/series' "$MOCK_BIN_DIR/curl_calls"
-  grep -qF '"metric":"nullplatform.applicationelb.rule_count","type":1,"points":[{"timestamp":' "$MOCK_BIN_DIR/curl_calls"
+  grep -qF '"metric":"nullplatform.applicationelb.rule_count","type":3,"points":[{"timestamp":' "$MOCK_BIN_DIR/curl_calls"
   grep -qF '"tags":["alb_name:alb-a","region:us-east-1"]' "$MOCK_BIN_DIR/curl_calls"
   assert_output_contains "alb-a rules=42 target_groups=42"
 }
@@ -131,6 +131,17 @@ MOCK_SCRIPT
 
   assert_success
   assert_output_contains "Failed to publish ALB metrics for alb-a to datadog"
+}
+
+@test "publish_alb_metrics: an unknown target reads nothing from AWS" {
+  export ALB_ARN="$LB_A"
+  export ALB_METRICS_PUBLISH_TARGET="cloudwach"
+
+  run run_publish
+
+  assert_success
+  assert_output_contains "Unknown ALB metrics target 'cloudwach'"
+  [ ! -s "$MOCK_BIN_DIR/aws_calls" ]
 }
 
 @test "publish_alb_metrics: a CloudWatch failure does not fail the workflow" {
