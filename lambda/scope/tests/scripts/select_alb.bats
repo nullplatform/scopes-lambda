@@ -88,8 +88,13 @@ stored_assignment() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Every private ALB has 75 or more listener rules"
-  assert_output_contains "Add another ALB listener to networking.alb_private_listener_arns (scope-configurations)"
+  assert_line '❌ Every private ALB has 75 or more listener rules'
+  assert_line '💡 Possible causes:'
+  assert_line '   AWS caps an ALB at 100 rules; new scopes stop at the alert threshold to keep headroom'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Add another ALB listener to networking.alb_private_listener_arns (scope-configurations)'
+  assert_line '   • Or let the agent clone one: networking.alb_autocreate_enabled = true'
+  assert_line '   • Remove unused scopes to free listener rules'
 }
 
 @test "select_alb: the provider threshold wins over the environment" {
@@ -101,7 +106,13 @@ stored_assignment() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Every private ALB has 50 or more listener rules"
+  assert_line '❌ Every private ALB has 50 or more listener rules'
+  assert_line '💡 Possible causes:'
+  assert_line '   AWS caps an ALB at 100 rules; new scopes stop at the alert threshold to keep headroom'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Add another ALB listener to networking.alb_private_listener_arns (scope-configurations)'
+  assert_line '   • Or let the agent clone one: networking.alb_autocreate_enabled = true'
+  assert_line '   • Remove unused scopes to free listener rules'
 }
 
 @test "select_alb: keeps the scope on its stored listener even past the threshold" {
@@ -216,7 +227,9 @@ stored_assignment() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Invalid ALB rule thresholds: alert=98 capacity=98"
+  assert_line '❌ Invalid ALB rule thresholds: alert=98 capacity=98'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Use integers with ALB_LISTENER_RULE_ALERT_THRESHOLD < ALB_LISTENER_RULE_CAPACITY <= 100'
 }
 
 @test "select_alb: rejects a capacity above the AWS cap" {
@@ -225,7 +238,9 @@ stored_assignment() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Invalid ALB rule thresholds"
+  assert_line '❌ Invalid ALB rule thresholds: alert=75 capacity=120'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Use integers with ALB_LISTENER_RULE_ALERT_THRESHOLD < ALB_LISTENER_RULE_CAPACITY <= 100'
 }
 
 @test "select_alb: fails when no listener is configured for the visibility" {
@@ -234,7 +249,9 @@ stored_assignment() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "No ALB listener configured for public scopes"
+  assert_line '❌ No ALB listener configured for public scopes'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Set networking.alb_public_listener_arns in the scope-configurations provider'
 }
 
 @test "select_alb: fails instead of guessing when rules cannot be read" {
@@ -244,7 +261,12 @@ stored_assignment() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Failed to read ALB listener rules for $LISTENER_A"
+  assert_line "❌ Failed to read ALB listener rules for $LISTENER_A"
+  assert_line '💡 Possible causes:'
+  assert_line '   - The agent role lacks elasticloadbalancing:Describe*'
+  assert_line '   - The listener ARN belongs to another account or region'
+  assert_line '🔧 How to fix:'
+  assert_line "   • Verify the listener with: aws elbv2 describe-listeners --listener-arns $LISTENER_A"
 }
 
 @test "select_alb: does nothing outside ALB mode" {

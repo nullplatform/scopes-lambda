@@ -74,7 +74,10 @@ run_assume_role_step() {
   run run_build_context
 
   assert_failure
-  assert_output_contains "Invalid networking for visibility 'partner'"
+  assert_line "❌ Invalid networking for visibility 'partner' (public exposure 'invalid')"
+  assert_line '🔧 How to fix:'
+  assert_line "   • Use visibility 'public' or 'private'"
+  assert_line "   • Set networking.public_exposure (scope-configurations) or LAMBDA_PUBLIC_EXPOSURE to 'alb' or 'api_gateway'"
 }
 
 @test "build_context: internal visibility is treated as private" {
@@ -100,8 +103,12 @@ run_assume_role_step() {
   run run_build_context
 
   assert_failure
-  assert_output_contains "The networking override at $BATS_TEST_TMPDIR/networking/lambda is no longer supported"
-  assert_output_contains "Disable overrides on the agent (overrides_enabled = false)"
+  assert_line "❌ The networking override at $BATS_TEST_TMPDIR/networking/lambda is no longer supported"
+  assert_line '💡 Possible causes:'
+  assert_line '   The agent still runs the scopes-networking Lambda override, which networking now replaces'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Disable overrides on the agent (overrides_enabled = false) and re-run the action'
+  assert_line '   • Existing scopes keep their ALB rule: the next create or update adopts it'
 }
 
 @test "build_context: the scopes-networking override does not block a destroy" {
@@ -137,6 +144,9 @@ run_assume_role_step() {
 
   assert_failure
   assert_line "❌ Invalid networking for visibility 'public' (public exposure 'cloudfront')"
+  assert_line '🔧 How to fix:'
+  assert_line "   • Use visibility 'public' or 'private'"
+  assert_line "   • Set networking.public_exposure (scope-configurations) or LAMBDA_PUBLIC_EXPOSURE to 'alb' or 'api_gateway'"
   assert_output_not_contains "Scope context built successfully"
 }
 

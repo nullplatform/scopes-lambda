@@ -108,5 +108,9 @@ legacy_state() {
   run run_handover
 
   assert_failure
-  assert_output_contains "The main stack would destroy them on its next apply"
+  assert_line '❌ Failed to remove networking resources from lambda/223816164/terraform.tfstate'
+  assert_line '💡 Possible causes:'
+  assert_line '   The main stack would destroy them on its next apply, so the workflow stops here'
+  assert_line '🔧 How to fix:'
+  assert_line "   • Check the agent's s3:PutObject access to the state bucket and re-run"
 }

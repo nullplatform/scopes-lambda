@@ -63,8 +63,13 @@ aws_calls_with() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Every private ALB has 75 or more listener rules"
-  assert_output_contains "networking.alb_autocreate_enabled = true"
+  assert_line '❌ Every private ALB has 75 or more listener rules'
+  assert_line '💡 Possible causes:'
+  assert_line '   AWS caps an ALB at 100 rules; new scopes stop at the alert threshold to keep headroom'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Add another ALB listener to networking.alb_private_listener_arns (scope-configurations)'
+  assert_line '   • Or let the agent clone one: networking.alb_autocreate_enabled = true'
+  assert_line '   • Remove unused scopes to free listener rules'
   [ -z "$(aws_calls_with create-load-balancer)" ]
 }
 
@@ -143,6 +148,13 @@ aws_calls_with() {
   run run_select_alb
 
   assert_failure
+  assert_line '❌ Every private ALB has 75 or more listener rules'
+  assert_line '💡 Possible causes:'
+  assert_line '   AWS caps an ALB at 100 rules; new scopes stop at the alert threshold to keep headroom'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Add another ALB listener to networking.alb_private_listener_arns (scope-configurations)'
+  assert_line '   • Or let the agent clone one: networking.alb_autocreate_enabled = true'
+  assert_line '   • Remove unused scopes to free listener rules'
   [ -z "$(aws_calls_with create-load-balancer)" ]
 }
 
@@ -176,7 +188,12 @@ aws_calls_with() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Failed to read ALB listener rules for np-lambda-private-3"
+  assert_line '❌ Failed to read ALB listener rules for np-lambda-private-3'
+  assert_line '💡 Possible causes:'
+  assert_line '   - The agent role lacks elasticloadbalancing:Describe*'
+  assert_line '   - The listener ARN belongs to another account or region'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Verify the listener with: aws elbv2 describe-listeners --listener-arns np-lambda-private-3'
   [ -z "$(aws_calls_with create-load-balancer)" ]
 }
 
@@ -231,7 +248,13 @@ aws_calls_with() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "Failed to autocreate a private ALB: TooManyLoadBalancers"
+  assert_line '❌ Failed to autocreate a private ALB: TooManyLoadBalancers'
+  assert_line '💡 Possible causes:'
+  assert_line '   - The agent role lacks elasticloadbalancing:CreateLoadBalancer/CreateListener'
+  assert_line '   - The account reached its ALB quota for the region'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Grant the permissions listed in prerequisites.md (ALB autocreate)'
+  assert_line '   • Or add an ALB listener to networking.alb_private_listener_arns and disable networking.alb_autocreate_enabled'
 }
 
 @test "autocreate_alb: rejects a name prefix that does not fit an ALB name" {
@@ -240,5 +263,11 @@ aws_calls_with() {
   run run_select_alb
 
   assert_failure
-  assert_output_contains "ALB_AUTOCREATE_NAME_PREFIX must match"
+  assert_line "❌ Failed to autocreate a private ALB: ALB_AUTOCREATE_NAME_PREFIX must match ^[a-z0-9-]+\$ and be at most 21 chars, got 'Bad_Prefix'"
+  assert_line '💡 Possible causes:'
+  assert_line '   - The agent role lacks elasticloadbalancing:CreateLoadBalancer/CreateListener'
+  assert_line '   - The account reached its ALB quota for the region'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Grant the permissions listed in prerequisites.md (ALB autocreate)'
+  assert_line '   • Or add an ALB listener to networking.alb_private_listener_arns and disable networking.alb_autocreate_enabled'
 }

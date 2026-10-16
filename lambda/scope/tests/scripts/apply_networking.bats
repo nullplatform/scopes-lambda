@@ -103,8 +103,8 @@ tofu_runs() {
   run run_apply_networking
 
   assert_failure
+  assert_line '❌ Networking tofu apply failed'
   [ "$(tofu_runs | wc -l | tr -d ' ')" = "3" ]
-  assert_output_contains "Networking tofu apply failed"
 }
 
 @test "apply_networking: does not retry other failures" {
@@ -113,6 +113,7 @@ tofu_runs() {
   run run_apply_networking
 
   assert_failure
+  assert_line '❌ Networking tofu apply failed'
   [ "$(tofu_runs | wc -l | tr -d ' ')" = "1" ]
 }
 
@@ -122,7 +123,12 @@ tofu_runs() {
   run run_apply_networking
 
   assert_failure
-  assert_output_contains "has 98 listener rules, at or above the cap of 98"
+  assert_line "❌ ALB $LB_A has 98 listener rules, at or above the cap of 98"
+  assert_line '💡 Possible causes:'
+  assert_line '   Other scopes took the remaining rules since this one was assigned'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Re-run the action so another ALB is picked'
+  assert_line '   • Add another ALB listener to networking.alb_private_listener_arns (scope-configurations)'
   [ ! -s "$MOCK_BIN_DIR/tofu_runs" ]
 }
 
@@ -176,7 +182,10 @@ tofu_runs() {
   run run_apply_networking
 
   assert_failure
-  assert_output_contains "Failed to update the scope domain"
+  assert_line '❌ Failed to update the scope domain'
+  assert_line '💡 Possible causes:'
+  assert_line "   - The nullplatform API Key lacks 'Developer' permissions"
+  assert_line '   📋 Error: np failed'
 }
 
 @test "apply_networking: skips tofu when there is no networking state to empty" {

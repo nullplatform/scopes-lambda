@@ -80,7 +80,11 @@ run_generate_domain() {
   run run_generate_domain
 
   assert_failure
-  assert_output_contains "No hosted zone configured for a private scope behind an ALB"
+  assert_line '❌ No hosted zone configured for a private scope behind an ALB'
+  assert_line '💡 Possible causes:'
+  assert_line '   The ALB routes by host header, so the scope needs a domain'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Set networking.hosted_public_zone_id (and hosted_zone_id for private scopes) in the cloud-providers provider'
 }
 
 @test "generate_domain: API Gateway without a hosted zone keeps no domain" {
@@ -100,7 +104,13 @@ run_generate_domain() {
   run run_generate_domain
 
   assert_failure
-  assert_output_contains "Failed to fetch Route 53 hosted zone 'ZPRIVATE'"
+  assert_line "❌ Failed to fetch Route 53 hosted zone 'ZPRIVATE'"
+  assert_line '💡 Possible causes:'
+  assert_line '   - Invalid hosted zone ID'
+  assert_line '   - Missing route53:GetHostedZone permission'
+  assert_line '🔧 How to fix:'
+  assert_line '   • Verify the hosted zone IDs in the cloud-providers provider'
+  assert_line '   📋 AWS error: NoSuchHostedZone'
 }
 
 @test "generate_domain: fails on a DNS label over 63 characters" {
@@ -109,7 +119,9 @@ run_generate_domain() {
   run run_generate_domain
 
   assert_failure
-  assert_output_contains "exceeds 63 characters"
+  assert_line "❌ Domain label 'ns-an-application-slug-long-enough-to-overflow-a-single-dns-label-api' exceeds 63 characters"
+  assert_line '🔧 How to fix:'
+  assert_line '   • Shorten the namespace, application or scope slug'
 }
 
 @test "generate_domain: does nothing without HTTP exposure" {
