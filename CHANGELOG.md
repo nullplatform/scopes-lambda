@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/nullplatform/scopes-lambda/compare/v0.9.2...v0.10.0) (2026-10-16)
+
+
+### Features
+
+* **specs:** configurable deployment types ([c86fb70](https://github.com/nullplatform/scopes-lambda/commit/c86fb7050527e4b5d28df0677e9a72cb92202f94))
+
 ## [0.9.2](https://github.com/nullplatform/scopes-lambda/compare/v0.9.1...v0.9.2) (2026-10-16)
 
 
