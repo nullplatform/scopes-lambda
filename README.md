@@ -52,7 +52,7 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 4. **Networking**: Sets up API Gateway (public) or an ALB target group and listener rule (private, or public with `public_exposure = alb`)
 5. **DNS (Route53)**: Creates an alias record pointing to the networking endpoint
 
-Networking and DNS live in their own state (`lambda/<scope_id>/networking.tfstate`), so `update-scope` re-applies them without touching the function.
+Networking and DNS live in their own state (`lambda/<scope_id>/networking.tfstate`), applied on create and destroyed on delete. `http_enabled` and `visibility` cannot be changed after creation.
 
 ---
 
@@ -777,9 +777,9 @@ ALB scopes are balanced across `networking.alb_<visibility>_listener_arns` (scop
 | Hard cap | No new rule on an ALB at `ALB_LISTENER_RULE_CAPACITY` |
 | Autocreate | Opt-in (`networking.alb_autocreate_enabled`): when every ALB is full, the first one is cloned and added to the list |
 | Concurrency | A priority taken meanwhile (`PriorityInUse`) is recomputed and retried up to 3 times |
-| Metrics | `nullplatform/ApplicationELB` · `RuleCount` and `TargetGroupCount` per `ALBName` on every create/update/delete, to CloudWatch or Datadog (same as the k8s scope) |
-| Override | The `scopes-networking` Lambda override must be disabled (`overrides_enabled = false`); create and update fail while it is active |
-| Migration | Scopes whose ALB resources live in the main state have them removed from it (`handover_networking_state`, no AWS change) and imported by the networking stack, keeping their rule, priority and target group |
+| Metrics | `nullplatform/ApplicationELB` · `RuleCount` and `TargetGroupCount` per `ALBName` on every create and delete, to CloudWatch or Datadog (same as the k8s scope) |
+| Override | The `scopes-networking` Lambda override must be disabled (`overrides_enabled = false`); create fails while it is active |
+| Existing scopes | Scopes created by the override keep their ALB rule in the main state, and delete removes it; recreate them to move it to the networking stack |
 
 The `scope-configurations` provider overrides the agent values above per NRN (full table and IAM in [prerequisites.md](lambda/prerequisites.md#scope-configurations)):
 

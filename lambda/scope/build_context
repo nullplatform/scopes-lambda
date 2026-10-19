@@ -117,7 +117,7 @@ esac
 
 # Delete tears networking down from its state, so a bad value must not block it.
 if [ "$NETWORKING_MODE" != "alb" ] && [ "$NETWORKING_MODE" != "api_gateway" ] && [ "$NETWORKING_MODE" != "none" ]; then
-  if [ "${TOFU_ACTION:-}" = "destroy" ]; then
+  if [ "${TOFU_ACTION:-}" != "apply" ]; then
     NETWORKING_MODE="none"
   else
     echo "❌ Invalid networking for visibility '$VISIBILITY' (public exposure '${NETWORKING_MODE}')" >&2
@@ -131,8 +131,8 @@ fi
 log debug "   ✅ networking_mode=$NETWORKING_MODE"
 
 #Networking overrides: scopes-networking/lambda wired ALB + DNS into the main stack.
-# Networking is built in now, and both would manage the same rule. Delete still runs.
-if [ "${TOFU_ACTION:-}" != "destroy" ]; then
+# Networking is built in now, and both would manage the same rule. Only create applies networking.
+if [ "${TOFU_ACTION:-}" = "apply" ]; then
   IFS=',' read -ra override_paths <<< "${OVERRIDES_PATH:-}"
   for override_path in "${override_paths[@]}"; do
     override_path=$(echo "$override_path" | xargs)
@@ -144,7 +144,7 @@ if [ "${TOFU_ACTION:-}" != "destroy" ]; then
       echo "" >&2
       echo "🔧 How to fix:" >&2
       echo "   • Disable overrides on the agent (overrides_enabled = false) and re-run the action" >&2
-      echo "   • Existing scopes keep their ALB rule: the next create or update adopts it" >&2
+      echo "   • Existing scopes keep their ALB rule; recreate them to move it to the networking stack" >&2
       exit 1
     fi
   done

@@ -108,7 +108,19 @@ run_assume_role_step() {
   assert_line '   The agent still runs the scopes-networking Lambda override, which networking now replaces'
   assert_line '🔧 How to fix:'
   assert_line '   • Disable overrides on the agent (overrides_enabled = false) and re-run the action'
-  assert_line '   • Existing scopes keep their ALB rule: the next create or update adopts it'
+  assert_line '   • Existing scopes keep their ALB rule; recreate them to move it to the networking stack'
+}
+
+@test "build_context: the scopes-networking override does not block an update" {
+  mock_np "$PROVIDERS_JSON"
+  mkdir -p "$BATS_TEST_TMPDIR/networking/lambda/scope/tofu/networking/alb"
+  touch "$BATS_TEST_TMPDIR/networking/lambda/scope/tofu/networking/alb/setup"
+  export OVERRIDES_PATH="$BATS_TEST_TMPDIR/networking/lambda"
+  unset TOFU_ACTION
+
+  run run_build_context
+
+  assert_success
 }
 
 @test "build_context: the scopes-networking override does not block a destroy" {
@@ -148,6 +160,18 @@ run_assume_role_step() {
   assert_line "   • Use visibility 'public' or 'private'"
   assert_line "   • Set networking.public_exposure (scope-configurations) or LAMBDA_PUBLIC_EXPOSURE to 'alb' or 'api_gateway'"
   assert_output_not_contains "Scope context built successfully"
+}
+
+@test "build_context: an invalid public exposure does not block an update" {
+  mock_np "$PROVIDERS_JSON"
+  export CONTEXT=$(echo "$CONTEXT" | jq '.scope.capabilities.visibility = "public"')
+  export LAMBDA_PUBLIC_EXPOSURE="cloudfront"
+  unset TOFU_ACTION
+
+  run run_build_context
+
+  assert_success
+  assert_line "✨ Scope context built successfully"
 }
 
 @test "build_context: an invalid public exposure does not block a destroy" {

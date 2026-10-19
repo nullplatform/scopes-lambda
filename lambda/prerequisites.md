@@ -374,8 +374,8 @@ when `networking.public_exposure = "alb"`):
 AWS caps an ALB at 100 rules across all its listeners, counting rules
 of other workloads too. New scopes go to the ALB with the fewest rules
 below `ALB_LISTENER_RULE_ALERT_THRESHOLD` (75); no new rule is added to
-an ALB at `ALB_LISTENER_RULE_CAPACITY` (98). Each create, update and
-delete publishes `nullplatform/ApplicationELB` · `RuleCount` and
+an ALB at `ALB_LISTENER_RULE_CAPACITY` (98). Each create and delete
+publishes `nullplatform/ApplicationELB` · `RuleCount` and
 `TargetGroupCount` (dimension `ALBName`), the same metrics as the k8s
 scope. They are only published on those runs, so alarms need
 `treat-missing-data = ignore` to hold their state.
@@ -395,8 +395,9 @@ picked up again by name and tags on the next create, keeping its listeners.
 Without listeners for a visibility, its scopes get no HTTP exposure.
 
 This replaces the `scopes-networking` Lambda override: disable it on the
-agent (`overrides_enabled = false`), or create and update fail. Scopes it
-created keep their rule; the next create or update adopts it.
+agent (`overrides_enabled = false`), or create fails. Scopes it created
+keep their rule, and delete removes it; recreate them to move it to the
+networking stack.
 
 ### 3. Provider configurations
 

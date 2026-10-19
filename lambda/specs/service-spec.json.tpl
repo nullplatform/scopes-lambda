@@ -334,14 +334,16 @@
         "http_enabled": {
           "type": "boolean",
           "title": "Expose via HTTP",
-          "description": "When enabled, your function is accessible via an HTTP endpoint. Disable this for functions triggered exclusively by internal events (queues, streams, schedules, etc.).",
-          "default": true
+          "description": "When enabled, your function is accessible via an HTTP endpoint. Disable this for functions triggered exclusively by internal events (queues, streams, schedules, etc.). Cannot be changed after scope creation.",
+          "default": true,
+          "editableOn": ["create"]
         },
         "visibility": {
           "type": "string",
           "title": "Visibility",
-          "description": "How your function is accessed",
+          "description": "How your function is accessed. Cannot be changed after scope creation.",
           "default": "public",
+          "editableOn": ["create"],
           "oneOf": [
             { "const": "public", "title": "Public" },
             { "const": "private", "title": "Private" }
