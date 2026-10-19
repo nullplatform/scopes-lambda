@@ -397,7 +397,8 @@ Without listeners for a visibility, its scopes get no HTTP exposure.
 This replaces the `scopes-networking` Lambda override: disable it on the
 agent (`overrides_enabled = false`), or create fails. Scopes it created
 keep their rule, and delete removes it; recreate them to move it to the
-networking stack.
+networking stack. Do not re-run create on them: the main stack would
+destroy the rule before networking creates a new one.
 
 ### 3. Provider configurations
 
