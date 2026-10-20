@@ -1,0 +1,20 @@
+#!/bin/bash
+# Add the networking modules for the scope's mode. With none, the config holds only the
+# provider, so applying it removes whatever the networking state still has.
+
+source "$SERVICE_PATH/utils/log"
+
+networking_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+case "${NETWORKING_MODE:-none}" in
+  alb)
+    source "$networking_dir/alb/setup"
+    source "$networking_dir/../dns/route53/setup"
+    ;;
+  api_gateway)
+    source "$networking_dir/api_gateway/setup"
+    ;;
+  *)
+    log info "   ⏭️  No HTTP exposure - networking state will be emptied"
+    ;;
+esac

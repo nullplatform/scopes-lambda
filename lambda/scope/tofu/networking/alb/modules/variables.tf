@@ -36,3 +36,14 @@ variable "alb_resource_tags_json" {
   type        = map(string)
   default     = {}
 }
+
+variable "alb_lambda_function_name" {
+  description = "Name of the scope's Lambda function"
+  type        = string
+}
+
+variable "alb_lambda_alias_name" {
+  description = "Alias the ALB invokes"
+  type        = string
+  default     = "main"
+}

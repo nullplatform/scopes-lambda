@@ -72,11 +72,19 @@ SCOPE_CONFIG=$(echo "$PROVIDER_RESPONSE" | jq -r \
   '[.results[] | select(.category == "scope-configurations") | .attributes] | reduce .[] as $item ({}; . * $item)')
 
 # From vpc category
-ALB_PUBLIC_LISTENER_ARN=$(echo "$VPC_CONFIG" | jq -r '.load_balancer.public.listener_arn // empty')
-log debug "   ✅ alb_public_listener_arn=$ALB_PUBLIC_LISTENER_ARN"
+# The ALBs a scope can be balanced across. scope-configurations holds the list (the
+# aws-networking-configuration spec drops unknown keys); vpc listener_arn is the single-ALB form.
+alb_listeners() {
+  jq -nr --argjson scope "$SCOPE_CONFIG" --argjson vpc "$VPC_CONFIG" --arg v "$1" '
+    ($scope.networking["alb_\($v)_listener_arns"] // $vpc.load_balancer[$v].listener_arns
+      // [$vpc.load_balancer[$v].listener_arn // empty]) | join(",")'
+}
 
-ALB_PRIVATE_LISTENER_ARN=$(echo "$VPC_CONFIG" | jq -r '.load_balancer.private.listener_arn // empty')
-log debug "   ✅ alb_private_listener_arn=$ALB_PRIVATE_LISTENER_ARN"
+ALB_PUBLIC_LISTENER_ARNS=$(alb_listeners public)
+log debug "   ✅ alb_public_listener_arns=$ALB_PUBLIC_LISTENER_ARNS"
+
+ALB_PRIVATE_LISTENER_ARNS=$(alb_listeners private)
+log debug "   ✅ alb_private_listener_arns=$ALB_PRIVATE_LISTENER_ARNS"
 
 VPC_ID=$(echo "$VPC_CONFIG" | jq -r '.vpc.id // empty')
 log debug "   ✅ vpc_id=$VPC_ID"
@@ -120,8 +128,8 @@ log debug "   ✅ null_agent_layer_arn=$NULL_AGENT_LAYER_ARN"
 # runs, AWS_ACCESS_KEY_ID/SECRET/SESSION_TOKEN are already in the environment, so
 # no assume-role resolution happens here anymore.
 
-export ALB_PUBLIC_LISTENER_ARN
-export ALB_PRIVATE_LISTENER_ARN
+export ALB_PUBLIC_LISTENER_ARNS
+export ALB_PRIVATE_LISTENER_ARNS
 export VPC_ID
 export AWS_SUBNET_IDS
 export SECURITY_GROUP_IDS

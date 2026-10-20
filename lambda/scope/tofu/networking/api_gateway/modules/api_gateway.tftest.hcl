@@ -1,4 +1,9 @@
 mock_provider "aws" {
+  mock_data "aws_lambda_alias" {
+    defaults = {
+      invoke_arn = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:test-function:main/invocations"
+    }
+  }
   mock_resource "aws_apigatewayv2_api" {
     defaults = {
       id             = "abc123def4"
@@ -24,6 +29,8 @@ variables {
   api_gateway_custom_domain          = ""
   api_gateway_certificate_arn        = ""
   api_gateway_resource_tags_json     = {}
+  api_gateway_lambda_function_name   = "test-function"
+  api_gateway_lambda_alias_name      = "main"
 }
 
 run "creates_http_api" {
@@ -71,6 +78,11 @@ run "creates_lambda_integration" {
     condition     = aws_apigatewayv2_integration.lambda.payload_format_version == "2.0"
     error_message = "Payload format should be 2.0"
   }
+
+  assert {
+    condition     = aws_apigatewayv2_integration.lambda.integration_uri == "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:test-function:main/invocations"
+    error_message = "Integration should invoke the alias read by the data source"
+  }
 }
 
 run "creates_default_route" {
@@ -97,7 +109,7 @@ run "creates_lambda_permission" {
 
   assert {
     condition     = aws_lambda_permission.api_gateway.function_name == "test-function"
-    error_message = "Function name should come from cross-module local"
+    error_message = "Function name should come from api_gateway_lambda_function_name"
   }
 
   assert {
@@ -246,5 +258,42 @@ run "uses_custom_throttling_limits" {
   assert {
     condition     = aws_apigatewayv2_stage.main.default_route_settings[0].throttling_rate_limit == 2000
     error_message = "Throttling rate limit should be 2000"
+  }
+}
+
+run "creates_dns_record_for_custom_domain" {
+  variables {
+    api_gateway_custom_domain   = "api.example.com"
+    api_gateway_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+    api_gateway_hosted_zone_id  = "Z1234567890ABC"
+  }
+  command = plan
+
+  assert {
+    condition     = length(aws_route53_record.api_gateway) == 1
+    error_message = "DNS alias record should be created"
+  }
+
+  assert {
+    condition     = aws_route53_record.api_gateway[0].name == "api.example.com" && aws_route53_record.api_gateway[0].type == "A"
+    error_message = "Record should be an A alias for the custom domain"
+  }
+
+  assert {
+    condition     = aws_route53_record.api_gateway[0].zone_id == "Z1234567890ABC"
+    error_message = "Record should live in the configured zone"
+  }
+}
+
+run "skips_dns_record_without_hosted_zone" {
+  variables {
+    api_gateway_custom_domain   = "api.example.com"
+    api_gateway_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+  }
+  command = plan
+
+  assert {
+    condition     = length(aws_route53_record.api_gateway) == 0
+    error_message = "DNS record needs a hosted zone"
   }
 }

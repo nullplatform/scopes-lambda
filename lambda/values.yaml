@@ -3,8 +3,8 @@
 # The following values are fetched automatically from provider categories:
 #
 #   vpc category:
-#     ALB_PUBLIC_LISTENER_ARN  - ALB listener ARN for public (internet-facing) scopes
-#     ALB_PRIVATE_LISTENER_ARN - ALB listener ARN for private (internal) scopes
+#     ALB_PUBLIC_LISTENER_ARNS  - fallback: load_balancer.public.listener_arn
+#     ALB_PRIVATE_LISTENER_ARNS - fallback: load_balancer.private.listener_arn
 #     VPC_ID                   - VPC ID for Lambda network placement
 #     AWS_SUBNET_IDS           - Comma-separated subnet IDs
 #     SECURITY_GROUP_IDS       - Comma-separated security group IDs
@@ -16,6 +16,7 @@
 #     HOSTED_PRIVATE_ZONE_ID   - Route53 private hosted zone ID
 #
 #   scope-configurations category:
+#     ALB_*_LISTENER_ARNS      - networking.alb_{public,private}_listener_arns (ALBs to balance across)
 #     TOFU_STATE_BUCKET        - S3 bucket for Terraform remote state
 #     TOFU_STATE_BUCKET_REGION - Region of that bucket (optional, defaults to AWS_REGION)
 #     PLACEHOLDER_IMAGE_URI    - ECR image URI used during scope creation
@@ -34,10 +35,23 @@ configuration:
   # ── Domain / DNS ───────────────────────────────────────────────────────────
   USE_ACCOUNT_SLUG: false
 
+  # ── Networking ─────────────────────────────────────────────────────────────
+  # Public scopes: api_gateway or alb; defaults to alb when public ALB listeners
+  # are configured. Private scopes always use an ALB.
+  # LAMBDA_PUBLIC_EXPOSURE: "api_gateway"
+
   # ── ALB ────────────────────────────────────────────────────────────────────
+  # AWS caps an ALB at 100 rules. New scopes go to the least-loaded ALB below
+  # ALERT_THRESHOLD; no new rule is added once an ALB reaches CAPACITY.
   ALB_LISTENER_RULE_PRIORITY_START: 100
-  ALB_LISTENER_RULE_CAPACITY: 100
-  ALB_LISTENER_RULE_ALERT_THRESHOLD: 80
+  ALB_LISTENER_RULE_CAPACITY: 98
+  ALB_LISTENER_RULE_ALERT_THRESHOLD: 75
+  # Clone the first configured ALB when all of them are full (prerequisites.md).
+  ALB_AUTOCREATE_ENABLED: false
+  ALB_AUTOCREATE_NAME_PREFIX: np-lambda-
+  # Rule and target group counts per ALB, same metrics as the k8s scope.
+  ALB_METRICS_PUBLISH_ENABLED: true
+  # ALB_METRICS_PUBLISH_TARGET: cloudwatch # cloudwatch | datadog (needs DATADOG_API_KEY)
 
   # ── Null Agent ─────────────────────────────────────────────────────────────
   USE_NULL_AGENT: false
