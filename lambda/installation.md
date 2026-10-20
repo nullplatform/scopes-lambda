@@ -75,10 +75,10 @@ By default the spec offers both `docker-image` and `zip`. To offer only some
 functions), render the service spec with `LAMBDA_DEPLOYMENT_TYPES` set, e.g.
 `zip` or `zip,docker-image` (first entry is the default). With the
 `scope_definition` module this is the `template_env_vars` input
-(`template_env_vars = { LAMBDA_DEPLOYMENT_TYPES = "zip" }`), available in
-tofu-modules releases that include it; the module version pinned in
-`lambda/specs/install/main.tf` must be at least that release. Unknown values
-fail the apply. See "Restricting package types" in the README.
+(`template_env_vars = { LAMBDA_DEPLOYMENT_TYPES = "zip" }`), which requires
+tofu-modules v9.3.0 or later (the version pinned in
+`lambda/specs/install/main.tf`). Unknown values fail the apply. See
+"Restricting package types" in the README.
 
 ## Overrides
 
