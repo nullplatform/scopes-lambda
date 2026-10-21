@@ -9,5 +9,5 @@
     "resolveJsonModule": true,
     "types": ["bun"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "node-test"]
 }

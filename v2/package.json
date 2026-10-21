@@ -7,8 +7,9 @@
   "main": "src/main.ts",
   "scripts": {
     "describe": "bun src/main.ts --describe",
-    "test": "bun test",
-    "build:program": "bunx np-build-program --package src/main.ts --out dist/program"
+    "test": "bun test && node --import tsx --test node-test/*.test.ts",
+    "build:program": "bunx np-build-program --package src/main.ts --out dist/program",
+    "test:program": "node --import tsx --test node-test/*.test.ts"
   },
   "dependencies": {
     "@nullplatform/plugin": "file:/Users/pablo/Projects/_recovery/scratchpad/fresh/plugin-libraries/js",
