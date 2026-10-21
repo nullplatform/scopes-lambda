@@ -1,5 +1,7 @@
-{{- /* LAMBDA_DEPLOYMENT_TYPES: comma-separated packaging types offered by the spec, first one is the default.
-       Allowed: docker-image, zip. Unknown, empty or repeated entries fail the render. */ -}}
+{{- /* LAMBDA_DEPLOYMENT_TYPES: comma-separated packaging types offered on create, first one is the default.
+       Allowed: docker-image, zip. Unknown, empty or repeated entries fail the render.
+       The schema always accepts every type: the platform revalidates existing scopes on update and
+       delete, so only the default and the UI selector (hidden with a single type) change. */ -}}
 {{- $titles := coll.Dict "docker-image" "Docker Image (ECR)" "zip" "ZIP Package (S3)" -}}
 {{- $types := strings.Split "," (strings.ReplaceAll " " "" (env.Getenv "LAMBDA_DEPLOYMENT_TYPES" "docker-image,zip")) -}}
 {{- range $t := $types -}}
@@ -9,6 +11,10 @@
 {{- end -}}
 {{- if ne (len $types) (len (coll.Uniq $types)) -}}
 {{- test.Fail "LAMBDA_DEPLOYMENT_TYPES: repeated deployment type" -}}
+{{- end -}}
+{{- $options := $types -}}
+{{- range $t := coll.Slice "docker-image" "zip" -}}
+{{- if not (coll.Has $options $t) }}{{ $options = coll.Append $t $options }}{{ end -}}
 {{- end -}}
 {{- $default := index $types 0 -}}
 {{- $assetDefault := "docker-image" -}}
@@ -53,6 +59,7 @@
       "uiSchema": {
         "type": "VerticalLayout",
         "elements": [
+          {{- if gt (len $types) 1 }}
           {
             "type": "Control",
             "label": "Deployment Type",
@@ -61,6 +68,7 @@
               "format": "radio"
             }
           },
+          {{- end }}
           {
             "rule": {
               "effect": "SHOW",
@@ -259,7 +267,7 @@
           "default": "{{ $default }}",
           "editableOn": ["create"],
           "oneOf": [
-            {{- range $i, $t := $types }}{{ if $i }},{{ end }}
+            {{- range $i, $t := $options }}{{ if $i }},{{ end }}
             { "const": "{{ $t }}", "title": "{{ index $titles $t }}" }
             {{- end }}
           ]

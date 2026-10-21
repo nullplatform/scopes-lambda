@@ -252,14 +252,15 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 
 ### Restricting package types
 
-The package types offered by the spec come from the `LAMBDA_DEPLOYMENT_TYPES`
-environment variable, read when the template is rendered with gomplate:
+The package types offered when creating a scope come from the
+`LAMBDA_DEPLOYMENT_TYPES` environment variable, read when the template is
+rendered with gomplate:
 
 | Value | Result |
 |-------|--------|
 | unset / empty / `docker-image,zip` | Both options, `docker-image` is the default (original behaviour) |
-| `zip` | Only ZIP; new scopes get `deployment_type=zip` and `asset_type=lambda` |
-| `docker-image` | Only Docker Image |
+| `zip` | No selector in the UI; new scopes get `deployment_type=zip` and `asset_type=lambda` |
+| `docker-image` | No selector in the UI; new scopes get `deployment_type=docker-image` |
 | `zip,docker-image` | Both options, `zip` is the default |
 
 The first entry is the default. Entries are comma separated (spaces are
@@ -272,8 +273,12 @@ functions, where `docker-image` cannot work. When registering the spec with the
 template_env_vars = { LAMBDA_DEPLOYMENT_TYPES = "zip" }
 ```
 
-The change applies to scopes created afterwards; existing scopes keep their
-`deployment_type`.
+The schema keeps accepting both types. The platform validates a scope's
+capabilities against the current spec on every update and on delete, so
+removing a type from the schema would leave existing scopes of that type unable
+to be updated or deleted. Restricting only changes the default and hides the
+selector, so existing scopes keep working. It is not a policy: a scope created
+through the API or CLI with an explicit `deployment_type` is still accepted.
 
 ### Event-driven scopes
 
