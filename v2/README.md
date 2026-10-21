@@ -26,8 +26,8 @@ provider.
 | Concurrency | reserved on the function, provisioned on the alias (and a `warmup` alias when asked) | — |
 | Parameters | `env`: each parameter as an environment variable (`$npSecret` reference, resolved on the worker); `secretsmanager`: one secret per release | `nullplatform/<scope>/<deployment>/parameters` |
 | Invoke permissions | `aws.lambda.Permission` per `scope-configurations.triggers.invoke_permissions` entry | — |
-| HTTP | ALB target group + listener rule (`visibility` picks the listener) or API Gateway HTTP API | `<ns>-<app>-<scope>` |
-| DNS | Route53 CNAME on the account's hosted zone | `<ns>-<app>-<scope>.<zone>` |
+| HTTP | ALB target group + host-header listener rule on the listener of the scope's `visibility`; a public scope without a public listener gets an API Gateway HTTP API; a private one without a private listener is refused | `<ns>-<app>-<scope>` |
+| DNS | Route53 CNAME on the account's hosted zone, behind the load balancer only (an API endpoint serves its own host) | `<ns>-<app>-<scope>.<account>.<zone>` |
 
 Before the first deployment the alias serves `$LATEST`, the placeholder: the configured
 `placeholder_image_uri` (ECR) for image scopes, an inline handler for zip ones (on the scope's own
@@ -41,18 +41,25 @@ runtime when it is a Node one).
 | `vpc` | `vpc.id`, `vpc.subnets`, `vpc.security_groups`, `load_balancer.public.listener_arn`, `load_balancer.private.listener_arn` |
 | `scope-configurations` | `deployment.placeholder_image_uri`, `deployment.parameters_strategy` (`env`, default, or `secretsmanager`), `lambda.execution_role_prefix`, `lambda.permissions_boundary`, `lambda.role_policies[]`, `triggers.invoke_permissions[]`, `agent.null_agent_layer_arn` |
 
-The worker's `platform` credential profile reads `cloud-providers.region` and
-`aws-iam-configuration.arns.lambda` (the role it assumes) for the provider; the data actions use the
-same two lookups.
+The worker's `platform` credential profile reads `cloud-providers.account.region` and the role to
+assume from `identity-access-control.iam_role_arns.arns[]` (selector `lambda`), falling back to
+`scope-configurations.assume_role.arn`, as the legacy scope does; the data actions use the same
+lookups.
 
 ## Secret references
 
-The program never sees a parameter value. It writes `{"$npSecret": "np://parameter/<id>"}` (env
-strategy) or `{"$npSecret": "np://parameters/<deploymentId>"}` (the JSON of every parameter value at
-the scope, for the Secrets Manager secret) and the worker resolves them right before the provider call.
-What the provider echoes back is restored to the reference or redacted before it reaches the state.
+The program never sees a parameter value. It writes `{"$npSecret": "np://parameter/<id>?v=<valueId>"}`
+(env strategy) or `{"$npSecret": "np://parameters/<deploymentId>?v=<fingerprint>"}` (the JSON of
+every parameter value at the scope, for the Secrets Manager secret) and the worker resolves them right
+before the provider call; the value id makes a rotated value a changed input, so the next run applies
+it. What the provider echoes back is restored to the reference (by position, then by value) or
+redacted before it reaches the state. Only parameters the platform marks secret are scrubbed.
 
 ## Develop
+
+Until `@nullplatform/plugin` 0.2.1 is on npm, link the SDK checkout: `bun link` in
+`plugin-libraries/js`, then `bun link @nullplatform/plugin` here (the lockfile is regenerated when
+0.2.1 publishes).
 
 ```bash
 bun install
@@ -76,6 +83,8 @@ np package publish --program-bundle   # builds the bundle, pushes it as an OCI a
 - Old published versions are not deleted on finalize or rollback; AWS keeps them until pruned.
 - The listener rule priority is derived from the scope id (`100 + hash % 50000`) instead of a shared
   constant.
-- DNS is a CNAME to the load balancer or API endpoint (the legacy alias record needed an API custom
-  domain no workflow created).
+- No DNS record on the API Gateway path (the legacy alias record needed an API custom domain no
+  workflow created); the `domain` output is empty there.
+- Finalize and rollback only move the alias; the function keeps the code it runs (`code_source`
+  output), as the legacy scope did.
 - `diagnose-*`, `invoke` and `adjust-*-concurrency` are not carried over yet.

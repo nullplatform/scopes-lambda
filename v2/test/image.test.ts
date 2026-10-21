@@ -15,4 +15,12 @@ describe("the worker image", () => {
     expect(dockerfile).toMatch(/COPY providers.json/);
     expect(dockerfile).toMatch(/COPY --from=providers( --chown=\d+:\d+)? \/opt\/pulumi \/opt\/pulumi/);
   });
+
+  test("ships the package at the agent's entrypoint for the data actions", () => {
+    const dockerfile = readFileSync(resolve(import.meta.dir, "../Dockerfile"), "utf8");
+    expect(dockerfile).toMatch(/\/app\/packages\/lambda-v2/);
+    expect(dockerfile).toMatch(/COPY --from=package \/usr\/local\/bin\/bun/);
+    const entrypoint = readFileSync(resolve(import.meta.dir, "../entrypoint"), "utf8");
+    expect(entrypoint).toMatch(/exec bun \/app\/packages\/lambda-v2\/src\/main.ts/);
+  });
 });

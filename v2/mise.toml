@@ -27,9 +27,15 @@ depends = ["install"]
 run = "bunx np-build-program --package src/main.ts --out dist/program"
 
 [tasks."build:image"]
-description = "Build the worker image (provider host + the aws provider)"
-run = "docker build -t lambda-v2:dev ."
+description = "Build the worker image (provider host + the aws provider + this package); PROVIDER_HOST_IMAGE names the base"
+run = "docker build --build-arg PROVIDER_HOST_IMAGE=${PROVIDER_HOST_IMAGE:-scope-provider-host:latest} -t lambda-v2:dev ."
 
 [tasks."publish:image"]
-description = "Build and push the worker image; prints registry/repo@sha256:<digest>"
-run = "bash scripts/publish-image.sh"
+description = "Build and push the worker image to IMAGE (registry/repo:tag); prints the digest"
+run = """
+set -e
+: "${IMAGE:?IMAGE=registry/repo:tag}"
+docker build --build-arg PROVIDER_HOST_IMAGE=${PROVIDER_HOST_IMAGE:-scope-provider-host:latest} -t "$IMAGE" .
+docker push "$IMAGE"
+docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE"
+"""

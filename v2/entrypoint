@@ -1,0 +1,4 @@
+#!/bin/sh
+# What the agent runs for a data action (package-exec): the package, with the notification in
+# NP_ACTION_CONTEXT. Lifecycle actions never come this way; the orchestrator runs the program.
+exec bun /app/packages/lambda-v2/src/main.ts "$@"
