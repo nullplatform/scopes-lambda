@@ -7,7 +7,7 @@ source "$SERVICE_PATH/utils/log"
 log info "🧹 Cleaning up old Lambda version..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required"
   echo "💡 Possible causes:" >&2
   echo "   - Environment variable not set by the deployment pipeline" >&2
   echo "   - Scope context missing Lambda function configuration" >&2

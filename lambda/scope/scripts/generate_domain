@@ -2,6 +2,8 @@
 # Generate domain for Lambda scope
 # Based on k8s domain generation pattern
 
+source "$SERVICE_PATH/utils/log"
+
 echo "🔍 Generating scope domain..."
 
 # Get hosted zone ID exported by fetch_scope_configuration
@@ -24,7 +26,7 @@ aws_output=$(aws route53 get-hosted-zone --id "$hosted_zone_id" 2>&1)
 aws_exit_code=$?
 
 if [ $aws_exit_code -ne 0 ]; then
-  echo "❌ Failed to fetch Route 53 hosted zone '$hosted_zone_id'" >&2
+  log error "❌ Failed to fetch Route 53 hosted zone '$hosted_zone_id'"
   echo "💡 Possible causes:" >&2
   echo "   - Invalid hosted zone ID" >&2
   echo "   - Insufficient Route 53 permissions" >&2
@@ -41,7 +43,7 @@ fi
 domain=$(echo "$aws_output" | jq -r '.HostedZone.Name' | sed 's/\.$//')
 
 if [ -z "$domain" ] || [ "$domain" = "null" ]; then
-  echo "❌ Could not extract domain name from hosted zone response" >&2
+  log error "❌ Could not extract domain name from hosted zone response"
   echo "💡 Possible causes:" >&2
   echo "   - Hosted zone has no Name field" >&2
   echo "   - Unexpected API response format" >&2
@@ -100,7 +102,7 @@ np_output=$(np scope patch --id "$SCOPE_ID" --body "{\"domain\":\"$SCOPE_DOMAIN\
 np_exit_code=$?
 
 if [ $np_exit_code -ne 0 ]; then
-  echo "❌ Failed to update scope domain in nullplatform" >&2
+  log error "❌ Failed to update scope domain in nullplatform"
   echo "💡 Possible causes:" >&2
   echo "   - nullplatform API is unavailable" >&2
   echo "   - Invalid scope ID: $SCOPE_ID" >&2

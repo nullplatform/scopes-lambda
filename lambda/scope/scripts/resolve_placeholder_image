@@ -17,7 +17,7 @@ if [ "${PACKAGE_TYPE:-Image}" = "Zip" ]; then
   # Decode the pre-built base64 zip (index.js handler, no external tools needed)
   if ! base64 -d < "$b64_file" > "$placeholder_path" 2>/dev/null; then
     echo "" >&2
-    echo "❌ Failed to decode placeholder zip from $b64_file" >&2
+    log error "❌ Failed to decode placeholder zip from $b64_file"
     exit 1
   fi
 
@@ -36,7 +36,7 @@ log debug "   📋 architecture=$architecture"
 
 if [ -z "${PLACEHOLDER_IMAGE_URI:-}" ]; then
   echo "" >&2
-  echo "❌ No placeholder image is configured for this scope" >&2
+  log error "❌ No placeholder image is configured for this scope"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   • deployment.placeholder_image_uri is unset on the scope-configurations provider" >&2
@@ -64,7 +64,7 @@ log debug "   📋 placeholder_image_uri=$placeholder_image_uri"
 # image passes validation here and then fails at function creation.
 if [[ "$placeholder_image_uri" == public.ecr.aws/* ]]; then
   echo "" >&2
-  echo "❌ Placeholder image is public, and Lambda cannot pull it: $placeholder_image_uri" >&2
+  log error "❌ Placeholder image is public, and Lambda cannot pull it: $placeholder_image_uri"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   • PLACEHOLDER_IMAGE_URI points at a public ECR registry" >&2
@@ -108,7 +108,7 @@ rm -f "$ecr_stderr"
 
 if [ "$image_found" = "false" ]; then
   echo "" >&2
-  echo "❌ Placeholder image not found: $placeholder_image_uri" >&2
+  log error "❌ Placeholder image not found: $placeholder_image_uri"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   • The image has not been published yet" >&2

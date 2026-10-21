@@ -7,7 +7,7 @@ source "$SERVICE_PATH/utils/log"
 log info "📝 Updating Lambda function code..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required"
   echo "💡 Possible causes:" >&2
   echo "   - Environment variable not set by the deployment pipeline" >&2
   echo "🔧 How to fix:" >&2
@@ -25,7 +25,7 @@ log info "   📡 Updating function code..."
 
 if [ "$package_type" = "Image" ]; then
   if [ -z "${IMAGE_URI:-}" ] || [ "$IMAGE_URI" = "null" ]; then
-    echo "❌ IMAGE_URI is required for Image package type" >&2
+    log error "❌ IMAGE_URI is required for Image package type"
     echo "💡 Possible causes:" >&2
     echo "   - The build did not produce a container image URL" >&2
     echo "🔧 How to fix:" >&2
@@ -57,7 +57,7 @@ if [ "$package_type" = "Image" ]; then
   update_exit_code=$?
 else
   if [ -z "${S3_BUCKET:-}" ] || [ -z "${S3_KEY:-}" ]; then
-    echo "❌ S3_BUCKET and S3_KEY are required for Zip package type" >&2
+    log error "❌ S3_BUCKET and S3_KEY are required for Zip package type"
     echo "💡 Possible causes:" >&2
     echo "   - The build did not produce a zip asset" >&2
     echo "🔧 How to fix:" >&2
@@ -76,7 +76,8 @@ else
 fi
 
 if [ $update_exit_code -ne 0 ]; then
-  echo "❌ Failed to update function code for $LAMBDA_FUNCTION_NAME" >&2
+  np_scope_aws_failure "$update_output"
+  log error "❌ Failed to update function code for $LAMBDA_FUNCTION_NAME"
   echo "💡 Possible causes:" >&2
   echo "   - The image or zip does not exist at the specified location" >&2
   echo "   - Insufficient Lambda permissions" >&2
@@ -94,12 +95,16 @@ aws lambda wait function-updated \
 wait_exit_code=$?
 
 if [ $wait_exit_code -ne 0 ]; then
-  last_status=$(aws lambda get-function-configuration \
+  last_update=$(aws lambda get-function-configuration \
     --function-name "$LAMBDA_FUNCTION_NAME" \
-    --query 'LastUpdateStatus' \
+    --query '[LastUpdateStatus, LastUpdateStatusReasonCode, LastUpdateStatusReason]' \
     --output text 2>/dev/null || echo "Unknown")
+  IFS=$'\t' read -r last_status last_reason_code last_reason <<< "$last_update"
+  [ "$last_reason_code" = "None" ] && last_reason_code=""
+  [ "$last_reason" = "None" ] && last_reason=""
 
-  echo "❌ Function update did not complete successfully (status: $last_status)" >&2
+  np_scope_failure "${last_reason_code:-UpdateFailed}"
+  log error "❌ Function update did not complete successfully (status: ${last_status:-Unknown}${last_reason:+ — $last_reason})"
   echo "💡 Possible causes:" >&2
   echo "   - The image is invalid or has an incompatible architecture" >&2
   echo "   - The function configuration is incompatible with the new code" >&2

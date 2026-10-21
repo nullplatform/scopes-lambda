@@ -29,7 +29,7 @@ export ASSUME_ROLE_ARN
 # or no-ops (leaving pod IRSA in place) when empty. It returns non-zero only when
 # sts:AssumeRole itself fails.
 if ! source "$SERVICE_PATH/utils/assume_role"; then
-  echo "❌ assume_role step failed: could not assume $ASSUME_ROLE_ARN" >&2
+  log error "❌ assume_role step failed: could not assume $ASSUME_ROLE_ARN"
   echo "💡 Possible causes:" >&2
   echo "   - The agent's pod role is not allowed to sts:AssumeRole the target role" >&2
   echo "   - The target role's trust policy does not trust the agent role" >&2
