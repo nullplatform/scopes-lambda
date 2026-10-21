@@ -5,6 +5,10 @@ runs for every lifecycle transition, with provider calls executed by a slim work
 infrastructure. No credential ever reaches nullplatform; the worker resolves them next to the `aws`
 provider.
 
+Where each piece runs: the program and the Pulumi state at nullplatform; every provider call (reads and
+diffs included) and the `log:read`/metrics actions in the worker in your infrastructure. The split is
+§4.1 of the orchestrator's design spec, `docs/superpowers/specs/2026-10-18-scope-orchestrator-design.md`.
+
 - `src/program.ts` — the program. Declared once; `create-scope`, `start-initial`, `start-blue-green`,
   `switch-traffic`, `finalize`, `rollback`, `update-scope` and `delete-scope` are the same program with
   different `releases`.
