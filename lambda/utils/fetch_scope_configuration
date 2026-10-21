@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source "$SERVICE_PATH/utils/log"
+
 # Fetch Scope Configuration: Retrieves cloud provider settings from vpc, cloud-providers,
 # and scope-configurations providers. Exports networking, AWS identity, DNS, and state
 # variables for downstream scripts.
@@ -25,7 +27,7 @@ fi
 
 # Fail here: no providers surfaces downstream as a misleading "AWS_REGION is missing".
 if [ "$np_exit_code" -ne 0 ]; then
-  echo "❌ Failed to fetch providers for NRN=$NRN" >&2
+  log error "❌ Failed to fetch providers for NRN=$NRN"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   - The nullplatform API is unreachable or returned an error" >&2
@@ -42,7 +44,7 @@ fi
 # np exits 0 with an empty result set, so an unconfigured NRN needs its own message.
 provider_count=$(echo "$PROVIDER_RESPONSE" | jq '[.results[]?] | length' 2>/dev/null) || provider_count=""
 if [ -z "$provider_count" ] || [ "$provider_count" -eq 0 ]; then
-  echo "❌ No providers found for NRN=$NRN" >&2
+  log error "❌ No providers found for NRN=$NRN"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   - The NRN has no vpc, cloud-providers or scope-configurations provider configured" >&2

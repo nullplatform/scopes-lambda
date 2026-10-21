@@ -7,7 +7,7 @@ source "$SERVICE_PATH/utils/log"
 log info "🔄 Rolling back Lambda alias to previous version..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required"
   echo "💡 Possible causes:" >&2
   echo "   - Environment variable not set by the deployment pipeline" >&2
   echo "   - Scope context missing Lambda function configuration" >&2
@@ -26,7 +26,7 @@ log debug "   ✅ alias=$alias_name"
 previous_version="${LAMBDA_BLUE_VERSION:-}"
 
 if [ -z "$previous_version" ] || [ "$previous_version" = "null" ]; then
-  echo "❌ No blue (currently active) version found to rollback to" >&2
+  log error "❌ No blue (currently active) version found to rollback to"
   echo "💡 Possible causes:" >&2
   echo "   - This is the first deployment (no active deployment exists)" >&2
   echo "   - LAMBDA_BLUE_VERSION was not exported from build_context" >&2
@@ -48,7 +48,7 @@ update_output=$(aws lambda update-alias \
 update_exit_code=$?
 
 if [ $update_exit_code -ne 0 ]; then
-  echo "❌ Failed to rollback alias $alias_name to version $previous_version on function $LAMBDA_FUNCTION_NAME" >&2
+  log error "❌ Failed to rollback alias $alias_name to version $previous_version on function $LAMBDA_FUNCTION_NAME"
   echo "💡 Possible causes:" >&2
   echo "   - Version $previous_version no longer exists" >&2
   echo "   - Alias $alias_name does not exist on function $LAMBDA_FUNCTION_NAME" >&2
