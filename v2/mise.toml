@@ -1,0 +1,35 @@
+[tools]
+bun = "1.3.13"
+node = "22"
+pulumi = "3.270.0"
+
+[env]
+SUPPRESS_NO_CONFIG_WARNING = "1"
+
+[tasks.install]
+description = "Install dependencies"
+run = "bun install"
+sources = ["package.json", "bun.lock"]
+
+[tasks.describe]
+description = "Print the package manifest (what np package publish sends)"
+depends = ["install"]
+run = "bun src/main.ts --describe"
+
+[tasks.test]
+description = "Run the tests"
+depends = ["install"]
+run = "bun test"
+
+[tasks."build:program"]
+description = "Build the program bundle the orchestrator runs (needs pulumi on PATH for the schemas)"
+depends = ["install"]
+run = "bunx np-build-program --package src/main.ts --out dist/program"
+
+[tasks."build:image"]
+description = "Build the worker image (provider host + the aws provider)"
+run = "docker build -t lambda-v2:dev ."
+
+[tasks."publish:image"]
+description = "Build and push the worker image; prints registry/repo@sha256:<digest>"
+run = "bash scripts/publish-image.sh"

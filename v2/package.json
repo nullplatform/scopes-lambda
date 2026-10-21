@@ -1,0 +1,24 @@
+{
+  "name": "lambda-v2",
+  "version": "2.0.0",
+  "description": "AWS Lambda functions, run by the scope orchestrator",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "describe": "bun src/main.ts --describe",
+    "test": "bun test",
+    "build:program": "bunx np-build-program --package src/main.ts --out dist/program"
+  },
+  "dependencies": {
+    "@nullplatform/plugin": "file:/Users/pablo/Projects/_recovery/scratchpad/fresh/plugin-libraries/js",
+    "@aws-sdk/client-cloudwatch-logs": "^3.700.0",
+    "@aws-sdk/client-cloudwatch": "^3.700.0"
+  },
+  "devDependencies": {
+    "@pulumi/aws": "7.2.0",
+    "@pulumi/pulumi": "3.170.0",
+    "@types/bun": "^1.2.0",
+    "tsx": "4"
+  }
+}
