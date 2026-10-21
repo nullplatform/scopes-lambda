@@ -6,24 +6,41 @@
  */
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
-import type { ScopeProgramContext, ScopeProgram } from "@nullplatform/plugin/program";
-import { currentRelease, providersOf } from "./program/context";
-import { codeOf, lambdaFunction } from "./program/function";
+import type { Release, ScopeProgramContext, ScopeProgram } from "@nullplatform/plugin/program";
+import { providersOf } from "./program/context";
+import { codeOf, lambdaFunction, type CodeSelection } from "./program/function";
 import { executionRole } from "./program/iam";
 import { names } from "./program/names";
 import { parameters } from "./program/parameters";
-import { dns } from "./program/dns";
+import { dns, dnsName } from "./program/dns";
 import { httpExposure } from "./program/http";
 import { invokePermissions } from "./program/permissions";
-import { aliases, releaseVersions, RELEASE_VERSIONS_OUTPUT, settled } from "./program/releases";
+import {
+  aliases,
+  CODE_SOURCE_OUTPUT,
+  previousCodeSource,
+  releaseVersions,
+  RELEASE_VERSIONS_OUTPUT,
+  settled,
+} from "./program/releases";
 
 const ASSET_TYPES = ["docker-image", "lambda"];
 
-export function assetUrlOf(ctx: ScopeProgramContext): { deploymentId?: string; assetUrl?: string } {
-  const release = currentRelease(ctx);
-  if (!release) return {};
+function assetOf(release: Release): CodeSelection {
   const asset = release.assets.find((entry) => ASSET_TYPES.includes(entry.type)) ?? release.assets[0];
   return { deploymentId: release.deploymentId, assetUrl: asset?.url };
+}
+
+/**
+ * Whose asset the function runs: a candidate's while one is in flight; otherwise whatever the
+ * previous run left (so finalize and rollback only move the alias, as the legacy scope did), the
+ * active release's on a first run, the placeholder before any release.
+ */
+export function codeSelection(ctx: ScopeProgramContext): pulumi.Output<CodeSelection> {
+  const candidate = ctx.releases.find((release) => release.role === "candidate");
+  const active = ctx.releases.find((release) => release.role === "active");
+  if (candidate) return pulumi.output(assetOf(candidate));
+  return previousCodeSource(ctx).apply((previous) => previous ?? (active ? assetOf(active) : {}));
 }
 
 const program: ScopeProgram = async (ctx) => {
@@ -49,26 +66,27 @@ const program: ScopeProgram = async (ctx) => {
   const opts: pulumi.ResourceOptions = { parent: root };
   const n = names(ctx);
   const role = executionRole(ctx, n, region, accountId, opts);
-  const { deploymentId, assetUrl } = assetUrlOf(ctx);
-  const code = codeOf(ctx, deploymentId, assetUrl);
+  const selection = codeSelection(ctx);
+  const code = codeOf(ctx, selection);
   const { environment } = parameters(ctx, n, opts);
   const { fn } = lambdaFunction(ctx, n, role, code, environment, opts);
-  const { versions, missing } = releaseVersions(ctx, fn);
+  const { versions, missing } = releaseVersions(ctx, fn, selection.apply((chosen) => chosen.deploymentId));
   // A release with no version on record fails the run here, before anything depends on it.
   const unknown = await settled(missing);
   if (unknown.length) throw new Error(`${unknown.join(", ")}: no published version on record; refresh the scope`);
   const { main } = aliases(ctx, n, fn, versions, opts);
   invokePermissions(ctx, fn, main, opts);
-  const exposure = httpExposure(ctx, n, fn, main, opts);
-  const { record, domain } = dns(ctx, n, exposure, opts);
+  const name = dnsName(ctx, n, opts);
+  const exposure = httpExposure(ctx, n, fn, main, name, opts);
+  const { domain } = dns(n, name, exposure, opts);
   const httpEndpoint = exposure.kind === "none" ? "" : exposure.endpoint;
-  const fullDomain = record ? record.fqdn : (domain ?? "");
+  const codeSource = selection.apply((chosen) => (chosen.deploymentId ? chosen : undefined));
   ctx.outputs({
     function_name: n.functionName,
     function_arn: fn.arn,
     alias_arn: main.arn,
     execution_role_arn: role.role.arn,
-    domain: fullDomain,
+    domain,
     http_endpoint: httpEndpoint,
   });
   return {
@@ -76,9 +94,10 @@ const program: ScopeProgram = async (ctx) => {
     function_arn: fn.arn,
     alias_arn: main.arn,
     execution_role_arn: role.role.arn,
-    domain: fullDomain,
+    domain,
     http_endpoint: httpEndpoint,
     [RELEASE_VERSIONS_OUTPUT]: versions,
+    [CODE_SOURCE_OUTPUT]: codeSource,
   };
 };
 

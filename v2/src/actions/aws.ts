@@ -9,7 +9,11 @@ import { fromTemporaryCredentials } from "@aws-sdk/credential-providers";
 import type { AwsCredentialIdentityProvider } from "@smithy/types";
 import type { Context } from "../schema";
 
-/** The selector the Lambda scope's assume-role is registered under in `aws-iam-configuration`. */
+/**
+ * The selector the Lambda scope's assume-role is registered under in the `identity-access-control`
+ * provider (`iam_role_arns.arns[]{ selector, arn }`); `scope-configurations.assume_role.arn` is the
+ * older per-scope override. The same chain the legacy scope and the worker's `platform` profile use.
+ */
 const ROLE_SELECTOR = "lambda";
 const SESSION_NAME = "nullplatform-lambda-v2-telemetry";
 
@@ -34,10 +38,17 @@ function stringAt(container: unknown, ...path: string[]): string | undefined {
   return typeof current === "string" && current.length > 0 ? current : undefined;
 }
 
+function roleArnOf(providers: Record<string, unknown>): string | undefined {
+  const arns = isObject(providers["identity-access-control"]) ? providers["identity-access-control"].iam_role_arns : undefined;
+  const list = isObject(arns) ? arns.arns : undefined;
+  const match = Array.isArray(list) ? list.find((entry) => isObject(entry) && entry.selector === ROLE_SELECTOR) : undefined;
+  return stringAt(match, "arn") ?? stringAt(providers["scope-configurations"], "assume_role", "arn");
+}
+
 export async function awsClientConfig(ctx: Context): Promise<AwsClientConfig> {
-  const providers = await ctx.settings.providers(["cloud-providers", "aws-iam-configuration"]);
-  const region = stringAt(providers["cloud-providers"], "region");
-  const roleArn = stringAt(providers["aws-iam-configuration"], "arns", ROLE_SELECTOR);
+  const providers = await ctx.settings.providers(["cloud-providers", "identity-access-control", "scope-configurations"]);
+  const region = stringAt(providers["cloud-providers"], "account", "region");
+  const roleArn = roleArnOf(providers);
   return {
     region,
     roleArn,

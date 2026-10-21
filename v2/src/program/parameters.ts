@@ -22,6 +22,20 @@ export function strategyOf(ctx: ScopeProgramContext): ParametersStrategy {
 /** A secret reference stands where a string value goes: the worker swaps it for the value. */
 const asValue = (reference: { $npSecret: string }) => reference as unknown as string;
 
+/**
+ * A fingerprint of the applicable value ids of every parameter: part of the aggregate reference,
+ * so a changed value is a changed input (the engine diffs references, never values).
+ */
+export function parametersVersion(parameters: { id: string; valueId: string }[]): string {
+  const listed = [...parameters].sort((left, right) => left.id.localeCompare(right.id)).map((entry) => `${entry.id}=${entry.valueId}`).join(",");
+  let hash = 0x811c9dc5;
+  for (const char of listed) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${parameters.length}.${hash.toString(16)}`;
+}
+
 export interface Parameters {
   environment: Record<string, pulumi.Input<string>>;
   secrets: aws.secretsmanager.Secret[];
@@ -31,7 +45,8 @@ export function parameters(ctx: ScopeProgramContext, names: Names, opts: pulumi.
   if (strategyOf(ctx) === "env") {
     const environment: Record<string, pulumi.Input<string>> = {};
     for (const parameter of ctx.scope.parameters) {
-      environment[parameter.name] = asValue(ctx.secrets.ref(`np://parameter/${parameter.id}`));
+      // The value id in the reference: a new value is a new input, so the engine applies it.
+      environment[parameter.name] = asValue(ctx.secrets.ref(`np://parameter/${parameter.id}?v=${parameter.valueId}`));
     }
     return { environment, secrets: [] };
   }
@@ -45,7 +60,10 @@ export function parameters(ctx: ScopeProgramContext, names: Names, opts: pulumi.
     // The whole parameter set of the scope, as JSON; resolved by the worker per deployment.
     const version = new aws.secretsmanager.SecretVersion(
       `${name}-value`,
-      { secretId: secret.id, secretString: asValue(ctx.secrets.ref(`np://parameters/${release.deploymentId}`)) },
+      {
+        secretId: secret.id,
+        secretString: asValue(ctx.secrets.ref(`np://parameters/${release.deploymentId}?v=${parametersVersion(ctx.scope.parameters)}`)),
+      },
       { ...opts, dependsOn: [secret] },
     );
     void version;

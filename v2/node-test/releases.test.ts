@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { before, beforeEach, describe, it } from "node:test";
 import type { Release } from "@nullplatform/plugin/program";
+import { parametersVersion } from "../src/program/parameters";
 import { all, contextFixture, find, installMocks, previousOutputs, recorded, resolve, settle, unwrapSecret } from "./harness";
 
 const release = (deploymentId: string, weight: number, role: Release["role"]): Release => ({
@@ -17,11 +18,19 @@ async function run(releases: Release[], attributes: Record<string, unknown> = {}
   const ctx = contextFixture({ releases, attributes, providers });
   const outputs = await program(ctx);
   const versions = await resolve(outputs.release_versions as never);
+  const codeSource = await resolve(outputs.code_source as never);
   await resolve(outputs.alias_arn as never);
   await settle();
   const alias = find("aws:lambda/alias:Alias", "4242-shop-api-checkout-main");
   assert.ok(alias, "the main alias exists");
-  return { ctx, versions: versions as Record<string, string>, alias: alias.inputs, fn: find("aws:lambda/function:Function")!.inputs };
+  const resolvedAlias: Record<string, unknown> = { ...alias.inputs, functionVersion: await resolve(alias.inputs.functionVersion as never) };
+  return {
+    ctx,
+    versions: versions as Record<string, string>,
+    alias: resolvedAlias,
+    fn: find("aws:lambda/function:Function")!.inputs,
+    outputs: { code_source: codeSource },
+  };
 }
 
 describe("releases as alias routing", () => {
@@ -65,11 +74,24 @@ describe("releases as alias routing", () => {
     assert.equal(alias.routingConfig, undefined);
   });
 
-  it("rollback: blue alone again, alias back on blue's recorded version", async () => {
+  it("rollback: blue alone again, alias back on blue's recorded version, the code left as deployed (no republish)", async () => {
     previousOutputs.release_versions = { "d-1": "3", "d-2": "7" };
-    const { alias, fn } = await run([release("d-1", 100, "active")]);
-    assert.equal(fn.description, "d-1");
-    assert.equal(alias.functionVersion, "7", "blue is the current code again, so its version is the function's");
+    previousOutputs.code_source = { deploymentId: "d-2", assetUrl: "123456789012.dkr.ecr.us-east-1.amazonaws.com/app:d-2" };
+    const { alias, fn, versions, outputs } = await run([release("d-1", 100, "active")]);
+    assert.equal(fn.description, "d-2", "the function keeps the code it runs; only the alias moves");
+    assert.equal(fn.imageUri, "123456789012.dkr.ecr.us-east-1.amazonaws.com/app:d-2");
+    assert.equal(alias.functionVersion, "3");
+    assert.deepEqual(versions, { "d-1": "3" });
+    assert.deepEqual(outputs.code_source, { deploymentId: "d-2", assetUrl: "123456789012.dkr.ecr.us-east-1.amazonaws.com/app:d-2" });
+  });
+
+  it("create-scope: no release, the alias points at the placeholder's published version, never $LATEST", async () => {
+    delete previousOutputs.release_versions;
+    delete previousOutputs.code_source;
+    const { alias, fn } = await run([]);
+    assert.equal(fn.description, "placeholder");
+    assert.notEqual(alias.functionVersion, "$LATEST");
+    assert.equal(alias.functionVersion, "7", "the mocked function publishes version 7");
   });
 
   it("a release with no recorded version is a program error, not a guess", async () => {
@@ -99,13 +121,13 @@ describe("parameters", () => {
 
   it("env strategy: each parameter is a secret reference in the environment", async () => {
     const { fn } = await run([release("d-1", 100, "active")]);
-    assert.deepEqual(fn.environment, { variables: { DATABASE_URL: { $npSecret: "np://parameter/p-1" } } });
+    assert.deepEqual(fn.environment, { variables: { DATABASE_URL: { $npSecret: "np://parameter/p-1?v=val-1" } } });
     assert.equal(all("aws:secretsmanager/secret:Secret").length, 0);
   });
 
   it("secretsmanager strategy: one secret per release, the function names the current one", async () => {
     previousOutputs.release_versions = { "d-1": "3" };
-    const { fn } = await run(
+    const { fn, ctx } = await run(
       [release("d-1", 100, "active"), release("d-2", 0, "candidate")],
       {},
       { "scope-configurations": { deployment: { parameters_strategy: "secretsmanager" } } },
@@ -113,7 +135,7 @@ describe("parameters", () => {
     const secrets = all("aws:secretsmanager/secret:Secret").map((entry) => entry.inputs.name).sort();
     assert.deepEqual(secrets, ["nullplatform/4242/d-1/parameters", "nullplatform/4242/d-2/parameters"]);
     const versions = all("aws:secretsmanager/secretVersion:SecretVersion");
-    assert.deepEqual(unwrapSecret(versions[0].inputs.secretString), { $npSecret: "np://parameters/d-1" });
+    assert.deepEqual(unwrapSecret(versions[0].inputs.secretString), { $npSecret: `np://parameters/d-1?v=${parametersVersion(ctx.scope.parameters)}` });
     assert.deepEqual(fn.environment, { variables: { NULLPLATFORM_PARAMETERS_SECRET: "nullplatform/4242/d-2/parameters" } });
   });
 

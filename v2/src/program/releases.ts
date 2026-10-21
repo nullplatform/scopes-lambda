@@ -12,6 +12,33 @@ import { attributesOf, currentRelease } from "./context";
 import type { Names } from "./names";
 
 export const RELEASE_VERSIONS_OUTPUT = "release_versions";
+/** What code the function runs (deployment id and asset), recorded so a later run keeps it. */
+export const CODE_SOURCE_OUTPUT = "code_source";
+
+export interface CodeSource {
+  deploymentId: string;
+  assetUrl: string;
+}
+
+/** One reference to this very stack per program run: its previous outputs. */
+const selfReferences = new WeakMap<ScopeProgramContext, pulumi.StackReference>();
+
+function selfReference(ctx: ScopeProgramContext): pulumi.StackReference {
+  let reference = selfReferences.get(ctx);
+  if (!reference) {
+    // The name a self-managed (DIY) backend requires: `organization/<project>/<stack>`.
+    reference = new pulumi.StackReference(`organization/${pulumi.getProject()}/${pulumi.getStack()}`);
+    selfReferences.set(ctx, reference);
+  }
+  return reference;
+}
+
+/** The code the previous run left on the function, or `undefined` on the first run. */
+export function previousCodeSource(ctx: ScopeProgramContext): pulumi.Output<CodeSource | undefined> {
+  return selfReference(ctx)
+    .getOutput(CODE_SOURCE_OUTPUT)
+    .apply((value) => (value && typeof value === "object" ? (value as CodeSource) : undefined));
+}
 
 export interface ReleaseVersions {
   /** deployment id → published version, for every release the scope serves. */
@@ -25,24 +52,29 @@ export function settled<T>(output: pulumi.Output<T>): Promise<T> {
   return (output as unknown as { promise(): Promise<T> }).promise();
 }
 
-/**
- * The previous run's `release_versions`, or `{}` on the first run. The reference names the stack
- * the way a self-managed (DIY) backend requires: `organization/<project>/<stack>`.
- */
-function previousVersions(): pulumi.Output<Record<string, string>> {
-  const self = new pulumi.StackReference(`organization/${pulumi.getProject()}/${pulumi.getStack()}`);
-  return self.getOutput(RELEASE_VERSIONS_OUTPUT).apply((value) => (value ?? {}) as Record<string, string>);
+/** The previous run's `release_versions`, or `{}` on the first run. */
+function previousVersions(ctx: ScopeProgramContext): pulumi.Output<Record<string, string>> {
+  return selfReference(ctx)
+    .getOutput(RELEASE_VERSIONS_OUTPUT)
+    .apply((value) => (value ?? {}) as Record<string, string>);
 }
 
-export function releaseVersions(ctx: ScopeProgramContext, fn: aws.lambda.Function): ReleaseVersions {
-  const current = currentRelease(ctx);
-  const previous = previousVersions();
+/**
+ * Each release's published version: the one whose asset the function runs now gets the function's
+ * version, every other one the version recorded by a previous run.
+ */
+export function releaseVersions(
+  ctx: ScopeProgramContext,
+  fn: aws.lambda.Function,
+  codeDeploymentId: pulumi.Output<string | undefined>,
+): ReleaseVersions {
+  const previous = previousVersions(ctx);
   // Never thrown from inside an output: a rejected output leaves unobserved promises behind.
-  const resolved = pulumi.all([fn.version, previous]).apply(([version, known]) => {
+  const resolved = pulumi.all([fn.version, previous, codeDeploymentId]).apply(([version, known, running]) => {
     const result: Record<string, string> = {};
     const missing: string[] = [];
     for (const release of ctx.releases) {
-      if (release.deploymentId === current?.deploymentId) result[release.deploymentId] = version;
+      if (release.deploymentId === running) result[release.deploymentId] = version;
       else if (known[release.deploymentId]) result[release.deploymentId] = known[release.deploymentId];
       else missing.push(`release ${release.id} (deployment ${release.deploymentId})`);
     }
@@ -56,17 +88,25 @@ export interface Routing {
   additionalVersionWeights: pulumi.Output<Record<string, number> | undefined>;
 }
 
-/** Where `main` points and what it routes, from the releases' roles and weights. */
-export function routingOf(ctx: ScopeProgramContext, versions: pulumi.Output<Record<string, string>>): Routing {
+/**
+ * Where `main` points and what it routes, from the releases' roles and weights; with no release
+ * at all, at the function's own published version (the placeholder's), never `$LATEST`, which a
+ * provisioned concurrency config cannot attach to.
+ */
+export function routingOf(
+  ctx: ScopeProgramContext,
+  versions: pulumi.Output<Record<string, string>>,
+  fallback: pulumi.Output<string>,
+): Routing {
   const active = ctx.releases.find((release) => release.role === "active");
   const candidate = ctx.releases.find((release) => release.role === "candidate");
   const sole = ctx.releases.length === 1 ? ctx.releases[0] : undefined;
-  const functionVersion = versions.apply((map) => {
+  const functionVersion = pulumi.all([versions, fallback]).apply(([map, own]) => {
     if (sole) return map[sole.deploymentId];
     if (candidate && active) return candidate.weight >= 100 ? map[candidate.deploymentId] : map[active.deploymentId];
     if (active) return map[active.deploymentId];
     if (candidate) return map[candidate.deploymentId];
-    return "$LATEST";
+    return own;
   });
   const additionalVersionWeights = versions.apply((map) => {
     if (!candidate || !active || sole || candidate.weight <= 0 || candidate.weight >= 100) return undefined;
@@ -89,7 +129,7 @@ export function aliases(
   opts: pulumi.ResourceOptions = {},
 ): Aliases {
   const attributes = attributesOf(ctx);
-  const routing = routingOf(ctx, versions);
+  const routing = routingOf(ctx, versions, fn.version);
   const main = new aws.lambda.Alias(
     `${names.functionName}-${names.alias}`,
     {

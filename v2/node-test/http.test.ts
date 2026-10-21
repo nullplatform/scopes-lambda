@@ -28,15 +28,16 @@ describe("http exposure and dns", () => {
     const rule = find("aws:lb/listenerRule:ListenerRule");
     assert.equal(rule?.inputs.listenerArn, "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/pub/1/2");
     assert.equal(rule?.inputs.priority, rulePriority("4242"));
-    assert.deepEqual(rule?.inputs.conditions, [{ hostHeader: { values: ["retail-shop-api-checkout-4242"] } }]);
+    // The rule matches the name the record publishes: <ns>-<app>-<scope>.<account>.<zone>, as legacy.
+    assert.deepEqual(rule?.inputs.conditions, [{ hostHeader: { values: ["retail-shop-api-checkout.acme.acme.example"] } }]);
     assert.ok(find("aws:lambda/permission:Permission", "AllowALBInvoke"));
     const record = find("aws:route53/record:Record");
     assert.equal(record?.inputs.zoneId, "Z1");
     assert.equal(record?.inputs.type, "CNAME");
-    assert.equal(record?.inputs.name, "retail-shop-api-checkout-4242.acme.example");
+    assert.equal(record?.inputs.name, "retail-shop-api-checkout.acme.acme.example");
     assert.deepEqual(record?.inputs.records, ["pub-123.us-east-1.elb.amazonaws.com"]);
-    assert.equal(endpoint, "https://pub-123.us-east-1.elb.amazonaws.com");
-    assert.equal(domain, "retail-shop-api-checkout-4242.acme.example");
+    assert.equal(endpoint, "https://retail-shop-api-checkout.acme.acme.example");
+    assert.equal(domain, "retail-shop-api-checkout.acme.acme.example");
     assert.equal(all("aws:apigatewayv2/api:Api").length, 0);
   });
 
@@ -46,8 +47,27 @@ describe("http exposure and dns", () => {
     assert.equal(find("aws:route53/record:Record")?.inputs.zoneId, "Z2");
   });
 
-  it("no load balancer: an HTTP API with a $default route to the alias", async () => {
-    const { endpoint } = await run({}, { vpc: {} });
+  it("private without a private listener: refused, never a public API", async () => {
+    await assert.rejects(
+      run({ visibility: "private" }, { vpc: { load_balancer: { public: { listener_arn: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/pub/1/2" } } } }),
+      /private.*listener/,
+    );
+  });
+
+  it("http toggled on later adds the exposure without touching the function", async () => {
+    await run({ http_enabled: false });
+    const before = find("aws:lambda/function:Function");
+    await run({ http_enabled: true });
+    const after = find("aws:lambda/function:Function");
+    assert.deepEqual(after?.inputs, before?.inputs);
+    assert.equal(after?.name, before?.name);
+    assert.ok(find("aws:lb/targetGroup:TargetGroup"));
+  });
+
+  it("no load balancer: an HTTP API with a $default route to the alias, no record (an API needs a custom domain to serve a name)", async () => {
+    const { endpoint, domain } = await run({}, { vpc: {} });
+    assert.equal(all("aws:route53/record:Record").length, 0);
+    assert.equal(domain, "");
     assert.equal(find("aws:apigatewayv2/api:Api")?.inputs.name, "retail-shop-api-checkout");
     const integration = find("aws:apigatewayv2/integration:Integration");
     assert.equal(integration?.inputs.integrationType, "AWS_PROXY");

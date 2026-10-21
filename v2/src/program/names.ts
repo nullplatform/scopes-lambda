@@ -37,7 +37,8 @@ export function names(ctx: ScopeProgramContext): Names {
     dlqPolicy: `np-lambda-dlq-${scope.id}`,
     targetGroup: cut(`${namespace.slice(0, 10)}-${application.slice(0, 10)}-${scope.slug.slice(0, 8)}`, TARGET_GROUP_LIMIT),
     apiName: `${namespace}-${application}-${scope.slug}`,
-    dnsName: `${namespace}-${application}-${scope.slug}`,
+    // `<ns>-<app>-<scope>.<account>` under the zone, as the legacy Route53 setup names it.
+    dnsName: `${namespace}-${application}-${scope.slug}.${scope.account.slug}`,
     secret: (deploymentId) => `nullplatform/${scope.id}/${deploymentId}/parameters`,
   };
 }

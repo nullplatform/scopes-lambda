@@ -1,12 +1,15 @@
 /**
  * HTTP exposure, as the legacy modules declare it: behind the account's load balancer (a lambda
- * target group and a host-header listener rule on the public or private listener) when one
- * exists, else an HTTP API Gateway with a `$default` route to the alias.
+ * target group and a host-header listener rule on the listener of the scope's visibility) when
+ * one exists; a public scope without a public listener gets an HTTP API Gateway with a `$default`
+ * route to the alias; a private scope without a private listener is refused — an API endpoint is
+ * reachable from the internet.
  */
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
 import type { ScopeProgramContext } from "@nullplatform/plugin/program";
 import { attributesOf, providersOf } from "./context";
+import type { DnsName } from "./dns";
 import type { Names } from "./names";
 
 const HEALTH_CHECK = { path: "/health", interval: 35, timeout: 30 };
@@ -31,15 +34,22 @@ export function httpExposure(
   names: Names,
   fn: aws.lambda.Function,
   alias: aws.lambda.Alias,
+  name: DnsName,
   opts: pulumi.ResourceOptions = {},
 ): HttpExposure {
   const attributes = attributesOf(ctx);
   if (!attributes.http_enabled) return { kind: "none" };
   const { vpc } = providersOf(ctx);
-  const listenerArn =
-    attributes.visibility === "private" ? vpc.load_balancer?.private?.listener_arn : vpc.load_balancer?.public?.listener_arn;
+  const isPrivate = attributes.visibility === "private";
+  const listenerArn = isPrivate ? vpc.load_balancer?.private?.listener_arn : vpc.load_balancer?.public?.listener_arn;
   const tags = { ManagedBy: "custom-scope-role", Module: "networking" };
+  if (!listenerArn && isPrivate) {
+    throw new Error("a private function needs the account's private load balancer listener (vpc.load_balancer.private.listener_arn)");
+  }
   if (listenerArn) {
+    if (!name.fqdn) {
+      throw new Error("a function behind the load balancer needs a hosted zone (cloud-providers.networking.hosted_public_zone_id / hosted_zone_id)");
+    }
     const targetGroup = new aws.lb.TargetGroup(
       names.targetGroup,
       { name: names.targetGroup, targetType: "lambda", healthCheck: { enabled: true, ...HEALTH_CHECK }, tags },
@@ -68,7 +78,8 @@ export function httpExposure(
         listenerArn,
         priority: rulePriority(ctx.scope.id),
         actions: [{ type: "forward", targetGroupArn: targetGroup.arn }],
-        conditions: [{ hostHeader: { values: [ctx.naming.dns(names.dnsName)] } }],
+        // The rule matches the name the record publishes.
+        conditions: [{ hostHeader: { values: [name.fqdn] } }],
         tags,
       },
       opts,
@@ -76,7 +87,7 @@ export function httpExposure(
     const listener = aws.lb.getListenerOutput({ arn: listenerArn }, opts);
     const loadBalancer = listener.loadBalancerArn.apply((arn) => aws.lb.getLoadBalancer({ arn }, opts));
     const dnsTarget = loadBalancer.apply((lb) => lb.dnsName);
-    return { kind: "alb", targetGroup, rule, dnsTarget, endpoint: dnsTarget.apply((dns) => `https://${dns}`) };
+    return { kind: "alb", targetGroup, rule, dnsTarget, endpoint: name.fqdn.apply((fqdn) => `https://${fqdn}`) };
   }
   const api = new aws.apigatewayv2.Api(
     names.apiName,

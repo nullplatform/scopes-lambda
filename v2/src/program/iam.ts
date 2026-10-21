@@ -89,7 +89,12 @@ export function executionRole(
   }
   const dependsOn: pulumi.Resource[] = Object.entries(inline).map(
     ([name, policy]) =>
-      new aws.iam.RolePolicy(`${names.roleName}-${name}`, { name, role: role.id, policy: JSON.stringify(policy) }, opts),
+      new aws.iam.RolePolicy(
+        `${names.roleName}-${name}`,
+        // A policy given as a document string is attached as is; an object is serialised once.
+        { name, role: role.id, policy: typeof policy === "string" ? policy : JSON.stringify(policy) },
+        opts,
+      ),
   );
   if (attributes.vpc_enabled) {
     dependsOn.push(

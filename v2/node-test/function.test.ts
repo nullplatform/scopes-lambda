@@ -96,4 +96,14 @@ describe("the program: role, log group and function", () => {
     assert.match(String(dlq.inputs.policy), /kms:GenerateDataKey/);
     assert.ok(find("aws:iam/rolePolicy:RolePolicy", "np-lambda-4242-shop-api-checkout-role-extra"));
   });
+
+  it("a role policy given as a string is attached as is, never encoded twice", async () => {
+    recorded.length = 0;
+    const { default: program } = await import("../src/program");
+    const policy = JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "s3:GetObject", Resource: "*" }] });
+    await resolve((await program(contextFixture({ providers: { "scope-configurations": { lambda: { role_policies: [{ name: "s3", policy }] } } } }))).function_arn);
+    await settle();
+    const attached = find("aws:iam/rolePolicy:RolePolicy", "np-lambda-4242-shop-api-checkout-role-s3");
+    assert.equal(attached?.inputs.policy, policy);
+  });
 });

@@ -15,7 +15,7 @@ export interface Recorded {
 export const recorded: Recorded[] = [];
 
 /** What the stack's previous run exported (`release_versions`); set per test. */
-export const previousOutputs: { release_versions?: Record<string, string> } = {};
+export const previousOutputs: { release_versions?: Record<string, string>; code_source?: { deploymentId: string; assetUrl: string } } = {};
 
 export async function installMocks(): Promise<void> {
   recorded.length = 0;
@@ -94,7 +94,7 @@ export function contextFixture(overrides: {
       application: { id: "4", slug: "shop-api", repositoryUrl: "https://github.com/acme/shop-api" },
       namespace: { slug: "retail" },
       account: { slug: "acme" },
-      parameters: [{ id: "p-1", name: "DATABASE_URL" }],
+      parameters: [{ id: "p-1", name: "DATABASE_URL", valueId: "val-1" }],
     },
     releases: overrides.releases ?? [],
     providers: {

@@ -8,19 +8,19 @@ import type { ScopeProgramContext } from "@nullplatform/plugin/program";
 import { attributesOf, providersOf } from "./context";
 import type { ExecutionRole } from "./iam";
 import type { Names } from "./names";
-import { placeholderCode } from "./placeholder";
+import { placeholderCode, placeholderImage } from "./placeholder";
 
 export const LOG_RETENTION_DAYS = 30;
 
 export interface FunctionCode {
-  imageUri?: string;
-  s3Bucket?: string;
-  s3Key?: string;
-  code?: pulumi.asset.AssetArchive;
-  runtime?: string;
-  handler?: string;
+  imageUri?: pulumi.Input<string>;
+  s3Bucket?: pulumi.Input<string | undefined>;
+  s3Key?: pulumi.Input<string | undefined>;
+  code?: pulumi.Input<pulumi.asset.AssetArchive | undefined>;
+  runtime?: pulumi.Input<string>;
+  handler?: pulumi.Input<string>;
   /** What the code belongs to: the deployment id, or `placeholder`. */
-  description: string;
+  description: pulumi.Input<string>;
 }
 
 export interface DeployedFunction {
@@ -28,24 +28,38 @@ export interface DeployedFunction {
   logGroup: aws.cloudwatch.LogGroup;
 }
 
-/** The code the function runs: the current release's asset, or the placeholder. */
-export function codeOf(ctx: ScopeProgramContext, deploymentId: string | undefined, assetUrl: string | undefined): FunctionCode {
-  const attributes = attributesOf(ctx);
-  if (!deploymentId || !assetUrl) {
-    const placeholder = placeholderCode(ctx);
-    return placeholder.kind === "image"
-      ? { imageUri: placeholder.imageUri, description: "placeholder" }
-      : { code: placeholder.code, runtime: placeholder.runtime, handler: placeholder.handler, description: "placeholder" };
-  }
-  if (attributes.deployment_type === "docker-image") return { imageUri: assetUrl, description: deploymentId };
+/** Which deployment's asset the function runs; neither means the placeholder. */
+export interface CodeSelection {
+  deploymentId?: string;
+  assetUrl?: string;
+}
+
+function s3Of(assetUrl: string): { bucket: string; key: string } {
   const url = new URL(assetUrl);
   if (url.protocol !== "s3:") throw new Error(`zip asset ${assetUrl} is not an s3:// url`);
+  return { bucket: url.hostname, key: decodeURIComponent(url.pathname.replace(/^\//, "")) };
+}
+
+/**
+ * The code the function runs, from a selection that may only be known once the previous run's
+ * outputs are read: the selected deployment's asset, or the placeholder when there is none.
+ */
+export function codeOf(ctx: ScopeProgramContext, selection: pulumi.Output<CodeSelection>): FunctionCode {
+  const attributes = attributesOf(ctx);
+  const description = selection.apply((chosen) => chosen.deploymentId ?? "placeholder");
+  if (attributes.deployment_type === "docker-image") {
+    return { imageUri: selection.apply((chosen) => chosen.assetUrl ?? placeholderImage(ctx)), description };
+  }
+  const placeholder = placeholderCode(ctx);
+  if (placeholder.kind !== "zip") throw new Error("a zip function's placeholder is inline code");
+  const s3 = selection.apply((chosen) => (chosen.assetUrl ? s3Of(chosen.assetUrl) : undefined));
   return {
-    s3Bucket: url.hostname,
-    s3Key: url.pathname.replace(/^\//, ""),
-    runtime: attributes.runtime,
-    handler: attributes.handler,
-    description: deploymentId,
+    s3Bucket: s3.apply((location) => location?.bucket),
+    s3Key: s3.apply((location) => location?.key),
+    code: selection.apply((chosen) => (chosen.assetUrl ? undefined : placeholder.code)),
+    runtime: selection.apply((chosen) => (chosen.assetUrl ? attributes.runtime : placeholder.runtime)),
+    handler: selection.apply((chosen) => (chosen.assetUrl ? attributes.handler : placeholder.handler)),
+    description,
   };
 }
 
@@ -74,8 +88,9 @@ export function lambdaFunction(
       description: code.description,
       packageType: code.imageUri ? "Image" : "Zip",
       ...(code.imageUri ? { imageUri: code.imageUri } : {}),
-      ...(code.code ? { code: code.code } : {}),
-      ...(code.s3Bucket ? { s3Bucket: code.s3Bucket, s3Key: code.s3Key } : {}),
+      // Zip inputs resolve to undefined when they do not apply (an s3 asset or inline code).
+      ...(code.code ? { code: code.code as pulumi.Input<pulumi.asset.AssetArchive> } : {}),
+      ...(code.s3Bucket ? { s3Bucket: code.s3Bucket as pulumi.Input<string>, s3Key: code.s3Key as pulumi.Input<string> } : {}),
       ...(code.runtime ? { runtime: code.runtime, handler: code.handler } : {}),
       architectures: [attributes.architecture],
       memorySize: attributes.memory,
