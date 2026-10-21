@@ -31,7 +31,7 @@ export function parameters(ctx: ScopeProgramContext, names: Names, opts: pulumi.
   if (strategyOf(ctx) === "env") {
     const environment: Record<string, pulumi.Input<string>> = {};
     for (const parameter of ctx.scope.parameters) {
-      environment[parameter.name] = asValue(ctx.secrets.ref(`parameter:${parameter.id}`));
+      environment[parameter.name] = asValue(ctx.secrets.ref(`np://parameter/${parameter.id}`));
     }
     return { environment, secrets: [] };
   }
@@ -45,7 +45,7 @@ export function parameters(ctx: ScopeProgramContext, names: Names, opts: pulumi.
     // The whole parameter set of the scope, as JSON; resolved by the worker per deployment.
     const version = new aws.secretsmanager.SecretVersion(
       `${name}-value`,
-      { secretId: secret.id, secretString: asValue(ctx.secrets.ref(`parameters:${release.deploymentId}`)) },
+      { secretId: secret.id, secretString: asValue(ctx.secrets.ref(`np://parameters/${release.deploymentId}`)) },
       { ...opts, dependsOn: [secret] },
     );
     void version;

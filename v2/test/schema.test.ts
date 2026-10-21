@@ -12,7 +12,7 @@ describe("the schema", () => {
     const added = Object.keys(schema.properties).filter((key) => !(key in legacySchema.properties));
     expect(added.sort()).toEqual(Object.keys(outputs).sort());
     for (const key of added) {
-      expect((schema.properties as Record<string, { readOnly?: boolean; visibleOn?: string[] }>)[key]).toMatchObject({
+      expect((schema.properties as unknown as Record<string, { readOnly?: boolean; visibleOn?: readonly string[] }>)[key]).toMatchObject({
         readOnly: true,
         visibleOn: ["read"],
       });

@@ -28,7 +28,7 @@ describe("the program: role, log group and function", () => {
     const policies = all("aws:iam/rolePolicy:RolePolicy").map((entry) => entry.inputs.name).sort();
     assert.deepEqual(policies, ["cloudwatch-logs", "ecr-image-pull", "secrets-manager-parameters-read"]);
     assert.ok(find("aws:cloudwatch/logGroup:LogGroup"));
-    assert.equal((find("aws:cloudwatch/logGroup:LogGroup") as { inputs: { retentionInDays: number } }).inputs.retentionInDays, 30);
+    assert.equal((find("aws:cloudwatch/logGroup:LogGroup") as unknown as { inputs: { retentionInDays: number } }).inputs.retentionInDays, 30);
     assert.equal(await resolve(outputs.function_name), "4242-shop-api-checkout");
     assert.equal(ctx.outputsRecorded.function_name, "4242-shop-api-checkout");
   });

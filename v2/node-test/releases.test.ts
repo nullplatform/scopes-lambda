@@ -99,7 +99,7 @@ describe("parameters", () => {
 
   it("env strategy: each parameter is a secret reference in the environment", async () => {
     const { fn } = await run([release("d-1", 100, "active")]);
-    assert.deepEqual(fn.environment, { variables: { DATABASE_URL: { $npSecret: "parameter:p-1" } } });
+    assert.deepEqual(fn.environment, { variables: { DATABASE_URL: { $npSecret: "np://parameter/p-1" } } });
     assert.equal(all("aws:secretsmanager/secret:Secret").length, 0);
   });
 
@@ -113,7 +113,7 @@ describe("parameters", () => {
     const secrets = all("aws:secretsmanager/secret:Secret").map((entry) => entry.inputs.name).sort();
     assert.deepEqual(secrets, ["nullplatform/4242/d-1/parameters", "nullplatform/4242/d-2/parameters"]);
     const versions = all("aws:secretsmanager/secretVersion:SecretVersion");
-    assert.deepEqual(unwrapSecret(versions[0].inputs.secretString), { $npSecret: "parameters:d-1" });
+    assert.deepEqual(unwrapSecret(versions[0].inputs.secretString), { $npSecret: "np://parameters/d-1" });
     assert.deepEqual(fn.environment, { variables: { NULLPLATFORM_PARAMETERS_SECRET: "nullplatform/4242/d-2/parameters" } });
   });
 });
