@@ -229,6 +229,16 @@ Dedicated actions to adjust reserved and provisioned concurrency without redeplo
 ### Function Invocation
 Direct Lambda invocation with custom JSON payloads for testing.
 
+### Tracing
+Workflows report to the nullplatform tracing API through the shell SDK at
+`vendor/catalog-tracing-sh` (a git submodule — clone with
+`--recurse-submodules`, or run `git submodule update --init`).
+
+- Each workflow's `trace:` block names the run and its steps; plumbing steps are `trace: false`.
+- `lambda/utils/log` is the tracing layer: `log error` becomes the step's traced error, and a fatal exit mirrors it onto the run.
+- `np_scope_failure <reason>` / `np_scope_aws_failure <aws-output>` label the failed step and run with `failure.reason` (an AWS error code, a `LastUpdateStatusReasonCode`, `ProvisionedConcurrencyFailed`, `WaitTimeout`), so failures are queryable by cause.
+- Without `NP_TRACE` the scripts behave exactly as before. When the submodule is missing, the log util logs a warning and runs untraced.
+
 ---
 
 ## Service Specification
