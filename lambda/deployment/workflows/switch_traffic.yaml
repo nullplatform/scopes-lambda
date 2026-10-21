@@ -1,7 +1,27 @@
 include:
   - "$SERVICE_PATH/values.yaml"
+trace:
+  title: Switch traffic
+  job:
+    name: lambda-deployment-switch-traffic
+    namespace: "@context:scope.provider"
+    labels:
+      entity: deployment
+      operation: switch-traffic
+      scope.provider: "@context:scope.provider"
 steps:
+  - name: load_logging
+    type: script
+    file: "$SERVICE_PATH/utils/log"
+    trace: false
+    output:
+      - name: log
+        type: function
+        parameters:
+          level: string
+          message: string
   - name: assume_role
+    trace: false
     type: script
     file: "$SERVICE_PATH/utils/assume_role_step"
     output:
@@ -12,6 +32,7 @@ steps:
       - name: AWS_SESSION_TOKEN
         type: environment
   - name: build_context
+    trace: false
     type: script
     file: "$SERVICE_PATH/deployment/build_context"
     output:
@@ -36,5 +57,7 @@ steps:
       - name: BLUE_DEPLOYMENT_ID
         type: environment
   - name: switch_traffic
+    trace:
+      title: Shift traffic between versions
     type: script
     file: "$SERVICE_PATH/deployment/scripts/update_alias_weights"
