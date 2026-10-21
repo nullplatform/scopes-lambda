@@ -136,9 +136,11 @@ export function aliases(
       name: names.alias,
       functionName: fn.name,
       functionVersion: routing.functionVersion,
+      // An Output that resolves to undefined is a routing config left unset; Pulumi's typing of
+      // Input<T> does not say so.
       routingConfig: routing.additionalVersionWeights.apply((weights) =>
         weights ? { additionalVersionWeights: weights } : undefined,
-      ),
+      ) as pulumi.Output<aws.types.input.lambda.AliasRoutingConfig>,
     },
     opts,
   );
