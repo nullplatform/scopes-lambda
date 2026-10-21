@@ -116,4 +116,13 @@ describe("parameters", () => {
     assert.deepEqual(unwrapSecret(versions[0].inputs.secretString), { $npSecret: "np://parameters/d-1" });
     assert.deepEqual(fn.environment, { variables: { NULLPLATFORM_PARAMETERS_SECRET: "nullplatform/4242/d-2/parameters" } });
   });
+
+  it("reads its own previous outputs through the organization-qualified stack reference the DIY backend requires", async () => {
+    delete previousOutputs.release_versions;
+    await run([]);
+    const reference = find("pulumi:pulumi:StackReference");
+    assert.equal(reference?.inputs.name, "organization/lambda-v2-tests/test");
+  });
 });
+
+

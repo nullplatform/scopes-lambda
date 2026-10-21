@@ -25,9 +25,12 @@ export function settled<T>(output: pulumi.Output<T>): Promise<T> {
   return (output as unknown as { promise(): Promise<T> }).promise();
 }
 
-/** The previous run's `release_versions`, or `{}` on the first run. */
+/**
+ * The previous run's `release_versions`, or `{}` on the first run. The reference names the stack
+ * the way a self-managed (DIY) backend requires: `organization/<project>/<stack>`.
+ */
 function previousVersions(): pulumi.Output<Record<string, string>> {
-  const self = new pulumi.StackReference(`${pulumi.getProject()}/${pulumi.getStack()}`);
+  const self = new pulumi.StackReference(`organization/${pulumi.getProject()}/${pulumi.getStack()}`);
   return self.getOutput(RELEASE_VERSIONS_OUTPUT).apply((value) => (value ?? {}) as Record<string, string>);
 }
 
