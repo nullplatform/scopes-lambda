@@ -4,6 +4,7 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 
 ## Table of Contents
 
+- [Install in your organization](#install-in-your-organization)
 - [Architecture Overview](#architecture-overview)
 - [Scope Structure](#scope-structure)
 - [Features](#features)
@@ -15,6 +16,37 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 - [Run Locally as a Package](#run-locally-as-a-package)
 - [Testing](#testing)
 - [Quick Reference](#quick-reference)
+
+---
+
+## Install in your organization
+
+The scope is published once as the package `scopes-lambda`, visible to every organization. You do not copy its specs: you install the package and use it read-only. Add the [installation module](./lambda/installation) to your stack at a release tag:
+
+```hcl
+module "lambda_scope" {
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.10.0"
+
+  nrn                  = "organization=123:account=456"
+  cluster_name         = "my-cluster"
+  agent_tags_selectors = { cluster = "runtime" }
+}
+```
+
+It creates the AWS permissions role, installs the package at `nrn`, and creates what a scope needs in your organization: the scope type, the NRN settings for metrics and logs, the scope-configuration schema and the agent notification channel. To upgrade, move `ref` to a newer tag. See [`lambda/installation`](./lambda/installation) for prerequisites, inputs and outputs.
+
+Every release publishes the new revision from this repository ([`lambda/publish`](./lambda/publish), applied by the `publish-package` job of the release workflow).
+
+### Global package or fork?
+
+**Use the global package.** It is the default, and the only way to keep receiving updates: every fix, new feature and security patch arrives as a new release, and you take it by moving `ref`. The specs, the code and how the scope is installed stay maintained here. If something is missing or wrong, open an issue or a pull request in this repository, so every organization gets it.
+
+**Fork only when you need to extend the scope substantially**: new actions, a different specification (attributes, deployment types, validations), or workflows that behave differently. A fork has real costs:
+
+- **You become the publisher.** You build and register your own image, and register your fork as your own organization's package with [`lambda/specs/install`](./lambda/installation.md).
+- **Updates stop arriving.** Upstream fixes reach you only when you merge them into your fork yourself.
+- **There is no way back for existing scopes.** Scopes created from your fork's specification cannot be moved to the global one.
+- **Names must not collide.** Use a different package slug (`NP_PACKAGE_NAME` in the `Dockerfile`, `package_slug`), specification name and IAM role and selector, or your fork and the global package share one worker and one role.
 
 ---
 
