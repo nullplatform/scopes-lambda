@@ -1,5 +1,8 @@
 # AWS Lambda Deployment Scope
 
+> **v2:** the same scope as an engine scope run by nullplatform's scope orchestrator lives in
+> [`v2/`](v2/README.md) (`lambda-v2`). This document describes the legacy workflow-based scope.
+
 This scope provides infrastructure-as-code for deploying and managing serverless functions on **AWS Lambda**. It uses a **modular Terraform architecture** with layered setup scripts that compose provider, IAM, compute, networking, and DNS modules into a complete deployment pipeline.
 
 ## Table of Contents

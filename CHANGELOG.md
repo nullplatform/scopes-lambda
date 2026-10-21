@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **v2:** `lambda-v2`, the scope re-implemented as an engine scope on the scope orchestrator (a Pulumi program the platform runs; provider calls on a slim worker): legacy schema and names kept, releases as alias weights, parameters by strategy through `$npSecret` references, telemetry data actions, worker image. See `v2/README.md`.
+
 ## [0.10.0](https://github.com/nullplatform/scopes-lambda/compare/v0.9.2...v0.10.0) (2026-10-16)
 
 
