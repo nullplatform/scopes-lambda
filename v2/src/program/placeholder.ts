@@ -32,11 +32,13 @@ export function placeholderImage(ctx: ScopeProgramContext): string {
 }
 
 export function placeholderCode(ctx: ScopeProgramContext): PlaceholderCode {
-  if (attributesOf(ctx).deployment_type === "zip") {
+  const attributes = attributesOf(ctx);
+  if (attributes.deployment_type === "zip") {
     return {
       kind: "zip",
       code: new pulumi.asset.AssetArchive({ "index.js": new pulumi.asset.StringAsset(PLACEHOLDER_SOURCE) }),
-      runtime: PLACEHOLDER_RUNTIME,
+      // The handler is JavaScript: the scope's own runtime when it is a Node one, else a current one.
+      runtime: attributes.runtime.startsWith("nodejs") ? attributes.runtime : PLACEHOLDER_RUNTIME,
       handler: PLACEHOLDER_HANDLER,
     };
   }

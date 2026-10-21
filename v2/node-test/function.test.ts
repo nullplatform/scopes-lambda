@@ -68,6 +68,18 @@ describe("the program: role, log group and function", () => {
     assert.ok(fn.inputs.code);
   });
 
+  it("a zip scope on a node runtime runs the placeholder on that very runtime", async () => {
+    recorded.length = 0;
+    const { default: program } = await import("../src/program");
+    await resolve((await program(contextFixture({ attributes: { deployment_type: "zip", runtime: "nodejs20.x" } }))).function_arn);
+    await settle();
+    await settle();
+    const fn = find("aws:lambda/function:Function");
+    assert.ok(fn);
+    assert.equal(fn.inputs.runtime, "nodejs20.x");
+    assert.equal(fn.inputs.handler, "index.handler");
+  });
+
   it("a dead-letter target adds the queue policy and the function config", async () => {
     recorded.length = 0;
     const { default: program } = await import("../src/program");
