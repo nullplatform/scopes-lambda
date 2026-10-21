@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { before, beforeEach, describe, it } from "node:test";
 import type { Release } from "@nullplatform/plugin/program";
-import { all, contextFixture, find, installMocks, previousOutputs, recorded, resolve, until, unwrapSecret } from "./harness";
+import { all, contextFixture, find, installMocks, previousOutputs, recorded, resolve, settle, unwrapSecret } from "./harness";
 
 const release = (deploymentId: string, weight: number, role: Release["role"]): Release => ({
   id: `rel-${deploymentId}`,
@@ -18,6 +18,7 @@ async function run(releases: Release[], attributes: Record<string, unknown> = {}
   const outputs = await program(ctx);
   const versions = await resolve(outputs.release_versions as never);
   await resolve(outputs.alias_arn as never);
+  await settle();
   const alias = find("aws:lambda/alias:Alias", "4242-shop-api-checkout-main");
   assert.ok(alias, "the main alias exists");
   return { ctx, versions: versions as Record<string, string>, alias: alias.inputs, fn: find("aws:lambda/function:Function")!.inputs };
@@ -83,7 +84,6 @@ describe("releases as alias routing", () => {
       { provisioned_concurrency: { type: "provisioned", value: 4, warmup_alias: "warm" } },
     );
     assert.equal(alias.functionVersion, "3");
-    await until(() => Boolean(find("aws:lambda/provisionedConcurrencyConfig:ProvisionedConcurrencyConfig")), "provisioned concurrency");
     const provisioned = find("aws:lambda/provisionedConcurrencyConfig:ProvisionedConcurrencyConfig");
     assert.equal(provisioned?.inputs.provisionedConcurrentExecutions, 4);
     assert.equal(provisioned?.inputs.qualifier, "main");
@@ -112,7 +112,6 @@ describe("parameters", () => {
     );
     const secrets = all("aws:secretsmanager/secret:Secret").map((entry) => entry.inputs.name).sort();
     assert.deepEqual(secrets, ["nullplatform/4242/d-1/parameters", "nullplatform/4242/d-2/parameters"]);
-    await until(() => all("aws:secretsmanager/secretVersion:SecretVersion").length === 2, "secret versions");
     const versions = all("aws:secretsmanager/secretVersion:SecretVersion");
     assert.deepEqual(unwrapSecret(versions[0].inputs.secretString), { $npSecret: "parameters:d-1" });
     assert.deepEqual(fn.environment, { variables: { NULLPLATFORM_PARAMETERS_SECRET: "nullplatform/4242/d-2/parameters" } });

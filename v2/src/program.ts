@@ -12,6 +12,9 @@ import { codeOf, lambdaFunction } from "./program/function";
 import { executionRole } from "./program/iam";
 import { names } from "./program/names";
 import { parameters } from "./program/parameters";
+import { dns } from "./program/dns";
+import { httpExposure } from "./program/http";
+import { invokePermissions } from "./program/permissions";
 import { aliases, releaseVersions, RELEASE_VERSIONS_OUTPUT, settled } from "./program/releases";
 
 const ASSET_TYPES = ["docker-image", "lambda"];
@@ -55,17 +58,26 @@ const program: ScopeProgram = async (ctx) => {
   const unknown = await settled(missing);
   if (unknown.length) throw new Error(`${unknown.join(", ")}: no published version on record; refresh the scope`);
   const { main } = aliases(ctx, n, fn, versions, opts);
+  invokePermissions(ctx, fn, main, opts);
+  const exposure = httpExposure(ctx, n, fn, main, opts);
+  const { record, domain } = dns(ctx, n, exposure, opts);
+  const httpEndpoint = exposure.kind === "none" ? "" : exposure.endpoint;
+  const fullDomain = record ? record.fqdn : (domain ?? "");
   ctx.outputs({
     function_name: n.functionName,
     function_arn: fn.arn,
     alias_arn: main.arn,
     execution_role_arn: role.role.arn,
+    domain: fullDomain,
+    http_endpoint: httpEndpoint,
   });
   return {
     function_name: n.functionName,
     function_arn: fn.arn,
     alias_arn: main.arn,
     execution_role_arn: role.role.arn,
+    domain: fullDomain,
+    http_endpoint: httpEndpoint,
     [RELEASE_VERSIONS_OUTPUT]: versions,
   };
 };

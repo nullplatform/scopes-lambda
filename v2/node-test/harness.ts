@@ -28,9 +28,26 @@ export async function installMocks(): Promise<void> {
           return { id, state: { ...args.inputs, outputs: { ...previousOutputs }, secretOutputNames: [] } };
         }
         const arn = `arn:aws:mock:${args.type}:${args.name}`;
-        return { id, state: { ...args.inputs, arn, version: "7", invokeArn: `${arn}:invoke`, dnsName: `${args.name}.elb.amazonaws.com` } };
+        return {
+          id,
+          state: {
+            ...args.inputs,
+            arn,
+            version: "7",
+            invokeArn: `${arn}:invoke`,
+            executionArn: `${arn}:execution`,
+            apiEndpoint: `https://${args.name}.execute-api.us-east-1.amazonaws.com`,
+            invokeUrl: `https://${args.name}.execute-api.us-east-1.amazonaws.com/main`,
+            fqdn: `${String(args.inputs.name ?? args.name)}`,
+          },
+        };
       },
       call(args) {
+        if (args.token === "aws:lb/getListener:getListener") {
+          return { ...args.inputs, loadBalancerArn: "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/pub/1" };
+        }
+        if (args.token === "aws:lb/getLoadBalancer:getLoadBalancer") return { ...args.inputs, dnsName: "pub-123.us-east-1.elb.amazonaws.com" };
+        if (args.token === "aws:route53/getZone:getZone") return { ...args.inputs, name: "acme.example." };
         return args.inputs;
       },
     },
@@ -109,6 +126,15 @@ export async function until(predicate: () => boolean, what: string, timeoutMs = 
   while (!predicate()) {
     if (Date.now() - started > timeoutMs) throw new Error(`${what} was never registered`);
     await new Promise((done) => setTimeout(done, 10));
+  }
+}
+
+/** Waits until the program has registered everything: no new resource for a short while. */
+export async function settle(quietMs = 150): Promise<void> {
+  let seen = -1;
+  while (seen !== recorded.length) {
+    seen = recorded.length;
+    await new Promise((done) => setTimeout(done, quietMs));
   }
 }
 

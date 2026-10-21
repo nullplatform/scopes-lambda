@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { before, describe, it } from "node:test";
-import { all, contextFixture, find, installMocks, recorded, resolve } from "./harness";
+import { all, contextFixture, find, installMocks, recorded, resolve, settle } from "./harness";
 
 describe("the program: role, log group and function", () => {
   before(async () => {
@@ -13,6 +13,7 @@ describe("the program: role, log group and function", () => {
     const ctx = contextFixture();
     const outputs = await program(ctx);
     await resolve(outputs.function_arn);
+    await settle();
     const fn = find("aws:lambda/function:Function");
     assert.ok(fn);
     assert.equal(fn.inputs.name, "4242-shop-api-checkout");
@@ -40,6 +41,7 @@ describe("the program: role, log group and function", () => {
       releases: [{ id: "r1", deploymentId: "d-1", weight: 100, role: "active", assets: [{ type: "lambda", url: "s3://builds/app/d-1.zip" }] }],
     });
     await resolve((await program(ctx)).function_arn);
+    await settle();
     const fn = find("aws:lambda/function:Function");
     assert.ok(fn);
     assert.equal(fn.inputs.packageType, "Zip");
@@ -57,6 +59,8 @@ describe("the program: role, log group and function", () => {
     recorded.length = 0;
     const { default: program } = await import("../src/program");
     await resolve((await program(contextFixture({ attributes: { deployment_type: "zip", runtime: "python3.12" } }))).function_arn);
+    await settle();
+    await settle();
     const fn = find("aws:lambda/function:Function");
     assert.ok(fn);
     assert.equal(fn.inputs.runtime, "nodejs22.x");
@@ -71,6 +75,7 @@ describe("the program: role, log group and function", () => {
       attributes: { dead_letter_target_arn: "arn:aws:sqs:us-east-1:123456789012:dlq", dead_letter_kms_key_arn: "arn:aws:kms:us-east-1:123456789012:key/k" },
       providers: { "scope-configurations": { lambda: { role_policies: [{ name: "extra", policy: { Version: "2012-10-17", Statement: [] } }] } } },
     }))).function_arn);
+    await settle();
     const fn = find("aws:lambda/function:Function");
     assert.deepEqual(fn?.inputs.deadLetterConfig, { targetArn: "arn:aws:sqs:us-east-1:123456789012:dlq" });
     const dlq = find("aws:iam/rolePolicy:RolePolicy", "np-lambda-4242-shop-api-checkout-role-np-lambda-dlq-4242");
