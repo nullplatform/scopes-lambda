@@ -131,7 +131,7 @@ export async function readMetric(ctx: Context, deps: { cloudwatch?: AwsCommandCl
   } catch (error) {
     // A failed or empty query is an empty series, not an error: the graph shows no data instead
     // of the panel reporting a provider failure (as the legacy scope did).
-    ctx.log?.warn?.(`metric ${metric} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+    ctx.log?.fail?.(`metric ${metric} could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
   return answer;
 }
