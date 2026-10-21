@@ -11,7 +11,8 @@
 # creates belong to the publisher organization only. Every other organization
 # gets its own from ../installation.
 #
-# Run only by .github/workflows/release.yml.
+# Run only by the release workflow, through actions-nullplatform's
+# publish-package (see release.yml).
 ################################################################################
 
 locals {
@@ -22,6 +23,16 @@ locals {
   # Templates are read from raw GitHub at the release tag, so the package pins
   # exactly the specs of its own release (the repository is public).
   templates_url = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
+}
+
+# Publishing other templates under this version would break its immutability.
+resource "terraform_data" "release_guard" {
+  lifecycle {
+    precondition {
+      condition     = var.release_tag == null || var.release_tag == local.release
+      error_message = "versions.tf releases ${local.release} but the release tag is ${coalesce(var.release_tag, "unset")}."
+    }
+  }
 }
 
 module "scope_definition" {
