@@ -14,6 +14,9 @@ export interface Recorded {
 
 export const recorded: Recorded[] = [];
 
+/** What the stack's previous run exported (`release_versions`); set per test. */
+export const previousOutputs: { release_versions?: Record<string, string> } = {};
+
 export async function installMocks(): Promise<void> {
   recorded.length = 0;
   await pulumi.runtime.setMocks(
@@ -21,6 +24,9 @@ export async function installMocks(): Promise<void> {
       newResource(args) {
         recorded.push({ type: args.type, name: args.name, inputs: args.inputs });
         const id = `${args.name}_id`;
+        if (args.type === "pulumi:pulumi:StackReference") {
+          return { id, state: { ...args.inputs, outputs: { ...previousOutputs }, secretOutputNames: [] } };
+        }
         const arn = `arn:aws:mock:${args.type}:${args.name}`;
         return { id, state: { ...args.inputs, arn, version: "7", invokeArn: `${arn}:invoke`, dnsName: `${args.name}.elb.amazonaws.com` } };
       },
@@ -93,5 +99,21 @@ export function contextFixture(overrides: {
 export const find = (type: string, name?: string) =>
   recorded.find((entry) => entry.type === type && (name === undefined || entry.name === name));
 export const all = (type: string) => recorded.filter((entry) => entry.type === type);
+/** Resolves an output, rejecting when the computation behind it threw. */
 export const resolve = <T>(output: pulumi.Output<T> | T): Promise<T> =>
-  new Promise((done) => pulumi.output(output).apply((value) => done(value as T)));
+  (pulumi.output(output) as unknown as { promise(): Promise<T> }).promise();
+
+/** Waits for a resource the program registers after its outputs resolved (dependsOn chains). */
+export async function until(predicate: () => boolean, what: string, timeoutMs = 2000): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) throw new Error(`${what} was never registered`);
+    await new Promise((done) => setTimeout(done, 10));
+  }
+}
+
+/** Pulumi wraps secret inputs; the mock sees the envelope, the provider sees the value. */
+export const unwrapSecret = (value: unknown): unknown =>
+  value && typeof value === "object" && "value" in (value as Record<string, unknown>) && "4dabf18193072939515e22adb298388d" in (value as Record<string, unknown>)
+    ? (value as { value: unknown }).value
+    : value;

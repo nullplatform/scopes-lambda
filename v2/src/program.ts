@@ -11,6 +11,8 @@ import { currentRelease, providersOf } from "./program/context";
 import { codeOf, lambdaFunction } from "./program/function";
 import { executionRole } from "./program/iam";
 import { names } from "./program/names";
+import { parameters } from "./program/parameters";
+import { aliases, releaseVersions, RELEASE_VERSIONS_OUTPUT, settled } from "./program/releases";
 
 const ASSET_TYPES = ["docker-image", "lambda"];
 
@@ -46,9 +48,26 @@ const program: ScopeProgram = async (ctx) => {
   const role = executionRole(ctx, n, region, accountId, opts);
   const { deploymentId, assetUrl } = assetUrlOf(ctx);
   const code = codeOf(ctx, deploymentId, assetUrl);
-  const { fn } = lambdaFunction(ctx, n, role, code, {}, opts);
-  ctx.outputs({ function_name: n.functionName, function_arn: fn.arn, execution_role_arn: role.role.arn });
-  return { function_name: n.functionName, function_arn: fn.arn, execution_role_arn: role.role.arn };
+  const { environment } = parameters(ctx, n, opts);
+  const { fn } = lambdaFunction(ctx, n, role, code, environment, opts);
+  const { versions, missing } = releaseVersions(ctx, fn);
+  // A release with no version on record fails the run here, before anything depends on it.
+  const unknown = await settled(missing);
+  if (unknown.length) throw new Error(`${unknown.join(", ")}: no published version on record; refresh the scope`);
+  const { main } = aliases(ctx, n, fn, versions, opts);
+  ctx.outputs({
+    function_name: n.functionName,
+    function_arn: fn.arn,
+    alias_arn: main.arn,
+    execution_role_arn: role.role.arn,
+  });
+  return {
+    function_name: n.functionName,
+    function_arn: fn.arn,
+    alias_arn: main.arn,
+    execution_role_arn: role.role.arn,
+    [RELEASE_VERSIONS_OUTPUT]: versions,
+  };
 };
 
 export default program;
