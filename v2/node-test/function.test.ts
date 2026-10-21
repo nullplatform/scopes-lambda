@@ -38,7 +38,7 @@ describe("the program: role, log group and function", () => {
     const { default: program } = await import("../src/program");
     const ctx = contextFixture({
       attributes: { deployment_type: "zip", runtime: "python3.12", handler: "app.handler", vpc_enabled: true, reserved_concurrency: { type: "reserved", value: 7 } },
-      releases: [{ id: "r1", deploymentId: "d-1", weight: 100, role: "active", assets: [{ type: "lambda", url: "s3://builds/app/d-1.zip" }] }],
+      releases: [{ id: "r1", deploymentId: "d-1", weight: 100, role: "active", assets: [{ type: "lambda", url: "s3://builds/app/d-1.zip" }], build: { commitId: "a".repeat(40), repositoryUrl: "https://github.com/acme/app" } }],
     });
     await resolve((await program(ctx)).function_arn);
     await settle();

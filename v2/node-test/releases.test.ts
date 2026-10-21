@@ -10,6 +10,7 @@ const release = (deploymentId: string, weight: number, role: Release["role"]): R
   weight,
   role,
   assets: [{ type: "docker-image", url: `123456789012.dkr.ecr.us-east-1.amazonaws.com/app:${deploymentId}` }],
+  build: { commitId: "a".repeat(40), repositoryUrl: "https://github.com/acme/app" },
 });
 
 async function run(releases: Release[], attributes: Record<string, unknown> = {}, providers: Record<string, Record<string, unknown>> = {}) {
