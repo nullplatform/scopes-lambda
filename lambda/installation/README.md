@@ -12,20 +12,72 @@ OpenTofu module that installs the `scopes-lambda` package in your organization. 
 ## Usage
 
 ```hcl
+terraform {
+  required_providers {
+    aws          = { source = "hashicorp/aws", version = ">= 5.0" }
+    nullplatform = { source = "nullplatform/nullplatform", version = ">= 0.0.109" }
+  }
+}
+
+# AWS credentials come from the environment (profile, SSO or role); nullplatform
+# from NULLPLATFORM_API_KEY (and NP_API_KEY for `np`), a key with package:create
+# at the NRN.
+provider "aws" {
+  region = "us-east-1"
+}
+provider "nullplatform" {}
+
+locals {
+  nrn = "organization=123:account=456"
+}
+
+# 1. Install the scope: AWS requirements, installation of the global package,
+#    scope type, NRN settings, scope-configuration schema and agent channel.
 module "lambda_scope" {
   source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.10.0"
 
-  nrn                  = "organization=123:account=456"
-  cluster_name         = "my-cluster"
-  agent_tags_selectors = { cluster = "runtime" }
+  nrn                  = local.nrn
+  cluster_name         = "my-cluster"            # names the role nullplatform_my-cluster_lambda_role
+  agent_tags_selectors = { cluster = "runtime" } # must match the agent's TAGS
+}
+
+# 2. Register the role in the NRN's AWS IAM provider, under the selector the
+#    scope looks up ("lambda"). One aws-iam-configuration per NRN and dimensions:
+#    if you already have one, add this entry to its list instead.
+resource "nullplatform_provider_config" "aws_iam" {
+  nrn  = local.nrn
+  type = "aws-iam-configuration"
+  attributes = jsonencode({
+    iam_role_arns = {
+      arns = [
+        { selector = "lambda", arn = module.lambda_scope.permissions_role_arn },
+      ]
+    }
+  })
+}
+
+# 3. The scope's settings, in a provider of the schema the module created.
+#    The placeholder image is the one you publish with lambda/scope/placeholder/publish
+#    to the repository the module created (arm64 or amd64, matching your scopes).
+resource "nullplatform_provider_config" "lambda_scope_configuration" {
+  nrn  = local.nrn
+  type = module.lambda_scope.scope_configuration_specification_slug
+  attributes = jsonencode({
+    state = {
+      tofu_state_bucket = "my-tofu-state-bucket"
+    }
+    deployment = {
+      placeholder_image_uri = "${module.lambda_scope.placeholder_image_repository_url}:latest-arm64"
+    }
+  })
+}
+
+output "lambda_installed_version" {
+  value = module.lambda_scope.installed_version
 }
 ```
 
-After the apply:
-
-- Add `module.lambda_scope.permissions_role_arn` to your AWS IAM provider with selector `lambda`.
-- Configure a provider of the scope-configuration specification (`scope_configuration_specification_id`) with the OpenTofu state bucket and, for Image scopes, the placeholder image published to `placeholder_image_repository_url`.
-- With `install_alb = true`, publish `lambda_alb_listener_arn` to your `aws-networking-configuration` provider.
+Steps 2 and 3 are yours, not the module's: the scope assumes the role it finds under selector `lambda` in the NRN's `aws-iam-configuration` provider, which belongs to your stack and is shared with other services, and its settings (OpenTofu state bucket, placeholder image) are your account's. Zip scopes need no placeholder image; Image scopes need one published to `placeholder_image_repository_url`. With `install_alb = true`, also publish `lambda_alb_listener_arn` to your `aws-networking-configuration` provider (`load_balancer.public.listener_arn`).
 
 **Upgrade**: move `ref` to a newer tag and apply. New scopes are born with the new version; existing scopes keep theirs until they are moved one by one.
 
@@ -72,6 +124,7 @@ After the apply:
 | `missing_optional_requirements` | Optional providers the package can use that you have not configured |
 | `scope_type_id` | Id of the scope type in your organization |
 | `scope_configuration_specification_id` | Id of the scope-configuration provider specification |
+| `scope_configuration_specification_slug` | Its slug: the `type` of the provider config with the scope's settings |
 | `notification_channel_id` | Id of the agent notification channel |
 
 ## What stays the publisher's
