@@ -38,6 +38,11 @@ output "scope_configuration_specification_id" {
   value       = nullplatform_provider_specification.scope_configuration.id
 }
 
+output "scope_configuration_specification_slug" {
+  description = "Slug of the scope-configuration provider specification: the `type` of the provider config that holds the scope's settings."
+  value       = nullplatform_provider_specification.scope_configuration.slug
+}
+
 output "notification_channel_id" {
   description = "Id of the agent notification channel."
   value       = module.agent_channel.notification_channel_id
