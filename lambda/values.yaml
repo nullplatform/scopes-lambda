@@ -47,6 +47,7 @@ configuration:
   # before the first real deployment. MUST live in a private ECR in the same
   # account/region (Lambda rejects public.ecr.aws images), and be single-arch
   # matching the scope architecture (publish :latest-amd64 / :latest-arm64).
+  # Point at either tag: the -arm64/-amd64 suffix is swapped per scope architecture.
   # Resolution precedence (see utils/fetch_scope_configuration):
   #   scope-configurations provider key deployment.placeholder_image_uri
   #     > PLACEHOLDER_IMAGE_URI_DEFAULT env var (set per-account on the agent)

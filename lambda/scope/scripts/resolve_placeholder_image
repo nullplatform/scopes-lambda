@@ -50,12 +50,16 @@ if [ -z "${PLACEHOLDER_IMAGE_URI:-}" ]; then
   exit 1
 fi
 
-# No architecture suffix is appended: publish arch-specific tags and point
-# PLACEHOLDER_IMAGE_URI at the exact one.
 if [[ "$PLACEHOLDER_IMAGE_URI" == *":"* ]]; then
   placeholder_image_uri="$PLACEHOLDER_IMAGE_URI"
 else
   placeholder_image_uri="${PLACEHOLDER_IMAGE_URI}:latest"
+fi
+
+# Lambda rejects multi-arch images: match an -arm64/-amd64 tag to the scope's architecture.
+[ "$architecture" = "x86_64" ] && arch_suffix="amd64" || arch_suffix="arm64"
+if [[ "$placeholder_image_uri" =~ -(arm64|amd64)$ ]]; then
+  placeholder_image_uri="${placeholder_image_uri%-*}-${arch_suffix}"
 fi
 
 log debug "   📋 placeholder_image_uri=$placeholder_image_uri"
