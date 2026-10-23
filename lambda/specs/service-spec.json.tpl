@@ -1,7 +1,7 @@
-{{- /* LAMBDA_DEPLOYMENT_TYPES: comma-separated packaging types offered on create, first one is the default.
-       Allowed: docker-image, zip. Unknown, empty or repeated entries fail the render.
-       The schema always accepts every type: the platform revalidates existing scopes on update and
-       delete, so only the default and the UI selector (hidden with a single type) change. */ -}}
+{{- /* LAMBDA_DEPLOYMENT_TYPES: comma-separated packaging types, first one is the default; a single entry
+       hides the UI selector. Allowed: docker-image, zip. Unknown, empty or repeated entries fail the render.
+       The schema always accepts every type (existing scopes are revalidated on update and delete);
+       only the default, the option order and the selector change. */ -}}
 {{- $titles := coll.Dict "docker-image" "Docker Image (ECR)" "zip" "ZIP Package (S3)" -}}
 {{- $types := strings.Split "," (strings.ReplaceAll " " "" (env.Getenv "LAMBDA_DEPLOYMENT_TYPES" "docker-image,zip")) -}}
 {{- range $t := $types -}}
