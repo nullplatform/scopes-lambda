@@ -38,7 +38,7 @@
           "placeholder_image_uri": {
             "type": "string",
             "title": "Placeholder image URI",
-            "description": "ECR repository URI for the Lambda placeholder image (without arch suffix). The agent's resolve_placeholder_image script appends -arm64 / -amd64 based on scope.attributes.architecture."
+            "description": "ECR URI of the Lambda placeholder image. A tag ending in -arm64 or -amd64 is swapped to match the scope architecture; any other tag is used as is."
           }
         }
       },
@@ -137,7 +137,7 @@
               "elements": [
                 {
                   "type": "Label",
-                  "text": "> **ℹ️ Placeholder image**\n\nThe placeholder image is the container the agent deploys as the initial Lambda when a scope is created; it's replaced with the real application image on the first deployment. Lambda doesn't support multi-arch manifest lists — push two images with `-arm64` / `-amd64` suffixes on top of the same base tag, and the agent picks the suffix based on `scope.attributes.architecture` (default `arm64`).\n\nSee `install/prerequisites.md` for the buildx push commands.",
+                  "text": "> **ℹ️ Placeholder image**\n\nThe placeholder image is the container the agent deploys as the initial Lambda when a scope is created; it's replaced with the real application image on the first deployment. Lambda doesn't support multi-arch manifest lists — push two images with `-arm64` / `-amd64` suffixes on top of the same base tag and point this URI at either one; the agent swaps the suffix to match the scope architecture (default `arm64`).\n\nSee `install/prerequisites.md` for the buildx push commands.",
                   "options": { "format": "markdown" }
                 },
                 {

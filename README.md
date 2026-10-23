@@ -391,8 +391,8 @@ export PLACEHOLDER_IMAGE_REPO=123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-l
 lambda/scope/placeholder/publish        # pushes <repo>:latest-arm64 and <repo>:latest-amd64
 ```
 
-Then set the URI (matching your scope architecture) in `values.yaml` or the agent's
-`extra_envs`:
+Then set either URI in `values.yaml` or the agent's `extra_envs`; the agent swaps the
+`-arm64`/`-amd64` suffix to match each scope's architecture:
 
 ```yaml
 PLACEHOLDER_IMAGE_URI_DEFAULT: "123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-arm64"

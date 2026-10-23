@@ -182,6 +182,90 @@ run_assume_role_step() {
   assert_output_not_contains "Placeholder image not found"
 }
 
+@test "resolve_placeholder_image: an x86_64 scope swaps an -arm64 tag for -amd64" {
+  export PACKAGE_TYPE="Image"
+  export ARCHITECTURE="x86_64"
+  export PLACEHOLDER_IMAGE_URI="084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-arm64"
+  aws() {
+    case "$*" in
+      *"imageTag=latest-amd64"*) echo '{"imageDetails":[{"imageTags":["latest-amd64"]}]}' ;;
+      *) echo "An error occurred (ImageNotFoundException)" >&2; return 1 ;;
+    esac
+  }
+
+  run run_resolve_placeholder_image
+
+  assert_success
+  assert_line "🔍 Resolving placeholder image URI..."
+  assert_line "   📡 Validating placeholder image..."
+  assert_line "   📋 registry=084420143809 region=us-east-1 repo=lambda-placeholder tag=latest-amd64"
+  assert_line "✨ Placeholder image resolved: 084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-amd64"
+}
+
+@test "resolve_placeholder_image: an arm64 scope swaps an -amd64 tag for -arm64" {
+  export PACKAGE_TYPE="Image"
+  export ARCHITECTURE="arm64"
+  export PLACEHOLDER_IMAGE_URI="084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-amd64"
+  aws() {
+    case "$*" in
+      *"imageTag=latest-arm64"*) echo '{"imageDetails":[{"imageTags":["latest-arm64"]}]}' ;;
+      *) echo "An error occurred (ImageNotFoundException)" >&2; return 1 ;;
+    esac
+  }
+
+  run run_resolve_placeholder_image
+
+  assert_success
+  assert_line "🔍 Resolving placeholder image URI..."
+  assert_line "   📡 Validating placeholder image..."
+  assert_line "   📋 registry=084420143809 region=us-east-1 repo=lambda-placeholder tag=latest-arm64"
+  assert_line "✨ Placeholder image resolved: 084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-arm64"
+}
+
+@test "resolve_placeholder_image: a tag without an arch suffix is used as is" {
+  export PACKAGE_TYPE="Image"
+  export ARCHITECTURE="x86_64"
+  export PLACEHOLDER_IMAGE_URI="084420143809.dkr.ecr.us-east-1.amazonaws.com/prd-registry-cross-account:placeholder"
+  aws() {
+    case "$*" in
+      *"imageTag=placeholder"*) echo '{"imageDetails":[{"imageTags":["placeholder"]}]}' ;;
+      *) echo "An error occurred (ImageNotFoundException)" >&2; return 1 ;;
+    esac
+  }
+
+  run run_resolve_placeholder_image
+
+  assert_success
+  assert_line "🔍 Resolving placeholder image URI..."
+  assert_line "   📡 Validating placeholder image..."
+  assert_line "   📋 registry=084420143809 region=us-east-1 repo=prd-registry-cross-account tag=placeholder"
+  assert_line "✨ Placeholder image resolved: 084420143809.dkr.ecr.us-east-1.amazonaws.com/prd-registry-cross-account:placeholder"
+}
+
+@test "resolve_placeholder_image: a missing arch-specific tag names the swapped URI" {
+  export PACKAGE_TYPE="Image"
+  export ARCHITECTURE="x86_64"
+  export PLACEHOLDER_IMAGE_URI="084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-arm64"
+  mock_aws_error "An error occurred (ImageNotFoundException) when calling the DescribeImages operation"
+
+  run run_resolve_placeholder_image
+
+  assert_failure
+  assert_line "🔍 Resolving placeholder image URI..."
+  assert_line "   📡 Validating placeholder image..."
+  assert_line "   📋 registry=084420143809 region=us-east-1 repo=lambda-placeholder tag=latest-amd64"
+  assert_line "❌ Placeholder image not found: 084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-amd64"
+  assert_line "💡 Possible causes:"
+  assert_line "   • The image has not been published yet"
+  assert_line "   • PLACEHOLDER_IMAGE_URI in values.yaml points to a wrong tag or path"
+  assert_line "🔧 How to fix:"
+  assert_line "   • Publish the image once by running: lambda/scope/placeholder/publish"
+  assert_line "   • Verify PLACEHOLDER_IMAGE_URI=084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-amd64 is correct"
+  assert_line "📋 Parsed: registry=084420143809 region=us-east-1 repo=lambda-placeholder tag=latest-amd64"
+  assert_line "📋 Error details: An error occurred (ImageNotFoundException) when calling the DescribeImages operation "
+  assert_output_not_contains "Placeholder image resolved"
+}
+
 @test "fetch_scope_configuration: exports the optional state bucket region" {
   np() { echo '{"results":[{"category":"cloud-providers","attributes":{"account":{"id":"111122223333","region":"us-west-2"}}},{"category":"scope-configurations","attributes":{"state":{"tofu_state_bucket":"np-state","tofu_state_bucket_region":"us-east-1"}}}]}'; }
 

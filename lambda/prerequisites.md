@@ -370,7 +370,7 @@ manually. The expected attribute schema:
 
 | Path | Type | Required | Description |
 |---|---|---|---|
-| `deployment.placeholder_image_uri` | string | yes | Full URI of the placeholder image you published in step 1, **without** the architecture suffix. The workflow appends `-arm64` or `-amd64` based on the scope's architecture. |
+| `deployment.placeholder_image_uri` | string | yes | Full URI of the placeholder image you published in step 1, with either architecture suffix (`-arm64` or `-amd64`). The workflow swaps the suffix to match the scope's architecture; a tag without one is used as is. |
 | `state.tofu_state_bucket` | string | yes | S3 bucket where each Lambda scope writes its OpenTofu state. Each scope uses a unique key prefix, so a single bucket can be shared across all Lambda scopes (and across scope types — e.g. `static-files` reuses the same bucket convention). |
 | `state.tofu_state_bucket_region` | string | no | AWS region of the state bucket. Defaults to the `cloud-providers` account region. |
 
@@ -384,7 +384,7 @@ resource "nullplatform_provider_config" "scope_configurations" {
 
   attributes = jsonencode({
     deployment = {
-      placeholder_image_uri = "<account-id>.dkr.ecr.<region>.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
+      placeholder_image_uri = "<account-id>.dkr.ecr.<region>.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest-arm64"
     }
     state = {
       tofu_state_bucket = "<your-tofu-state-bucket>"
