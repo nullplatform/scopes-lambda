@@ -5,8 +5,9 @@
 setup() {
   TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   TEMPLATE="$(cd "$TEST_DIR/../../../specs" && pwd)/service-spec.json.tpl"
-  # Spec rendered without LAMBDA_DEPLOYMENT_TYPES. Regenerate on intentional spec changes:
-  #   NRN="organization=1:account=2" gomplate -f lambda/specs/service-spec.json.tpl > <this file>
+  # Pinned render with LAMBDA_DEPLOYMENT_TYPES unset. Regenerate from the repo root on intentional spec changes:
+  #   env -u LAMBDA_DEPLOYMENT_TYPES NRN="organization=1:account=2" gomplate -f lambda/specs/service-spec.json.tpl \
+  #     > lambda/scope/tests/scripts/fixtures/service-spec.default.json
   DEFAULT_FIXTURE="$TEST_DIR/fixtures/service-spec.default.json"
   export NRN="organization=1:account=2"
   unset LAMBDA_DEPLOYMENT_TYPES
@@ -27,6 +28,14 @@ prop() {
 
 selector_count() {
   echo "$output" | jq '[.attributes.schema.uiSchema.elements[] | select(.scope == "#/properties/deployment_type")] | length'
+}
+
+without_deployment_type_knobs() {
+  # Drops what LAMBDA_DEPLOYMENT_TYPES may change: default and order, asset_type default, selector.
+  jq -S 'del(.attributes.schema.properties.deployment_type.default)
+    | .attributes.schema.properties.deployment_type.oneOf |= sort_by(.const)
+    | del(.attributes.schema.properties.asset_type.default)
+    | .attributes.schema.uiSchema.elements |= map(select(.scope != "#/properties/deployment_type"))'
 }
 
 @test "service spec: default renders valid JSON with both deployment types, docker-image first" {
@@ -97,12 +106,26 @@ selector_count() {
   local value
   for value in "zip" "docker-image" "zip,docker-image"; do
     LAMBDA_DEPLOYMENT_TYPES="$value" run render
-    [ "$status" -eq 0 ]
-    echo "$output" | jq -e '.attributes.schema.required | index("deployment_type")' >/dev/null
+    [ "$status" -eq 0 ] || { echo "render failed for '$value'"; return 1; }
+    echo "$output" | jq -e '.attributes.schema.required | index("deployment_type")' >/dev/null \
+      || { echo "deployment_type not required for '$value'"; return 1; }
     [ "$(echo "$output" | jq -c '[.attributes.schema.allOf[] | [.if.properties.deployment_type.const, .then.properties.asset_type.const]]')" = '[["zip","lambda"],["docker-image","docker-image"]]' ] \
       || { echo "allOf changed for '$value'"; return 1; }
-    echo "$output" | jq -e '.attributes.schema.uiSchema.elements[] | select(.scope == "#/properties/runtime") | .rule.condition.schema.const == "zip"' >/dev/null
-    [ "$(echo "$output" | jq -r '.visible_to[0]')" = "organization=1:account=2" ]
+    echo "$output" | jq -e '.attributes.schema.uiSchema.elements[] | select(.scope == "#/properties/runtime") | .rule.condition.schema.const == "zip"' >/dev/null \
+      || { echo "runtime rule changed for '$value'"; return 1; }
+    [ "$(echo "$output" | jq -r '.visible_to[0]')" = "organization=1:account=2" ] \
+      || { echo "visible_to changed for '$value'"; return 1; }
+  done
+}
+
+@test "service spec: every value only changes the default, the option order and the selector" {
+  local value expected
+  expected="$(without_deployment_type_knobs < "$DEFAULT_FIXTURE")"
+  for value in "zip" "docker-image" "zip,docker-image"; do
+    LAMBDA_DEPLOYMENT_TYPES="$value" run render
+    [ "$status" -eq 0 ] || { echo "render failed for '$value'"; return 1; }
+    [ "$(echo "$output" | without_deployment_type_knobs)" = "$expected" ] \
+      || { echo "spec differs from the default beyond deployment_type knobs for '$value'"; return 1; }
   done
 }
 

@@ -70,8 +70,8 @@ tofu apply
 
 ## Default package type (optional)
 
-By default the spec offers both `docker-image` and `zip` and defaults to
-`docker-image`. To default to `zip` and hide the selector (for example when
+By default the spec includes both `docker-image` and `zip`, shows the selector
+and defaults to `docker-image`. To default to `zip` and hide the selector (for example when
 the ECR registry is in a different region than the functions), render the
 service spec with `LAMBDA_DEPLOYMENT_TYPES=zip`. Use `zip,docker-image` to keep
 the selector and only change the default (first entry is the default). The

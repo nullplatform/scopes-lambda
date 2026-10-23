@@ -264,10 +264,13 @@ rendered with gomplate. Both types stay valid in every case:
 | `zip,docker-image` | Both options, `zip` is the default |
 
 The first entry is the default. Entries are comma separated (spaces around
-them are ignored). An unknown, repeated or empty entry fails the render instead
-of being ignored, and so does a whitespace-only value. This is useful when the ECR registry lives in another region than the
-functions, where `docker-image` cannot work. When registering the spec with the
-`scope_definition` tofu module, pass it through its `template_env_vars` input:
+them are ignored). An unknown, repeated or empty entry, or a whitespace-only
+value, fails the render instead of being ignored.
+
+Defaulting to `zip` is useful when the ECR registry lives in another region than
+the functions, where `docker-image` cannot work. When registering the spec with
+the `scope_definition` tofu module, pass it through its `template_env_vars`
+input:
 
 ```hcl
 template_env_vars = { LAMBDA_DEPLOYMENT_TYPES = "zip" }
