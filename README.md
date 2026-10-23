@@ -4,6 +4,7 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 
 ## Table of Contents
 
+- [Install in your organization](#install-in-your-organization)
 - [Architecture Overview](#architecture-overview)
 - [Scope Structure](#scope-structure)
 - [Features](#features)
@@ -15,6 +16,93 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 - [Run Locally as a Package](#run-locally-as-a-package)
 - [Testing](#testing)
 - [Quick Reference](#quick-reference)
+
+---
+
+## Install in your organization
+
+The scope is published once as the package `scopes-lambda`, visible to every organization. You do not copy its specs: you install the package and use it read-only. Add the [installation module](./lambda/installation) to your stack at a release tag:
+
+```hcl
+terraform {
+  required_providers {
+    aws          = { source = "hashicorp/aws", version = ">= 5.0" }
+    nullplatform = { source = "nullplatform/nullplatform", version = ">= 0.0.109" }
+  }
+}
+
+# AWS credentials come from the environment (profile, SSO or role); nullplatform
+# from NULLPLATFORM_API_KEY (and NP_API_KEY for `np`), a key with package:create
+# at the NRN.
+provider "aws" {
+  region = "us-east-1"
+}
+provider "nullplatform" {}
+
+locals {
+  nrn = "organization=123:account=456"
+}
+
+# 1. Install the scope: AWS requirements, installation of the global package,
+#    scope type, NRN settings, scope-configuration schema and agent channel.
+module "lambda_scope" {
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.10.0"
+
+  nrn                  = local.nrn
+  cluster_name         = "my-cluster"            # names the role nullplatform_my-cluster_lambda_role
+  agent_tags_selectors = { cluster = "runtime" } # must match the agent's TAGS
+}
+
+# 2. Register the role in the NRN's AWS IAM provider, under the selector the
+#    scope looks up ("lambda"). One aws-iam-configuration per NRN and dimensions:
+#    if you already have one, add this entry to its list instead.
+resource "nullplatform_provider_config" "aws_iam" {
+  nrn  = local.nrn
+  type = "aws-iam-configuration"
+  attributes = jsonencode({
+    iam_role_arns = {
+      arns = [
+        { selector = "lambda", arn = module.lambda_scope.permissions_role_arn },
+      ]
+    }
+  })
+}
+
+# 3. The scope's settings, in a provider of the schema the module created.
+#    The placeholder image is the one you publish with lambda/scope/placeholder/publish
+#    to the repository the module created (arm64 or amd64, matching your scopes).
+resource "nullplatform_provider_config" "lambda_scope_configuration" {
+  nrn  = local.nrn
+  type = module.lambda_scope.scope_configuration_specification_slug
+  attributes = jsonencode({
+    state = {
+      tofu_state_bucket = "my-tofu-state-bucket"
+    }
+    deployment = {
+      placeholder_image_uri = "${module.lambda_scope.placeholder_image_repository_url}:latest-arm64"
+    }
+  })
+}
+
+output "lambda_installed_version" {
+  value = module.lambda_scope.installed_version
+}
+```
+
+The module creates the AWS permissions role, installs the package at `nrn`, and creates what a scope needs in your organization: the scope type, the NRN settings for metrics and logs, the scope-configuration schema and the agent notification channel. Steps 2 and 3 are yours: the AWS IAM provider belongs to your stack and is shared with other services, and the scope's settings (state bucket, placeholder image) are your account's. With `install_alb = true`, also publish `lambda_alb_listener_arn` to your networking provider (`load_balancer.public.listener_arn`). To upgrade, move `ref` to a newer tag. See [`lambda/installation`](./lambda/installation) for prerequisites, inputs and outputs.
+
+Every release publishes the new revision from this repository ([`lambda/publish`](./lambda/publish), applied by the `publish-package` job of the release workflow).
+
+### Global package or fork?
+
+**Use the global package.** It is the default, and the only way to keep receiving updates: every fix, new feature and security patch arrives as a new release, and you take it by moving `ref`. The specs, the code and how the scope is installed stay maintained here. If something is missing or wrong, open an issue or a pull request in this repository, so every organization gets it.
+
+**Fork only when you need to extend the scope substantially**: new actions, a different specification (attributes, deployment types, validations), or workflows that behave differently. A fork has real costs:
+
+- **You become the publisher.** You build and register your own image, and register your fork as your own organization's package with [`lambda/specs/install`](./lambda/installation.md).
+- **Updates stop arriving.** Upstream fixes reach you only when you merge them into your fork yourself.
+- **There is no way back for existing scopes.** Scopes created from your fork's specification cannot be moved to the global one.
+- **Names must not collide.** Use a different package slug (`NP_PACKAGE_NAME` in the `Dockerfile`, `package_slug`), specification name and IAM role and selector, or your fork and the global package share one worker and one role.
 
 ---
 
