@@ -68,6 +68,16 @@ module "scope_definition" {
     slug       = local.package_slug
     version    = local.version
     visible_to = ["organization=*"]
+    # Checked at install, before anything is written. Only the cloud provider
+    # is needed up front: the scope-configurations specification is created
+    # by the installation itself, and the network and assets providers have
+    # fallbacks (utils/fetch_scope_configuration, deployment/build_context).
+    requires_providers = [
+      { category = "cloud-providers" },
+      { category = "scope-configurations", optional = true },
+      { category = "vpc", optional = true },
+      { category = "assets-repository", optional = true },
+    ]
     artifacts = [{
       name   = "worker-image"
       lookup = true # registered by the release workflow before this runs
