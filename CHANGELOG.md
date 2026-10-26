@@ -4,6 +4,14 @@
 
 * **scope:** the placeholder image tag (`-arm64`/`-amd64`) follows the scope architecture ([#99](https://github.com/nullplatform/scopes-lambda/pull/99))
 
+## [0.11.1](https://github.com/nullplatform/scopes-lambda/compare/v0.11.0...v0.11.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **deps:** bump nullplatform/scopes/worker-bridge from 2.0.3 to 2.0.6 ([290c81a](https://github.com/nullplatform/scopes-lambda/commit/290c81a53cbe9f30baa8dd05734e33e9e7874b17))
+* **deps:** bump nullplatform/scopes/worker-bridge from 2.0.3 to 2.0.6 ([1445815](https://github.com/nullplatform/scopes-lambda/commit/1445815704dfc7db56818fa36435c9aec5f543c4))
+
 ## [0.11.0](https://github.com/nullplatform/scopes-lambda/compare/v0.10.0...v0.11.0) (2026-10-23)
 
 
