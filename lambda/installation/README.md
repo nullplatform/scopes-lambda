@@ -15,7 +15,7 @@ OpenTofu module that installs the `scopes-lambda` package in your organization. 
 terraform {
   required_providers {
     aws          = { source = "hashicorp/aws", version = ">= 5.0" }
-    nullplatform = { source = "nullplatform/nullplatform", version = ">= 0.0.109" }
+    nullplatform = { source = "nullplatform/nullplatform", version = ">= 0.0.110" }
   }
 }
 
@@ -34,7 +34,7 @@ locals {
 # 1. Install the scope: AWS requirements, installation of the global package,
 #    scope type, NRN settings, scope-configuration schema and agent channel.
 module "lambda_scope" {
-  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.10.0"
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.11.1"
 
   nrn                  = local.nrn
   cluster_name         = "my-cluster"            # names the role nullplatform_my-cluster_lambda_role
@@ -58,7 +58,8 @@ resource "nullplatform_provider_config" "aws_iam" {
 
 # 3. The scope's settings, in a provider of the schema the module created.
 #    The placeholder image is the one you publish with lambda/scope/placeholder/publish
-#    to the repository the module created (arm64 or amd64, matching your scopes).
+#    to the repository the module created, tagged -arm64 and -amd64: point at
+#    either one and the agent swaps the suffix to match each scope's architecture.
 resource "nullplatform_provider_config" "lambda_scope_configuration" {
   nrn  = local.nrn
   type = module.lambda_scope.scope_configuration_specification_slug

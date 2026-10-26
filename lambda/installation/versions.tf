@@ -5,20 +5,12 @@ terraform {
     nullplatform = {
       source = "nullplatform/nullplatform"
       # nullplatform_package_installation, data.nullplatform_package.visible_at
-      # and .components ship in the first provider release after 0.0.108.
-      version = ">= 0.0.109"
+      # and .components: the first provider release after 0.0.109.
+      version = ">= 0.0.110"
     }
     aws = {
       source  = "hashicorp/aws"
       version = ">= 5.0"
-    }
-    http = {
-      source  = "hashicorp/http"
-      version = "~> 3.0"
-    }
-    external = {
-      source  = "hashicorp/external"
-      version = "~> 2.3"
     }
   }
 }
@@ -27,5 +19,5 @@ terraform {
 # (release-type terraform-module) rewrites it in the release PR; keep it the
 # only vX.Y.Z in this file.
 locals {
-  release = "v0.10.0"
+  release = "v0.11.1"
 }

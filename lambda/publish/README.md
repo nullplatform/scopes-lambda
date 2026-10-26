@@ -4,7 +4,7 @@ OpenTofu stack that publishes this scope as the package `scopes-lambda`, visible
 
 Each apply publishes one immutable revision that pins:
 
-- the scope specification and every action specification, rendered from the templates of the release tag (read from raw GitHub at that tag);
+- the scope specification and every action specification, rendered from the templates of the release tag (read from the checkout the workflow applies the stack in);
 - the worker image the same release pushed, by digest.
 
 The revision's version is `local.release` in [`versions.tf`](./versions.tf), which release-please rewrites in every release PR. The apply refuses to publish when it does not match the release tag (`release_tag`, set by the workflow). Re-applying the same release is a no-op.

@@ -10,10 +10,6 @@ terraform {
       source  = "nullplatform/nullplatform"
       version = ">= 0.0.108"
     }
-    http = {
-      source  = "hashicorp/http"
-      version = "~> 3.0"
-    }
     external = {
       source  = "hashicorp/external"
       version = "~> 2.3"
@@ -29,7 +25,7 @@ terraform {
 # terraform-module) rewrites it in the release PR; keep it the only vX.Y.Z in
 # this file.
 locals {
-  release = "v0.10.0"
+  release = "v0.11.1"
 }
 
 # Credentials come from NULLPLATFORM_API_KEY: a key of the publisher

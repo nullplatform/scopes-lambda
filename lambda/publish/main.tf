@@ -19,10 +19,6 @@ locals {
   package_slug = "scopes-lambda"
   version      = trimprefix(local.release, "v")
   service_path = "lambda"
-
-  # Templates are read from raw GitHub at the release tag, so the package pins
-  # exactly the specs of its own release (the repository is public).
-  templates_url = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
 }
 
 # Publishing other templates under this version would break its immutability.
@@ -36,19 +32,15 @@ resource "terraform_data" "release_guard" {
 }
 
 module "scope_definition" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.4.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.6.0"
 
   nrn        = var.publisher_nrn
   np_api_key = var.np_api_key
 
-  service_path = local.service_path
-
-  repository_service_spec            = local.templates_url
-  repository_service_spec_branch     = local.release
-  repository_scope_template          = local.templates_url
-  repository_scope_template_branch   = local.release
-  repository_action_templates        = local.templates_url
-  repository_action_templates_branch = local.release
+  # Templates come from this checkout (the release workflow applies the stack
+  # at the release tag), so the package pins exactly the specs of its release.
+  local_specs_path = abspath("${path.module}/..")
+  service_path     = local.service_path
 
   service_spec_name        = "AWS Lambda"
   service_spec_description = "AWS Lambda functions managed by nullplatform"
