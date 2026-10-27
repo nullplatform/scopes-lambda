@@ -7,9 +7,10 @@
 # pinned by digest. Each release publishes a new immutable revision; re-applying
 # the same release is a no-op.
 #
-# The scope type, NRN settings and scope-configuration schema this module also
-# creates belong to the publisher organization only. Every other organization
-# gets its own from ../installation.
+# Only what the package pins is created in the publisher organization. The
+# scope type, NRN settings and scope-configuration schema belong to each
+# organization that installs the package, which creates them with
+# ../installation; the publisher organization would only get unused copies.
 #
 # Run only by the release workflow, through actions-nullplatform's
 # publish-package (see release.yml).
@@ -39,8 +40,7 @@ resource "terraform_data" "release_guard" {
 module "scope_definition" {
   source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.6.0"
 
-  nrn        = var.publisher_nrn
-  np_api_key = var.np_api_key
+  nrn = var.publisher_nrn
 
   # Templates come from this checkout (the release workflow applies the stack
   # at the release tag), so the package pins exactly the specs of its release.
@@ -69,7 +69,11 @@ module "scope_definition" {
     "update-scope",
   ]
 
-  create_scope_configuration = true
+  # Each installing organization creates these (../installation), and without
+  # the NRN patch the apply needs no `np`.
+  create_scope_type          = false
+  configure_nrn_settings     = false
+  create_scope_configuration = false
 
   package = {
     slug       = local.package_slug

@@ -47,9 +47,8 @@ jobs:
       update_readme_versions: true
       existing_tag: ${{ inputs.existing_tag || '' }}
       package_stack_dir: ${{ vars.PACKAGE_TFSTATE_BUCKET != '' && 'lambda/publish' || '' }}
-      # scope_definition renders the templates with gomplate and patches the
-      # NRN with np.
-      package_tools: gomplate np
+      # scope_definition renders the templates with gomplate.
+      package_tools: gomplate
     secrets:
       aws_role_arn: ${{ secrets.AWS_ROLE_ARN_ECR_PUSH }}
       artifact_np_api_key: ${{ secrets.ARTIFACT_NP_API_KEY }}

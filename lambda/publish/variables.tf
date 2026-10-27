@@ -1,12 +1,6 @@
 variable "publisher_nrn" {
-  description = "Owner NRN of the package: the publisher organization (e.g. organization=123). The specs, action specs, scope type and scope-configuration schema are created here."
+  description = "Owner NRN of the package: the publisher organization (e.g. organization=123). The service spec, action specs and package are created here."
   type        = string
-}
-
-variable "np_api_key" {
-  description = "Publisher organization API key, used by the scope_definition module's local `np nrn patch`."
-  type        = string
-  sensitive   = true
 }
 
 variable "release_tag" {
