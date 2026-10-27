@@ -242,7 +242,7 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 | **Timeout** | 3 - 900 seconds | `30` |
 | **Architecture** | ARM64 (Graviton2), x86_64 | `arm64` |
 | **Visibility** | Public (API Gateway), Private (ALB) | — |
-| **Package Type** | Zip, Docker Image (restrictable, see below) | first of `LAMBDA_DEPLOYMENT_TYPES` (`docker-image`) |
+| **Package Type** | Zip, Docker Image (default configurable, see below) | first of `LAMBDA_DEPLOYMENT_TYPES` (`docker-image`) |
 | **Reserved Concurrency** | Unreserved, Custom value | `unreserved` |
 | **Provisioned Concurrency** | Unprovisioned, Custom value | `unprovisioned` |
 | **VPC** | Optional private networking | Disabled |
@@ -250,30 +250,38 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 | **Dead Letter Queue** | SQS queue or SNS topic ARN for failed async invocations | None |
 | **Continuous Delivery** | Git branch-based auto-deployment | — |
 
-### Restricting package types
+### Default package type
 
-The package types offered by the spec come from the `LAMBDA_DEPLOYMENT_TYPES`
-environment variable, read when the template is rendered with gomplate:
+The default package type, and whether the UI shows the selector, come from the
+`LAMBDA_DEPLOYMENT_TYPES` environment variable, read when the template is
+rendered with gomplate. Both types stay valid in every case:
 
 | Value | Result |
 |-------|--------|
 | unset / empty / `docker-image,zip` | Both options, `docker-image` is the default (original behaviour) |
-| `zip` | Only ZIP; new scopes get `deployment_type=zip` and `asset_type=lambda` |
-| `docker-image` | Only Docker Image |
+| `zip` | No selector in the UI; new scopes get `deployment_type=zip` and `asset_type=lambda` |
+| `docker-image` | No selector in the UI; new scopes get `deployment_type=docker-image` |
 | `zip,docker-image` | Both options, `zip` is the default |
 
-The first entry is the default. Entries are comma separated (spaces are
-ignored). An unknown or repeated entry fails the render instead of being
-ignored. This is useful when the ECR registry lives in another region than the
-functions, where `docker-image` cannot work. When registering the spec with the
-`scope_definition` tofu module, pass it through its `template_env_vars` input:
+The first entry is the default. Entries are comma separated (spaces around
+them are ignored). An unknown, repeated or empty entry, or a whitespace-only
+value, fails the render instead of being ignored.
+
+Defaulting to `zip` is useful when the ECR registry lives in another region than
+the functions, where `docker-image` cannot work. When registering the spec with
+the `scope_definition` tofu module, pass it through its `template_env_vars`
+input:
 
 ```hcl
 template_env_vars = { LAMBDA_DEPLOYMENT_TYPES = "zip" }
 ```
 
-The change applies to scopes created afterwards; existing scopes keep their
-`deployment_type`.
+The schema keeps accepting both types because the platform revalidates a
+scope's capabilities against the current spec on update and on delete: removing
+a type from the schema would leave existing scopes of that type unable to be
+updated or deleted. The variable only changes the default and the selector, so
+existing scopes keep working. It is not a policy: a scope created through the
+API or CLI with an explicit `deployment_type` is still accepted.
 
 ### Event-driven scopes
 

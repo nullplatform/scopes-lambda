@@ -68,17 +68,20 @@ tofu plan
 tofu apply
 ```
 
-## Restricting package types (optional)
+## Default package type (optional)
 
-By default the spec offers both `docker-image` and `zip`. To offer only some
-(for example `zip` when the ECR registry is in a different region than the
-functions), render the service spec with `LAMBDA_DEPLOYMENT_TYPES` set, e.g.
-`zip` or `zip,docker-image` (first entry is the default). With the
-`scope_definition` module this is the `template_env_vars` input
+By default the spec includes both `docker-image` and `zip`, shows the selector
+and defaults to `docker-image`. To default to `zip` and hide the selector (for example when
+the ECR registry is in a different region than the functions), render the
+service spec with `LAMBDA_DEPLOYMENT_TYPES=zip`. Use `zip,docker-image` to keep
+the selector and only change the default (first entry is the default). The
+other type is not blocked and existing scopes keep working.
+
+With the `scope_definition` module this is the `template_env_vars` input
 (`template_env_vars = { LAMBDA_DEPLOYMENT_TYPES = "zip" }`), which requires
 tofu-modules v9.3.0 or later (the version pinned in
-`lambda/specs/install/main.tf`). Unknown values fail the apply. See
-"Restricting package types" in the README.
+`lambda/specs/install/main.tf`). Unknown values fail the apply. See "Default
+package type" in the README.
 
 ## Overrides
 
