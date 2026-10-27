@@ -15,7 +15,7 @@ The `scope_definition` module also creates a scope type, NRN settings and the sc
 
 | Kind | Name | Purpose |
 |---|---|---|
-| secret | `PACKAGE_NP_API_KEY` | API key of the publisher organization, allowed to write specs, scope types, provider specifications and packages |
+| secret | `ARTIFACT_NP_API_KEY` | API key of the publisher organization, already used to register the image. Passed as `package_np_api_key`, so it must also be allowed to write specs, scope types, provider specifications and packages |
 | secret | `AWS_ROLE_ARN_PACKAGE_STATE` | OIDC role with access to the state bucket |
 | variable | `PACKAGE_TFSTATE_BUCKET` | S3 bucket for package stack states (can be set once for the organization). Publishing is skipped while it is unset |
 | variable | `PACKAGE_TFSTATE_REGION` | Region of that bucket |

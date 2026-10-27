@@ -15,10 +15,10 @@ name: release
 # failed, or a pre-pipeline tag with no artifact metadata).
 #
 # Package publishing applies lambda/publish at the release tag with the pushed
-# digest: the scope as a package visible to every organization. It needs
-# secrets PACKAGE_NP_API_KEY (publisher organization key allowed to write
-# specs, scope types and packages) + AWS_ROLE_ARN_PACKAGE_STATE (OIDC role for
-# the tofu state bucket) and variables PACKAGE_TFSTATE_BUCKET +
+# digest: the scope as a package visible to every organization. It reuses
+# ARTIFACT_NP_API_KEY (the publisher organization key, also allowed to write
+# specs, scope types and packages) and needs secret AWS_ROLE_ARN_PACKAGE_STATE
+# (OIDC role for the tofu state bucket) and variables PACKAGE_TFSTATE_BUCKET +
 # PACKAGE_TFSTATE_REGION + NP_ARTIFACT_NRN; it is skipped until
 # PACKAGE_TFSTATE_BUCKET is set.
 on:
@@ -53,5 +53,5 @@ jobs:
     secrets:
       aws_role_arn: ${{ secrets.AWS_ROLE_ARN_ECR_PUSH }}
       artifact_np_api_key: ${{ secrets.ARTIFACT_NP_API_KEY }}
-      package_np_api_key: ${{ secrets.PACKAGE_NP_API_KEY }}
+      package_np_api_key: ${{ secrets.ARTIFACT_NP_API_KEY }}
       package_state_role_arn: ${{ secrets.AWS_ROLE_ARN_PACKAGE_STATE }}
