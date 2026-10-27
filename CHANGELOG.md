@@ -4,6 +4,13 @@
 
 * **scope:** the placeholder image tag (`-arm64`/`-amd64`) follows the scope architecture ([#99](https://github.com/nullplatform/scopes-lambda/pull/99))
 
+## [0.11.2](https://github.com/nullplatform/scopes-lambda/compare/v0.11.1...v0.11.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **specs:** keep every deployment type valid when restricting ([0920f3e](https://github.com/nullplatform/scopes-lambda/commit/0920f3eee2a9b9d4125aff5cbb8c071faa64ae13))
+
 ## [0.11.1](https://github.com/nullplatform/scopes-lambda/compare/v0.11.0...v0.11.1) (2026-10-26)
 
 
