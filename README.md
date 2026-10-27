@@ -21,7 +21,7 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 
 ## Install in your organization
 
-The scope is published once as the package `scopes-lambda`, visible to every organization. You do not copy its specs: you install the package and use it read-only. Add the [installation module](./lambda/installation) to your stack at a release tag:
+The scope is published once as the package `nullplatform-aws-lambda` (specification "nullplatform AWS Lambda"), visible to every organization. You do not copy its specs: you install the package and use it read-only. Add the [installation module](./lambda/installation) to your stack at a release tag:
 
 ```hcl
 terraform {
@@ -94,6 +94,16 @@ The module creates the AWS permissions role, installs the package at `nrn`, and 
 
 Every release publishes the new revision from this repository ([`lambda/publish`](./lambda/publish), applied by the `publish-package` job of the release workflow).
 
+### Already registered with `specs/install`?
+
+Organizations that registered this scope with [`lambda/specs/install`](./lambda/installation.md) have their own copy: package `scopes-lambda`, specification and scope type "AWS Lambda" and a scope-configuration specification "AWS Lambda". The global package uses other names (`nullplatform-aws-lambda`), so both live side by side in one organization:
+
+- Existing scopes stay on your copy. A scope cannot move to another specification.
+- Install the global package with the module above, with `scope_type_name` set to something developers can tell from your scope type (for example `"AWS Lambda (nullplatform)"`), and create new scopes from it.
+- Keep your scope settings: pass `create_scope_configuration = false` and skip step 3. The scope reads every `scope-configurations` provider at the NRN, so the provider you already configured serves both.
+- Reuse your IAM role: both copies assume the role registered under selector `lambda`. Pass `iam_create_role = false` and skip step 2.
+- Once no scope uses your copy, remove its `specs/install` stack.
+
 ### Global package or fork?
 
 **Use the global package.** It is the default, and the only way to keep receiving updates: every fix, new feature and security patch arrives as a new release, and you take it by moving `ref`. The specs, the code and how the scope is installed stay maintained here. If something is missing or wrong, open an issue or a pull request in this repository, so every organization gets it.
@@ -103,7 +113,7 @@ Every release publishes the new revision from this repository ([`lambda/publish`
 - **You become the publisher.** You build and register your own image, and register your fork as your own organization's package with [`lambda/specs/install`](./lambda/installation.md).
 - **Updates stop arriving.** Upstream fixes reach you only when you merge them into your fork yourself.
 - **There is no way back for existing scopes.** Scopes created from your fork's specification cannot be moved to the global one.
-- **Names must not collide.** Use a different package slug (`NP_PACKAGE_NAME` in the `Dockerfile`, `package_slug`), specification name and IAM role and selector, or your fork and the global package share one worker and one role.
+- **Names must not collide.** Give your fork its own `package_slug` and specification name (package lookups and the channel match by slug, and the specification's slug comes from its name), and its own IAM role and selector, or your fork and the global package share one worker and one role.
 
 ---
 

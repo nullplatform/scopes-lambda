@@ -1,6 +1,6 @@
 # scopes-lambda installation
 
-OpenTofu module that installs the `scopes-lambda` package in your organization. The package is published once for every organization and brings the scope specification and its action specifications, read-only. This module creates, in your accounts, what each organization needs on top of it:
+OpenTofu module that installs the `nullplatform-aws-lambda` package (specification "nullplatform AWS Lambda") in your organization. The package is published once for every organization and brings the scope specification and its action specifications, read-only. This module creates, in your accounts, what each organization needs on top of it:
 
 1. The AWS permissions role the scope assumes, its policies, the placeholder ECR repository and, optionally, a public ALB ([`../specs/requirements`](../specs/requirements)).
 2. The installation of the package at `nrn`, at the version of the tag you reference.
@@ -101,6 +101,8 @@ Steps 2 and 3 are yours, not the module's: the scope assumes the role it finds u
 | `np_api_key` | API key for `np nrn patch` | `NP_API_KEY` of the environment |
 | `external_metrics_provider` | Metrics provider in the NRN settings | `externalmetrics` |
 | `external_logging_provider` | Logs provider in the NRN settings | `external` |
+| `scope_type_name` | Name of the scope type, when your organization already has an "AWS Lambda" one | `AWS Lambda` |
+| `create_scope_configuration` | Create the scope-configuration specification (false to keep the one you already have) | `true` |
 | `scope_configuration_name` | Name of the scope-configuration specification, when the template's collides | `AWS Lambda` |
 | `agent_role_arn` | Agent role trusted by the permissions role | `nullplatform-<cluster_name>-agent-role` |
 | `additional_agent_role_arns` | Extra roles allowed to assume the permissions role | `[]` |
@@ -124,12 +126,14 @@ Steps 2 and 3 are yours, not the module's: the scope assumes the role it finds u
 | `installed_version` | Version new scopes are born with |
 | `missing_optional_requirements` | Optional providers the package can use that you have not configured |
 | `scope_type_id` | Id of the scope type in your organization |
-| `scope_configuration_specification_id` | Id of the scope-configuration provider specification |
+| `scope_configuration_specification_id` | Id of the scope-configuration provider specification (null with `create_scope_configuration = false`) |
 | `scope_configuration_specification_slug` | Its slug: the `type` of the provider config with the scope's settings |
 | `notification_channel_id` | Id of the agent notification channel |
 
 ## What stays the publisher's
 
 The specification is shared by every organization, so its options are the published ones. In particular, `LAMBDA_DEPLOYMENT_TYPES` (which package types the form offers) is decided when the package is published.
+
+Already registered this scope with `lambda/specs/install`? Both can live in one organization: see [Already registered with `specs/install`?](../../README.md#already-registered-with-specsinstall).
 
 Use this module to keep receiving updates. Fork the repository only when you need to extend the scope substantially; see [Global package or fork?](../../README.md#global-package-or-fork) for what a fork costs.

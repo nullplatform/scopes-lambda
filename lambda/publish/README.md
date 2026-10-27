@@ -1,6 +1,6 @@
 # scopes-lambda publish
 
-OpenTofu stack that publishes this scope as the package `scopes-lambda`, visible to every organization. Only the release workflow runs it, through the shared [`publish-package`](https://github.com/nullplatform/actions-nullplatform#publish-package) workflow that [`release.yml`](../../.github/workflows/release.yml) enables with `package_stack_dir`; organizations install the package with [`../installation`](../installation).
+OpenTofu stack that publishes this scope as the package `nullplatform-aws-lambda` (specification "nullplatform AWS Lambda"), visible to every organization. Only the release workflow runs it, through the shared [`publish-package`](https://github.com/nullplatform/actions-nullplatform#publish-package) workflow that [`release.yml`](../../.github/workflows/release.yml) enables with `package_stack_dir`; organizations install the package with [`../installation`](../installation).
 
 Each apply publishes one immutable revision that pins:
 

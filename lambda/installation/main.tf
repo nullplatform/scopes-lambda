@@ -23,7 +23,7 @@
 ################################################################################
 
 locals {
-  package_slug = "scopes-lambda"
+  package_slug = "nullplatform-aws-lambda"
   version      = trimprefix(local.release, "v")
   service_path = "lambda"
 }
@@ -68,6 +68,7 @@ module "package" {
   external_metrics_provider = var.external_metrics_provider
   external_logging_provider = var.external_logging_provider
 
-  create_scope_configuration = true
+  scope_type_name            = var.scope_type_name
+  create_scope_configuration = var.create_scope_configuration
   scope_configuration_name   = var.scope_configuration_name
 }

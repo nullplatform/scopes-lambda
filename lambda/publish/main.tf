@@ -16,7 +16,12 @@
 ################################################################################
 
 locals {
-  package_slug = "scopes-lambda"
+  # The nullplatform- prefix keeps the global package and its specification
+  # apart from what organizations registered from this repository with
+  # specs/install: their own package scopes-lambda and specification
+  # "AWS Lambda" (slug aws-lambda). Package lookups and agent channels match by
+  # slug, so the two must differ for both to live in one organization.
+  package_slug = "nullplatform-aws-lambda"
   version      = trimprefix(local.release, "v")
   service_path = "lambda"
 }
@@ -42,7 +47,9 @@ module "scope_definition" {
   local_specs_path = abspath("${path.module}/..")
   service_path     = local.service_path
 
-  service_spec_name        = "AWS Lambda"
+  # Slugifies to the package slug, the specification slug the installation's
+  # channel filter and NRN settings use.
+  service_spec_name        = "nullplatform AWS Lambda"
   service_spec_description = "AWS Lambda functions managed by nullplatform"
 
   action_spec_names = [

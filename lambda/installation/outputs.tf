@@ -34,12 +34,12 @@ output "scope_type_id" {
 }
 
 output "scope_configuration_specification_id" {
-  description = "Id of the scope-configuration provider specification. Configure a provider of it with the scope's OpenTofu state bucket and placeholder image."
+  description = "Id of the scope-configuration provider specification. Configure a provider of it with the scope's OpenTofu state bucket and placeholder image. Null with create_scope_configuration = false."
   value       = module.package.scope_configuration_specification_id
 }
 
 output "scope_configuration_specification_slug" {
-  description = "Slug of the scope-configuration provider specification: the `type` of the provider config that holds the scope's settings."
+  description = "Slug of the scope-configuration provider specification: the `type` of the provider config that holds the scope's settings. Null with create_scope_configuration = false."
   value       = module.package.scope_configuration_specification_slug
 }
 

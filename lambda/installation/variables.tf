@@ -33,6 +33,18 @@ variable "external_logging_provider" {
   default     = "external"
 }
 
+variable "scope_type_name" {
+  description = "Name of the scope type developers pick. Null uses the template's (\"AWS Lambda\"); override it when your organization already has a scope type with that name, registered with specs/install."
+  type        = string
+  default     = null
+}
+
+variable "create_scope_configuration" {
+  description = "Create the scope-configuration provider specification. Set it to false when your organization already has the one specs/install created: the scope reads every scope-configurations provider at the NRN, so your existing settings keep serving it."
+  type        = bool
+  default     = true
+}
+
 variable "scope_configuration_name" {
   description = "Name of the scope-configuration provider specification. Null uses the template's (\"AWS Lambda\"); override it when that name collides with one already visible in your organization."
   type        = string
