@@ -1,0 +1,84 @@
+#!/bin/bash
+# Publish rule and target group counts of the ALBs this run touched, for alarms ahead of the 100-rule cap.
+# Covers the scope's current ALB and the one in NRN metadata (a move or a delete frees a rule there).
+# Same metrics as the k8s scope, so one alarm or dashboard covers both. Best-effort: never fails the workflow.
+
+source "$SERVICE_PATH/utils/log"
+source "$SERVICE_PATH/utils/alb_rules"
+source "$SERVICE_PATH/utils/get_config_value"
+
+# tostring keeps a boolean false, which get_config_value's `// empty` would drop.
+ALB_METRICS_PUBLISH_ENABLED=$(get_config_value \
+  --provider '.providers["scope-configurations"].networking.alb_metrics_enabled | tostring' \
+  --env ALB_METRICS_PUBLISH_ENABLED \
+  --default "true"
+)
+ALB_METRICS_PUBLISH_TARGET=$(get_config_value \
+  --provider '.providers["scope-configurations"].networking.alb_metrics_target' \
+  --env ALB_METRICS_PUBLISH_TARGET \
+  --default "cloudwatch"
+)
+
+if [ "$ALB_METRICS_PUBLISH_ENABLED" != "true" ]; then
+  log debug "   ⏭️  ALB metrics disabled"
+  return 0
+fi
+
+case "$ALB_METRICS_PUBLISH_TARGET" in
+  cloudwatch) publisher=publish_cloudwatch ;;
+  datadog) publisher=publish_datadog ;;
+  *) log warn "   ⚠️  Unknown ALB metrics target '$ALB_METRICS_PUBLISH_TARGET'"; return 0 ;;
+esac
+
+stored=$(np nrn read --nrn "$SCOPE_NRN" --ids "lambda.alb_arn" --format json 2>/dev/null) || stored=""
+stored_alb=$(echo "$stored" | jq -r '.namespaces.lambda.alb_arn // empty' 2>/dev/null)
+
+targets=()
+[ -n "${ALB_ARN:-}" ] && targets+=("$ALB_ARN")
+[ -n "$stored_alb" ] && [ "$stored_alb" != "${ALB_ARN:-}" ] && targets+=("$stored_alb")
+
+if [ ${#targets[@]} -eq 0 ]; then
+  log debug "   ⏭️  No ALB touched - skipping ALB metrics"
+  return 0
+fi
+
+publish_cloudwatch() {
+  local metric_data
+  metric_data=$(jq -nc --arg alb "$1" --argjson r "$2" --arg tg "$3" '
+    [{MetricName: "RuleCount", Value: $r}]
+    + (if $tg == "" then [] else [{MetricName: "TargetGroupCount", Value: ($tg | tonumber)}] end)
+    | map(. + {Unit: "Count", Dimensions: [{Name: "ALBName", Value: $alb}]})')
+  aws cloudwatch put-metric-data --namespace "nullplatform/ApplicationELB" --metric-data "$metric_data" >/dev/null 2>&1
+}
+
+publish_datadog() {
+  [ -z "${DATADOG_API_KEY:-}" ] && { log warn "   ⚠️  DATADOG_API_KEY not set"; return 1; }
+  local body status
+  body=$(jq -nc --arg alb "$1" --argjson r "$2" --arg tg "$3" --arg region "${AWS_REGION:-}" --argjson ts "$(date +%s)" '
+    [{metric: "rule_count", value: $r}]
+    + (if $tg == "" then [] else [{metric: "target_group_count", value: ($tg | tonumber)}] end)
+    | {series: map({metric: "nullplatform.applicationelb.\(.metric)", type: 3,
+        points: [{timestamp: $ts, value: .value}], tags: ["alb_name:\($alb)", "region:\($region)"]})}')
+  status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.${DATADOG_SITE:-datadoghq.com}/api/v2/series" \
+    -H "DD-API-KEY: $DATADOG_API_KEY" -H "Content-Type: application/json" -d "$body" 2>/dev/null)
+  [ "$status" = "202" ]
+}
+
+log info "📊 Publishing ALB metrics to $ALB_METRICS_PUBLISH_TARGET..."
+
+for alb_arn in "${targets[@]}"; do
+  alb_name=$(echo "$alb_arn" | cut -d/ -f3)
+
+  if ! rules=$(alb_rule_count "$alb_arn"); then
+    log warn "   ⚠️  Could not count rules on $alb_name - metrics not published"
+    continue
+  fi
+  target_groups=$(aws elbv2 describe-target-groups --load-balancer-arn "$alb_arn" --output json 2>/dev/null \
+    | jq -r '.TargetGroups | length' 2>/dev/null) || target_groups=""
+
+  if "$publisher" "$alb_name" "$rules" "$target_groups"; then
+    log info "   ✅ $alb_name rules=$rules target_groups=${target_groups:-?}"
+  else
+    log warn "   ⚠️  Failed to publish ALB metrics for $alb_name to $ALB_METRICS_PUBLISH_TARGET"
+  fi
+done

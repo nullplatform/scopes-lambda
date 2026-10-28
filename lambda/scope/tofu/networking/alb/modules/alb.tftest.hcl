@@ -4,6 +4,11 @@ mock_provider "aws" {
       arn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/test-tg/50dc6c495c0c9188"
     }
   }
+  mock_data "aws_lambda_alias" {
+    defaults = {
+      arn = "arn:aws:lambda:us-east-1:123456789012:function:test-function:main"
+    }
+  }
 }
 
 variables {
@@ -14,6 +19,8 @@ variables {
   alb_health_check_enabled  = true
   alb_health_check_path     = "/health"
   alb_resource_tags_json    = {}
+  alb_lambda_function_name  = "test-function"
+  alb_lambda_alias_name     = "main"
 }
 
 run "creates_lambda_target_group" {
@@ -77,7 +84,7 @@ run "creates_lambda_permission_for_alb" {
 
   assert {
     condition     = aws_lambda_permission.alb.function_name == "test-function"
-    error_message = "Function name should come from cross-module local"
+    error_message = "Function name should come from alb_lambda_function_name"
   }
 
   assert {
@@ -210,14 +217,17 @@ run "creates_unique_target_group_name" {
   }
 }
 
-run "uses_qualified_lambda_arn_from_locals" {
-  variables {
-    test_lambda_alias_arn = "arn:aws:lambda:us-east-1:123456789012:function:test-function:production"
+run "attaches_the_alias_read_from_aws" {
+  override_data {
+    target = data.aws_lambda_alias.main
+    values = {
+      arn = "arn:aws:lambda:us-east-1:123456789012:function:test-function:production"
+    }
   }
   command = plan
 
   assert {
     condition     = aws_lb_target_group_attachment.lambda.target_id == "arn:aws:lambda:us-east-1:123456789012:function:test-function:production"
-    error_message = "Should use qualified Lambda ARN from cross-module local"
+    error_message = "Should attach the alias ARN read by the data source"
   }
 }

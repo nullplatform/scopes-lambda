@@ -49,8 +49,10 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 1. **Provider**: Configures AWS credentials, region, and Terraform state backend
 2. **IAM**: Creates/updates Lambda execution role with required policies
 3. **Compute (Lambda)**: Deploys function code, versions, aliases, and concurrency settings
-4. **Networking**: Sets up API Gateway (public) or ALB target group (private)
-5. **DNS (Route53)**: Creates DNS records pointing to the networking endpoint
+4. **Networking**: Sets up API Gateway (public) or an ALB target group and listener rule (private, or public with `public_exposure = alb`)
+5. **DNS (Route53)**: Creates an alias record pointing to the networking endpoint
+
+Networking and DNS live in their own state (`lambda/<scope_id>/networking.tfstate`), applied on create and destroyed on delete. `http_enabled` and `visibility` cannot be changed after creation.
 
 ---
 
@@ -334,9 +336,17 @@ API_GATEWAY_STAGE_NAME: "main"
 API_GATEWAY_THROTTLING_BURST_LIMIT: 5000
 API_GATEWAY_THROTTLING_RATE_LIMIT: 10000
 
-# ALB (Private)
-ALB_LISTENER_RULE_CAPACITY: 100
-ALB_LISTENER_RULE_ALERT_THRESHOLD: 80
+# Networking
+LAMBDA_PUBLIC_EXPOSURE: "alb"           # or "api_gateway"; default: alb when public listeners exist
+
+# ALB
+ALB_LISTENER_RULE_PRIORITY_START: 100
+ALB_LISTENER_RULE_CAPACITY: 98          # no new rule on an ALB with this many
+ALB_LISTENER_RULE_ALERT_THRESHOLD: 75   # new scopes skip ALBs with this many
+ALB_AUTOCREATE_ENABLED: false           # clone an ALB when every ALB is full
+ALB_AUTOCREATE_NAME_PREFIX: np-lambda-  # <prefix><visibility>-<n>
+ALB_METRICS_PUBLISH_ENABLED: true
+ALB_METRICS_PUBLISH_TARGET: cloudwatch  # or "datadog" (needs DATADOG_API_KEY)
 
 # CloudWatch
 LOG_RETENTION_DAYS: 30
@@ -502,12 +512,11 @@ All AWS resources are tagged with:
 
 ### Initial Deployment
 
-Full infrastructure setup on first deployment:
+Infrastructure is created by `create-scope`; a deployment only ships code:
 
 ```
-build_context → sync_parameters → setup_provider → setup_iam → setup_compute
-→ setup_networking (api_gateway | alb) → setup_dns → compose_modules
-→ tofu apply → wait_provisioned_concurrency → store_metadata
+build_context → sync_parameters → update_function_code → update_function_configuration
+→ publish_version → update_alias → wait_provisioned_concurrency
 ```
 
 ### Blue-Green Deployment
@@ -789,8 +798,38 @@ export TOFU_LOCK_TABLE=my-lock-table
 
 | Mode | Networking | Use Case |
 |------|------------|----------|
-| **Public** | API Gateway + Route53 | Internet-facing APIs and webhooks |
-| **Private** | ALB + Route53 | Internal microservices and backend functions |
+| **Public** | API Gateway, or ALB with `public_exposure = alb` | Internet-facing APIs and webhooks |
+| **Private** | ALB + Route53 alias | Internal microservices and backend functions |
+
+ALB scopes are balanced across `networking.alb_<visibility>_listener_arns` (scope-configurations; `load_balancer.<visibility>.listener_arn` of the vpc provider is the single-ALB fallback):
+
+| Step | Behavior |
+|------|----------|
+| Assignment | A new rule goes to the ALB with the fewest rules (all listeners counted) below the alert threshold |
+| Re-runs | The scope keeps its listener (`lambda.alb_listener_arn` in NRN), even if removed from the list |
+| Hard cap | No new rule on an ALB at `ALB_LISTENER_RULE_CAPACITY` |
+| Autocreate | Opt-in (`networking.alb_autocreate_enabled`): when every ALB is full, the first one is cloned and added to the list |
+| Concurrency | A priority taken meanwhile (`PriorityInUse`) is recomputed and retried up to 3 times |
+| Metrics | `nullplatform/ApplicationELB` · `RuleCount` and `TargetGroupCount` per `ALBName` on every create and delete, to CloudWatch or Datadog (same as the k8s scope) |
+| Override | The `scopes-networking` Lambda override must be disabled (`overrides_enabled = false`); create fails while it is active |
+| Existing scopes | Scopes created by the override keep their ALB rule in the main state, and delete removes it; recreate them to move it to the networking stack |
+
+The `scope-configurations` provider overrides the agent values above per NRN (full table and IAM in [prerequisites.md](lambda/prerequisites.md#scope-configurations)):
+
+```json
+"networking": {
+  "alb_public_listener_arns": ["<current listener>", "<another ALB listener>"],
+  "alb_private_listener_arns": ["<listener>"],
+  "alb_listener_rule_alert_threshold": 75,
+  "alb_listener_rule_capacity": 98,
+  "alb_autocreate_enabled": true,
+  "alb_autocreate_name_prefix": "np-lambda-",
+  "alb_metrics_enabled": true,
+  "alb_metrics_target": "cloudwatch"
+}
+```
+
+Alarm on `RuleCount` ≥ 75 per `ALBName` with `treat-missing-data = ignore`: the metric is only published when a scope workflow runs. Autocreated ALBs (tags `nullplatform:lambda-autocreated` and `-from`) are never deleted by the workflow.
 
 ### Troubleshooting
 
@@ -799,6 +838,10 @@ export TOFU_LOCK_TABLE=my-lock-table
 | "Function name too long" | Name exceeds 64 chars | Shorten namespace/application/scope slugs |
 | "Placeholder image not found" | Image scope with no private placeholder published | Run `lambda/scope/placeholder/publish` and set `PLACEHOLDER_IMAGE_URI_DEFAULT` (see [Placeholder Image](#placeholder-image-scope-bootstrap)) |
 | "Provisioned concurrency timeout" | Warmup taking too long | Increase `PROVISIONED_CONCURRENCY_MAX_WAIT_SECONDS` |
-| "ALB listener rule capacity" | Too many rules on ALB | Increase `ALB_LISTENER_RULE_CAPACITY` in values.yaml |
+| "Every private ALB has 75 or more listener rules" | All ALBs past the alert threshold | Add a listener to `networking.alb_private_listener_arns`, enable `alb_autocreate_enabled`, or remove unused scopes |
+| "Failed to autocreate a … ALB" | Missing `CreateLoadBalancer`/`CreateListener`, or the region's ALB quota | Grant the autocreate IAM actions ([prerequisites.md](lambda/prerequisites.md)) or raise the quota |
+| "Could not register … in scope-configurations" | The agent's API key cannot write the provider | Add the listener to the list by hand; meanwhile the next create reuses the ALB by name |
+| "Failed to publish ALB metrics" | Missing `cloudwatch:PutMetricData` or `DATADOG_API_KEY` | Grant it or set the key; the workflow does not fail |
+| "at or above the cap" | Rules taken by other scopes meanwhile | Re-run the action so another ALB is picked |
 | "Module not composed" | `MODULES_TO_USE` not updated | Verify setup script appends to `MODULES_TO_USE` |
 | "Backend not configured" | Missing provider setup | Ensure provider setup runs before other modules |

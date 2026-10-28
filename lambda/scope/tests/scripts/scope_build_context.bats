@@ -120,8 +120,6 @@ teardown() {
   set_context "private"
   export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
-  export ALB_LISTENER_RULE_CAPACITY=100
-  export ALB_LISTENER_RULE_ALERT_THRESHOLD=80
 
   run bash "$LAMBDA_DIR/scope/build_context"
 
@@ -140,22 +138,48 @@ teardown() {
   assert_output_contains "visibility=public"
 }
 
-@test "scope/build_context: fails when ALB capacity is at or below threshold for private scopes" {
-  set_context "private"
-  export TOFU_ACTION="apply"
-  export ALB_LISTENER_RULE_CAPACITY=80
-  export ALB_LISTENER_RULE_ALERT_THRESHOLD=80
+@test "scope/build_context: public scopes default to ALB when public listeners exist" {
+  export LOG_LEVEL=debug
+  set_context "public"
+  unset LAMBDA_PUBLIC_EXPOSURE
+  cat > "$MOCK_BIN_DIR/np" <<'NP_MOCK'
+#!/bin/bash
+echo '{"results":[{"category":"cloud-providers","attributes":{"account":{"id":"111122223333","region":"us-east-1"}}},{"category":"vpc","attributes":{"load_balancer":{"public":{"listener_arn":"arn:listener-public"}}}}]}'
+NP_MOCK
   export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
   _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
 
   run_step "$LAMBDA_DIR/scope/build_context"
 
-  assert_failure
-  assert_output_contains "ALB listener rule capacity (80) is at or below the alert threshold (80)"
-  assert_output_contains "Too many private scopes sharing the same internal ALB"
-  assert_output_contains "Increase ALB_LISTENER_RULE_CAPACITY if the ALB supports more rules"
-  assert_output_contains "Remove unused scopes to free up listener rule slots"
-  assert_output_contains "Provision an additional internal ALB for this account"
+  assert_success
+  assert_output_contains "networking_mode=alb"
+}
+
+@test "scope/build_context: public scopes default to API Gateway" {
+  export LOG_LEVEL=debug
+  set_context "public"
+  unset LAMBDA_PUBLIC_EXPOSURE
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
+  _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
+
+  run_step "$LAMBDA_DIR/scope/build_context"
+
+  assert_success
+  assert_output_contains "networking_mode=api_gateway"
+}
+
+@test "scope/build_context: public exposure comes from scope-configurations" {
+  export LOG_LEVEL=debug
+  set_context "public"
+  export LAMBDA_PUBLIC_EXPOSURE="api_gateway"
+  export CONTEXT=$(echo "$CONTEXT" | jq '.providers["scope-configurations"].networking.public_exposure = "alb"')
+  export NP_OUTPUT_DIR="$BATS_TEST_TMPDIR"
+  _TEST_CLEANUP_DIRS+=("$NP_OUTPUT_DIR")
+
+  run_step "$LAMBDA_DIR/scope/build_context"
+
+  assert_success
+  assert_output_contains "networking_mode=alb"
 }
 
 @test "scope/build_context: creates output directory" {

@@ -1,0 +1,165 @@
+#!/bin/bash
+# Pick the ALB listener for the scope's rule, balancing across the configured listeners.
+# A scope keeps its listener across re-runs (NRN metadata, or its rule found on a candidate);
+# a new rule only lands on the least-loaded ALB below the alert threshold.
+
+source "$SERVICE_PATH/utils/log"
+source "$SERVICE_PATH/utils/get_config_value"
+source "$SERVICE_PATH/utils/alb_rules"
+
+if [ "${NETWORKING_MODE:-none}" != "alb" ]; then
+  log debug "   ⏭️  networking_mode=${NETWORKING_MODE:-none} - no ALB to select"
+  return 0
+fi
+
+log info "🔍 Selecting ALB listener..."
+
+fail_aws_read() {
+  echo "❌ Failed to read ALB listener rules for $1" >&2
+  echo "" >&2
+  echo "💡 Possible causes:" >&2
+  echo "   - The agent role lacks elasticloadbalancing:Describe*" >&2
+  echo "   - The listener ARN belongs to another account or region" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Verify the listener with: aws elbv2 describe-listeners --listener-arns $1" >&2
+  exit 1
+}
+
+ALB_LISTENER_RULE_CAPACITY=$(get_config_value \
+  --provider '.providers["scope-configurations"].networking.alb_listener_rule_capacity' \
+  --env ALB_LISTENER_RULE_CAPACITY \
+  --default "98"
+)
+ALB_LISTENER_RULE_ALERT_THRESHOLD=$(get_config_value \
+  --provider '.providers["scope-configurations"].networking.alb_listener_rule_alert_threshold' \
+  --env ALB_LISTENER_RULE_ALERT_THRESHOLD \
+  --default "75"
+)
+ALB_LISTENER_RULE_PRIORITY_START="${ALB_LISTENER_RULE_PRIORITY_START:-100}"
+# tostring keeps a boolean false, which get_config_value's `// empty` would drop.
+ALB_AUTOCREATE_ENABLED=$(get_config_value \
+  --provider '.providers["scope-configurations"].networking.alb_autocreate_enabled | tostring' \
+  --env ALB_AUTOCREATE_ENABLED \
+  --default "false"
+)
+
+if ! [[ "$ALB_LISTENER_RULE_CAPACITY" =~ ^[0-9]+$ && "$ALB_LISTENER_RULE_ALERT_THRESHOLD" =~ ^[0-9]+$ ]] \
+  || [ "$ALB_LISTENER_RULE_ALERT_THRESHOLD" -ge "$ALB_LISTENER_RULE_CAPACITY" ] \
+  || [ "$ALB_LISTENER_RULE_CAPACITY" -gt 100 ]; then
+  echo "❌ Invalid ALB rule thresholds: alert=$ALB_LISTENER_RULE_ALERT_THRESHOLD capacity=$ALB_LISTENER_RULE_CAPACITY" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Use integers with ALB_LISTENER_RULE_ALERT_THRESHOLD < ALB_LISTENER_RULE_CAPACITY <= 100" >&2
+  exit 1
+fi
+
+log debug "   ✅ alert_threshold=$ALB_LISTENER_RULE_ALERT_THRESHOLD capacity=$ALB_LISTENER_RULE_CAPACITY"
+
+if [ "$VISIBILITY" = "private" ]; then
+  candidate_list="${ALB_PRIVATE_LISTENER_ARNS:-}"
+else
+  candidate_list="${ALB_PUBLIC_LISTENER_ARNS:-}"
+fi
+IFS=',' read -ra candidates <<< "$candidate_list"
+
+if [ ${#candidates[@]} -eq 0 ]; then
+  echo "❌ No ALB listener configured for $VISIBILITY scopes" >&2
+  echo "" >&2
+  echo "🔧 How to fix:" >&2
+  echo "   • Set networking.alb_${VISIBILITY}_listener_arns in the scope-configurations provider" >&2
+  exit 1
+fi
+
+ALB_LISTENER_ARN=""
+ALB_RULE_PRIORITY=""
+ALB_RULE_IS_NEW="false"
+
+# 1. The listener this scope was assigned before, while its rule is still there.
+stored=$(np nrn read --nrn "$SCOPE_NRN" --ids "lambda.alb_listener_arn,lambda.alb_visibility" --format json 2>/dev/null) || stored=""
+stored_listener=$(echo "$stored" | jq -r '.namespaces.lambda.alb_listener_arn // empty' 2>/dev/null)
+stored_visibility=$(echo "$stored" | jq -r '.namespaces.lambda.alb_visibility // empty' 2>/dev/null)
+
+if [ -n "$stored_listener" ] && [ "$stored_visibility" = "$VISIBILITY" ]; then
+  stored_lb=$(alb_listener_lb_arn "$stored_listener") || fail_aws_read "$stored_listener"
+  if [ -n "$stored_lb" ]; then
+    priority=$(alb_scope_rule_priority "$stored_listener" "$SCOPE_DOMAIN") || fail_aws_read "$stored_listener"
+    if [ -n "$priority" ]; then
+      ALB_LISTENER_ARN="$stored_listener"
+      ALB_RULE_PRIORITY="$priority"
+      if [[ ",$candidate_list," != *",$stored_listener,"* ]]; then
+        log warn "   ⚠️  Listener $stored_listener is no longer configured - keeping the scope on it"
+      fi
+    fi
+  fi
+fi
+
+# 2. The scope's rule already on a candidate (lost metadata), else 3. the least-loaded eligible ALB.
+best_listener=""
+best_count=""
+template_listener=""
+if [ -z "$ALB_LISTENER_ARN" ]; then
+  for listener in "${candidates[@]}"; do
+    lb=$(alb_listener_lb_arn "$listener") || fail_aws_read "$listener"
+    if [ -z "$lb" ]; then
+      log warn "   ⚠️  Listener $listener not found - skipping"
+      continue
+    fi
+    [ -z "$template_listener" ] && template_listener="$listener"
+
+    priority=$(alb_scope_rule_priority "$listener" "$SCOPE_DOMAIN") || fail_aws_read "$listener"
+    if [ -n "$priority" ]; then
+      ALB_LISTENER_ARN="$listener"
+      ALB_RULE_PRIORITY="$priority"
+      break
+    fi
+
+    count=$(alb_rule_count "$lb") || fail_aws_read "$lb"
+    log debug "   📋 $listener rules=$count"
+
+    if [ "$count" -lt "$ALB_LISTENER_RULE_ALERT_THRESHOLD" ] && { [ -z "$best_count" ] || [ "$count" -lt "$best_count" ]; }; then
+      best_listener="$listener"
+      best_count="$count"
+    fi
+  done
+fi
+
+if [ -z "$ALB_LISTENER_ARN" ] && [ -z "$best_listener" ] && [ "$ALB_AUTOCREATE_ENABLED" = "true" ] \
+  && [ -n "$template_listener" ]; then
+  source "$SERVICE_PATH/scope/scripts/autocreate_alb"
+  autocreate_alb "$template_listener" "$candidate_list"
+  best_listener="$AUTOCREATED_LISTENER_ARN"
+fi
+
+if [ -z "$ALB_LISTENER_ARN" ]; then
+  if [ -z "$best_listener" ]; then
+    echo "❌ Every $VISIBILITY ALB has $ALB_LISTENER_RULE_ALERT_THRESHOLD or more listener rules" >&2
+    echo "" >&2
+    echo "💡 Possible causes:" >&2
+    echo "   AWS caps an ALB at 100 rules; new scopes stop at the alert threshold to keep headroom" >&2
+    echo "" >&2
+    echo "🔧 How to fix:" >&2
+    echo "   • Add another ALB listener to networking.alb_${VISIBILITY}_listener_arns (scope-configurations)" >&2
+    echo "   • Or let the agent clone one: networking.alb_autocreate_enabled = true" >&2
+    echo "   • Remove unused scopes to free listener rules" >&2
+    exit 1
+  fi
+  ALB_LISTENER_ARN="$best_listener"
+  ALB_RULE_IS_NEW="true"
+  ALB_RULE_PRIORITY=$(alb_free_priority "$ALB_LISTENER_ARN" "$ALB_LISTENER_RULE_PRIORITY_START") || fail_aws_read "$ALB_LISTENER_ARN"
+fi
+
+# An existing rule keeps its target group, whatever naming created it.
+ALB_TARGET_GROUP_NAME=""
+if [ "$ALB_RULE_IS_NEW" = "false" ]; then
+  ALB_TARGET_GROUP_NAME=$(alb_scope_rule_target_group "$ALB_LISTENER_ARN" "$SCOPE_DOMAIN") || fail_aws_read "$ALB_LISTENER_ARN"
+fi
+
+ALB_ARN=$(alb_listener_lb_arn "$ALB_LISTENER_ARN") || fail_aws_read "$ALB_LISTENER_ARN"
+dns_target=$(alb_dns_target "$ALB_ARN") || fail_aws_read "$ALB_ARN"
+read -r ALB_DNS_NAME ALB_ZONE_ID <<< "$dns_target"
+
+export ALB_LISTENER_ARN ALB_ARN ALB_DNS_NAME ALB_ZONE_ID ALB_RULE_PRIORITY ALB_RULE_IS_NEW ALB_TARGET_GROUP_NAME
+export ALB_LISTENER_RULE_CAPACITY ALB_LISTENER_RULE_ALERT_THRESHOLD ALB_LISTENER_RULE_PRIORITY_START
+
+log info "   ✅ listener=$ALB_LISTENER_ARN priority=$ALB_RULE_PRIORITY new_rule=$ALB_RULE_IS_NEW"
