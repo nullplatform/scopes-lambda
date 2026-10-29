@@ -38,7 +38,7 @@ resource "terraform_data" "release_guard" {
 }
 
 module "scope_definition" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.6.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.7.0"
 
   nrn = var.publisher_nrn
 

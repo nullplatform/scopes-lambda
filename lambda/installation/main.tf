@@ -53,7 +53,7 @@ module "requirements" {
 # 2. The package, installed at the version of this module's tag, and the
 #    pieces this organization owns, from this tag's templates.
 module "package" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.6.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.7.0"
 
   nrn                  = var.nrn
   package_slug         = local.package_slug
