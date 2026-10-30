@@ -222,6 +222,24 @@ run_assume_role_step() {
   assert_line "✨ Placeholder image resolved: 084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-arm64"
 }
 
+@test "resolve_placeholder_image: an untagged URI gets the architecture's tag, not the multi-arch latest" {
+  export PACKAGE_TYPE="Image"
+  export ARCHITECTURE="x86_64"
+  export PLACEHOLDER_IMAGE_URI="123456789012.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder"
+  aws() {
+    case "$*" in
+      *"imageTag=latest-amd64"*) echo '{"imageDetails":[{"imageTags":["latest-amd64"]}]}' ;;
+      *) echo "An error occurred (ImageNotFoundException)" >&2; return 1 ;;
+    esac
+  }
+
+  run run_resolve_placeholder_image
+
+  assert_success
+  assert_line "   📋 registry=123456789012 region=us-east-1 repo=lambda-placeholder tag=latest-amd64"
+  assert_line "✨ Placeholder image resolved: 123456789012.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-amd64"
+}
+
 @test "resolve_placeholder_image: a tag without an arch suffix is used as is" {
   export PACKAGE_TYPE="Image"
   export ARCHITECTURE="x86_64"
@@ -322,4 +340,43 @@ run_assume_role_step() {
   assert_line "   - The target role's trust policy does not trust the agent role"
   assert_line "   - The resolved ARN is wrong (check the IAM provider selector=lambda)"
   assert_output_not_contains "CALLER_ALIVE"
+}
+
+# np answers only for the scope's full NRN, like a provider registered at the
+# application where the package is installed: `np provider list` walks up from
+# the NRN it gets, so cutting it to the account would miss this provider.
+stub_np_iam_provider_at_scope_nrn() {
+  np() {
+    case "$*" in
+      *"provider list --nrn organization=1:account=2:namespace=3:application=4:scope=5 --categories identity-access-control"*)
+        echo '{"results":[{"id":"iam-provider"}]}' ;;
+      *"provider read --id iam-provider"*)
+        echo '{"attributes":{"iam_role_arns":{"arns":[{"selector":"lambda","arn":"arn:aws:iam::123456789012:role/np-lambda"}]}}}' ;;
+      *) echo '{"results":[]}' ;;
+    esac
+  }
+  export -f np
+}
+
+@test "assume_role_step: resolves the IAM provider from the scope's full NRN" {
+  stub_np_iam_provider_at_scope_nrn
+  mock_aws '{"Credentials":{"AccessKeyId":"AKIA","SecretAccessKey":"secret","SessionToken":"token"}}'
+
+  run run_assume_role_step
+
+  assert_success
+  assert_line "   🔑 Assuming role: arn:aws:iam::123456789012:role/np-lambda"
+  assert_line "   ✅ Role assumed successfully"
+  assert_output_not_contains "No IAM role for selector"
+}
+
+@test "assume_role_step: warns when no IAM role resolves" {
+  np() { echo '{"results":[]}'; }
+  export -f np
+
+  run run_assume_role_step
+
+  assert_success
+  assert_output_contains "No IAM role for selector=lambda at organization=1:account=2:namespace=3:application=4:scope=5 or above it; using the agent's credentials"
+  assert_output_not_contains "Assuming role"
 }

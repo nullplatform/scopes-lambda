@@ -1,5 +1,7 @@
 # AWS Lambda Scope — Installation Guide
 
+> **Most organizations should not use this guide.** Install the global package with the [installation module](./installation/README.md) instead: it is the only way to keep receiving updates. This guide registers your **own copy** of the scope in your organization, the path for a fork that extends it substantially. See [Global package or fork?](../README.md#global-package-or-fork) for what a fork costs.
+
 This guide walks through registering the AWS Lambda scope type in nullplatform using OpenTofu.
 
 ## Overview
