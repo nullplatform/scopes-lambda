@@ -24,7 +24,7 @@ module "lambda" {
 ## Prerequisites
 
 - **Providers**: an AWS cloud provider, configured at `nrn` or above it.
-- **Tools on the machine running the apply**: `np` (the NRN settings patch), `gomplate` and `jq` (the scope type template).
+- **Tools on the machine running the apply**: `np` (the NRN settings patch).
 - **Credentials for the apply**: a nullplatform API key (`NULLPLATFORM_API_KEY` for the provider, `NP_API_KEY` or `np_api_key` for `np`) that can install packages and create scope types and provider specifications at `nrn`.
 
 ## Inputs
@@ -36,7 +36,8 @@ module "lambda" {
 | `np_api_key` | API key for `np nrn patch` | `NP_API_KEY` of the environment |
 | `external_metrics_provider` | Metrics provider in the NRN settings | `externalmetrics` |
 | `external_logging_provider` | Logs provider in the NRN settings | `external` |
-| `scope_type_name` | Name of the scope type, when your organization already has an "AWS Lambda" one | `AWS Lambda` |
+| `scope_type_name` | Name of the scope type; change it when your organization already has an "AWS Lambda" one | `AWS Lambda` |
+| `scope_type_description` | Description of the scope type | `Serverless functions on AWS Lambda` |
 | `create_scope_configuration` | Create the scope-configuration specification (false to keep the one you already have) | `true` |
 | `scope_configuration_name` | Name of the scope-configuration specification, when the template's collides | `AWS Lambda` |
 

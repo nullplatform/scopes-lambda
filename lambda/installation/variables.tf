@@ -29,9 +29,15 @@ variable "external_logging_provider" {
 }
 
 variable "scope_type_name" {
-  description = "Name of the scope type developers pick. Null uses the template's (\"AWS Lambda\"); override it when your organization already has a scope type with that name, registered with specs/install."
+  description = "Name of the scope type developers pick. Override it when your organization already has a scope type with this name, registered with specs/install."
   type        = string
-  default     = null
+  default     = "AWS Lambda"
+}
+
+variable "scope_type_description" {
+  description = "Description of the scope type."
+  type        = string
+  default     = "Serverless functions on AWS Lambda"
 }
 
 variable "create_scope_configuration" {
