@@ -222,6 +222,24 @@ run_assume_role_step() {
   assert_line "✨ Placeholder image resolved: 084420143809.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-arm64"
 }
 
+@test "resolve_placeholder_image: an untagged URI gets the architecture's tag, not the multi-arch latest" {
+  export PACKAGE_TYPE="Image"
+  export ARCHITECTURE="x86_64"
+  export PLACEHOLDER_IMAGE_URI="123456789012.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder"
+  aws() {
+    case "$*" in
+      *"imageTag=latest-amd64"*) echo '{"imageDetails":[{"imageTags":["latest-amd64"]}]}' ;;
+      *) echo "An error occurred (ImageNotFoundException)" >&2; return 1 ;;
+    esac
+  }
+
+  run run_resolve_placeholder_image
+
+  assert_success
+  assert_line "   📋 registry=123456789012 region=us-east-1 repo=lambda-placeholder tag=latest-amd64"
+  assert_line "✨ Placeholder image resolved: 123456789012.dkr.ecr.us-east-1.amazonaws.com/lambda-placeholder:latest-amd64"
+}
+
 @test "resolve_placeholder_image: a tag without an arch suffix is used as is" {
   export PACKAGE_TYPE="Image"
   export ARCHITECTURE="x86_64"

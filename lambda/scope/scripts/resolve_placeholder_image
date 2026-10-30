@@ -50,14 +50,17 @@ if [ -z "${PLACEHOLDER_IMAGE_URI:-}" ]; then
   exit 1
 fi
 
+# Lambda rejects multi-arch images: match an -arm64/-amd64 tag to the scope's architecture.
+[ "$architecture" = "x86_64" ] && arch_suffix="amd64" || arch_suffix="arm64"
+
+# An untagged URI gets the architecture's tag, not latest: lambda/scope/placeholder/publish
+# pushes latest as a multi-arch index, which Lambda cannot use.
 if [[ "$PLACEHOLDER_IMAGE_URI" == *":"* ]]; then
   placeholder_image_uri="$PLACEHOLDER_IMAGE_URI"
 else
-  placeholder_image_uri="${PLACEHOLDER_IMAGE_URI}:latest"
+  placeholder_image_uri="${PLACEHOLDER_IMAGE_URI}:latest-${arch_suffix}"
 fi
 
-# Lambda rejects multi-arch images: match an -arm64/-amd64 tag to the scope's architecture.
-[ "$architecture" = "x86_64" ] && arch_suffix="amd64" || arch_suffix="arm64"
 if [[ "$placeholder_image_uri" =~ -(arm64|amd64)$ ]]; then
   placeholder_image_uri="${placeholder_image_uri%-*}-${arch_suffix}"
 fi
