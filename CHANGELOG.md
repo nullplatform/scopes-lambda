@@ -4,6 +4,13 @@
 
 * **scope:** the placeholder image tag (`-arm64`/`-amd64`) follows the scope architecture ([#99](https://github.com/nullplatform/scopes-lambda/pull/99))
 
+## [0.12.2](https://github.com/nullplatform/scopes-lambda/compare/v0.12.1...v0.12.2) (2026-11-02)
+
+
+### Bug Fixes
+
+* **deps:** update dependency opentofu/opentofu to v1.13.2 ([#105](https://github.com/nullplatform/scopes-lambda/issues/105)) ([c04fbad](https://github.com/nullplatform/scopes-lambda/commit/c04fbad0d0526f973ace85f2822d5f08fa4ec8cd))
+
 ## [0.12.1](https://github.com/nullplatform/scopes-lambda/compare/v0.12.0...v0.12.1) (2026-11-02)
 
 
