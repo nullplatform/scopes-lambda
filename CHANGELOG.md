@@ -4,6 +4,13 @@
 
 * **scope:** the placeholder image tag (`-arm64`/`-amd64`) follows the scope architecture ([#99](https://github.com/nullplatform/scopes-lambda/pull/99))
 
+## [0.12.0](https://github.com/nullplatform/scopes-lambda/compare/v0.11.2...v0.12.0) (2026-11-02)
+
+
+### Features
+
+* **tracing:** trace lambda workflows and failure causes ([#96](https://github.com/nullplatform/scopes-lambda/issues/96)) ([878994e](https://github.com/nullplatform/scopes-lambda/commit/878994ec5dfec2ca831897d9c9de45b9321bc2be))
+
 ## [0.11.2](https://github.com/nullplatform/scopes-lambda/compare/v0.11.1...v0.11.2) (2026-10-27)
 
 
