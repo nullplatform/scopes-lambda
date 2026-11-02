@@ -8,7 +8,7 @@ log info "🔍 Building scope context..."
 
 #Validate CONTEXT is available
 if [ -z "${CONTEXT:-}" ]; then
-  echo "❌ CONTEXT variable is not set or empty" >&2
+  log error "❌ CONTEXT variable is not set or empty"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   The agent was invoked without the required CONTEXT payload" >&2
@@ -28,7 +28,7 @@ SCOPE_SLUG=$(echo "$CONTEXT" | jq -r '.scope.slug')
 SCOPE_NRN=$(echo "$CONTEXT" | jq -r '.scope.nrn')
 
 if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
-  echo "❌ Failed to extract scope ID from CONTEXT" >&2
+  log error "❌ Failed to extract scope ID from CONTEXT"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   The CONTEXT JSON is malformed or missing .scope.id" >&2
@@ -108,7 +108,7 @@ if [ "$VISIBILITY" = "private" ] && [ "${TOFU_ACTION:-}" = "apply" ]; then
   log debug "   ✅ alb_listener_rule_alert_threshold=$ALB_LISTENER_RULE_ALERT_THRESHOLD"
 
   if [ "$ALB_LISTENER_RULE_CAPACITY" -le "$ALB_LISTENER_RULE_ALERT_THRESHOLD" ] 2>/dev/null; then
-    echo "❌ ALB listener rule capacity ($ALB_LISTENER_RULE_CAPACITY) is at or below the alert threshold ($ALB_LISTENER_RULE_ALERT_THRESHOLD)" >&2
+    log error "❌ ALB listener rule capacity ($ALB_LISTENER_RULE_CAPACITY) is at or below the alert threshold ($ALB_LISTENER_RULE_ALERT_THRESHOLD)"
     echo "" >&2
     echo "💡 Possible causes:" >&2
     echo "   Too many private scopes sharing the same internal ALB" >&2
@@ -132,7 +132,7 @@ if [ -n "${NP_OUTPUT_DIR:-}" ]; then
 fi
 
 if ! mkdir -p "$OUTPUT_DIR"; then
-  echo "❌ Failed to create output directory: $OUTPUT_DIR" >&2
+  log error "❌ Failed to create output directory: $OUTPUT_DIR"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   Filesystem permissions or disk space issue" >&2

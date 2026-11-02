@@ -12,7 +12,7 @@ NP_INVOKE_SID_PREFIX="np-ext-"
 log info "🔍 Reconciling external invoke permissions..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required but not set" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required but not set"
   echo "💡 Possible causes:" >&2
   echo "   - build_context step failed to resolve the function name" >&2
   echo "   - The step was added to the workflow without declaring the variable as an output" >&2
@@ -27,7 +27,7 @@ fi
 # trigger. Fail instead.
 for required in SCOPE_ID SCOPE_SLUG; do
   if [ -z "${!required:-}" ] || [ "${!required}" = "null" ]; then
-    echo "❌ $required is required but not set" >&2
+    log error "❌ $required is required but not set"
     echo "💡 Possible causes:" >&2
     echo "   - The step was added to a workflow without declaring $required as a build_context output" >&2
     echo "🔧 How to fix:" >&2
@@ -51,7 +51,7 @@ if echo "$CONTEXT" | jq -e . >/dev/null 2>&1 &&
 fi
 
 if ! desired=$(echo "$CONTEXT" | jq -ce '.providers["scope-configurations"].triggers.invoke_permissions // [] | if type == "array" then . else error("not an array") end' 2>&1); then
-  echo "❌ Could not read triggers.invoke_permissions from the scope configuration" >&2
+  log error "❌ Could not read triggers.invoke_permissions from the scope configuration"
   echo "💡 Possible causes:" >&2
   echo "   - CONTEXT is empty or malformed, so the declared set is unknown" >&2
   echo "   - invoke_permissions was saved as something other than a list" >&2
@@ -80,7 +80,7 @@ log debug "   📋 declared_permissions=$declared_count (for this scope: $desire
 # meant to replace would leave a working trigger with no grant at all.
 duplicate_sid=$(echo "$desired" | jq -r 'group_by(.statement_id) | map(select(length > 1)) | first | first.statement_id // empty')
 if [ -n "$duplicate_sid" ]; then
-  echo "❌ Duplicate statement_id '$duplicate_sid' in invoke_permissions" >&2
+  log error "❌ Duplicate statement_id '$duplicate_sid' in invoke_permissions"
   echo "💡 Possible causes:" >&2
   echo "   - Two entries were given the same name" >&2
   echo "🔧 How to fix:" >&2
@@ -95,7 +95,7 @@ while IFS= read -r perm; do
   principal=$(echo "$perm" | jq -r '.principal // ""')
 
   if [ -z "$statement_id" ] || [ -z "$principal" ]; then
-    echo "❌ Invoke permission is missing 'statement_id' or 'principal': $perm" >&2
+    log error "❌ Invoke permission is missing 'statement_id' or 'principal': $perm"
     echo "💡 Possible causes:" >&2
     echo "   - The scope-configuration entry was saved with an incomplete object" >&2
     echo "🔧 How to fix:" >&2
@@ -106,7 +106,7 @@ while IFS= read -r perm; do
   # AWS restricts StatementId to [a-zA-Z0-9-_] and 100 characters, and our prefix
   # eats part of that budget — fail here rather than on an opaque AWS error.
   if ! [[ "$statement_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-    echo "❌ Invalid statement_id '$statement_id': only letters, digits, '-' and '_' are allowed" >&2
+    log error "❌ Invalid statement_id '$statement_id': only letters, digits, '-' and '_' are allowed"
     echo "💡 Possible causes:" >&2
     echo "   - The statement_id contains dots, colons or spaces (e.g. an ARN was pasted)" >&2
     echo "🔧 How to fix:" >&2
@@ -115,7 +115,7 @@ while IFS= read -r perm; do
   fi
 
   if [ ${#statement_id} -gt $((100 - ${#NP_INVOKE_SID_PREFIX})) ]; then
-    echo "❌ statement_id '$statement_id' is too long" >&2
+    log error "❌ statement_id '$statement_id' is too long"
     echo "💡 Possible causes:" >&2
     echo "   - AWS caps StatementId at 100 characters, and '$NP_INVOKE_SID_PREFIX' is prepended" >&2
     echo "🔧 How to fix:" >&2
@@ -142,7 +142,7 @@ elif [[ "$policy_json" == *ResourceNotFoundException* ]]; then
   log debug "   ⏭️  No resource policy yet on $LAMBDA_FUNCTION_NAME:$invoke_alias"
   current_statements="[]"
 else
-  echo "❌ Failed to read the resource policy of '$LAMBDA_FUNCTION_NAME'" >&2
+  log error "❌ Failed to read the resource policy of '$LAMBDA_FUNCTION_NAME'"
   echo "💡 Possible causes:" >&2
   echo "   - Permission denied (missing lambda:GetPolicy)" >&2
   echo "   - Throttling, or the '$invoke_alias' alias does not exist" >&2
@@ -167,7 +167,8 @@ while IFS= read -r sid; do
       --function-name "$LAMBDA_FUNCTION_NAME" \
       --qualifier "$invoke_alias" \
       --statement-id "$sid" 2>&1); then
-      echo "❌ Failed to remove invoke permission '$sid' from '$LAMBDA_FUNCTION_NAME'" >&2
+      np_scope_aws_failure "$aws_output"
+      log error "❌ Failed to remove invoke permission '$sid' from '$LAMBDA_FUNCTION_NAME'"
       echo "💡 Possible causes:" >&2
       echo "   - Permission denied (missing lambda:RemovePermission)" >&2
       echo "   - The statement was removed concurrently by another process" >&2
@@ -223,7 +224,8 @@ while IFS= read -r perm; do
       --function-name "$LAMBDA_FUNCTION_NAME" \
       --qualifier "$invoke_alias" \
       --statement-id "$sid" 2>&1); then
-      echo "❌ Failed to replace invoke permission '$sid' on '$LAMBDA_FUNCTION_NAME'" >&2
+      np_scope_aws_failure "$aws_output"
+      log error "❌ Failed to replace invoke permission '$sid' on '$LAMBDA_FUNCTION_NAME'"
       echo "💡 Possible causes:" >&2
       echo "   - Permission denied (missing lambda:RemovePermission)" >&2
       echo "🔧 How to fix:" >&2
@@ -261,7 +263,8 @@ while IFS= read -r perm; do
         || log warn "   ⚠️  Could not restore $sid — the trigger is left without a grant"
     fi
 
-    echo "❌ Failed to add invoke permission '$sid' to '$LAMBDA_FUNCTION_NAME'" >&2
+    np_scope_aws_failure "$aws_output"
+    log error "❌ Failed to add invoke permission '$sid' to '$LAMBDA_FUNCTION_NAME'"
     echo "💡 Possible causes:" >&2
     echo "   - Permission denied (missing lambda:AddPermission)" >&2
     echo "   - Invalid principal '$principal' or malformed source_arn" >&2

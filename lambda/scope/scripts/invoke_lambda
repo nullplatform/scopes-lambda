@@ -2,11 +2,13 @@
 # Invoke Lambda function for troubleshooting
 # This action invokes the Lambda function with an optional payload
 
+source "$SERVICE_PATH/utils/log"
+
 echo "🔍 Invoking Lambda function..."
 
 # Validate required environment variables
 if [ -z "$LAMBDA_FUNCTION_NAME" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required but not set" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required but not set"
   echo "💡 Possible causes:" >&2
   echo "   - Scope metadata is missing or corrupted" >&2
   echo "   - build_context step failed to resolve the function name" >&2
@@ -47,7 +49,7 @@ invoke_output=$(aws lambda invoke \
 invoke_exit_code=$?
 
 if [ $invoke_exit_code -ne 0 ]; then
-  echo "❌ Failed to invoke Lambda function '${LAMBDA_FUNCTION_NAME}:${alias}'" >&2
+  log error "❌ Failed to invoke Lambda function '${LAMBDA_FUNCTION_NAME}:${alias}'"
   echo "💡 Possible causes:" >&2
   echo "   - Function is not deployed yet" >&2
   echo "   - Function timeout exceeded" >&2
@@ -86,7 +88,7 @@ fi
 # Check for function error
 if [ -n "$function_error" ] && [ "$function_error" != "" ] && [ "$function_error" != "null" ]; then
   echo "" >&2
-  echo "❌ Lambda function returned an error: $function_error" >&2
+  log error "❌ Lambda function returned an error: $function_error"
   echo "💡 Possible causes:" >&2
   echo "   - Unhandled exception in function code" >&2
   echo "   - Function timeout exceeded" >&2

@@ -7,7 +7,7 @@ source "$SERVICE_PATH/utils/log"
 log info "📝 Finalizing traffic to new version..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required"
   echo "💡 Possible causes:" >&2
   echo "   - Environment variable not set by the deployment pipeline" >&2
   echo "   - Scope context missing Lambda function configuration" >&2
@@ -21,7 +21,7 @@ alias_name="${LAMBDA_MAIN_ALIAS_NAME:-main}"
 new_version="${LAMBDA_GREEN_VERSION:-${LAMBDA_NEW_VERSION:-$LAMBDA_CURRENT_VERSION}}"
 
 if [ -z "$new_version" ]; then
-  echo "❌ No green version found - LAMBDA_GREEN_VERSION, LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are all empty" >&2
+  log error "❌ No green version found - LAMBDA_GREEN_VERSION, LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are all empty"
   echo "💡 Possible causes:" >&2
   echo "   - Deployment did not publish a new Lambda version" >&2
   echo "   - NRN metadata is missing version information for deployment $DEPLOYMENT_ID" >&2
@@ -46,7 +46,7 @@ update_output=$(aws lambda update-alias \
 update_exit_code=$?
 
 if [ $update_exit_code -ne 0 ]; then
-  echo "❌ Failed to update alias $alias_name to version $new_version on function $LAMBDA_FUNCTION_NAME" >&2
+  log error "❌ Failed to update alias $alias_name to version $new_version on function $LAMBDA_FUNCTION_NAME"
   echo "💡 Possible causes:" >&2
   echo "   - Version $new_version does not exist on function $LAMBDA_FUNCTION_NAME" >&2
   echo "   - Alias $alias_name does not exist" >&2

@@ -44,7 +44,7 @@ if [ "$vpc_enabled" = "true" ] && [ -z "$vpc_policy_attached" ]; then
   attach_exit_code=$?
 
   if [ $attach_exit_code -ne 0 ]; then
-    echo "❌ Failed to attach VPC access policy to '$role_name'" >&2
+    log error "❌ Failed to attach VPC access policy to '$role_name'"
     echo "💡 Possible causes:" >&2
     echo "   - Insufficient IAM permissions" >&2
     echo "   - Role '$role_name' no longer exists" >&2
@@ -67,7 +67,7 @@ elif [ "$vpc_enabled" = "false" ] && [ -n "$vpc_policy_attached" ]; then
   detach_exit_code=$?
 
   if [ $detach_exit_code -ne 0 ]; then
-    echo "❌ Failed to detach VPC access policy from '$role_name'" >&2
+    log error "❌ Failed to detach VPC access policy from '$role_name'"
     echo "💡 Possible causes:" >&2
     echo "   - Insufficient IAM permissions" >&2
     echo "   - Policy was already detached" >&2

@@ -36,6 +36,7 @@ jobs:
     with:
       # Always `beta/` + the image_name in release.yml.
       image_name: beta/scopes/lambda
+      submodules: true # vendor/catalog-tracing-sh — the tracing SDK baked into the image
     secrets:
       aws_role_arn: ${{ secrets.AWS_BETA_ROLE_ARN }}
       artifact_np_api_key: ${{ secrets.ARTIFACT_NP_API_KEY }}

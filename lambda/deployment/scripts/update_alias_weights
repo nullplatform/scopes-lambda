@@ -7,7 +7,7 @@ source "$SERVICE_PATH/utils/log"
 log info "📝 Switching traffic for Lambda alias..."
 
 if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required"
   echo "💡 Possible causes:" >&2
   echo "   - Environment variable not set by the deployment pipeline" >&2
   echo "   - Scope context missing Lambda function configuration" >&2
@@ -18,7 +18,7 @@ if [ -z "${LAMBDA_FUNCTION_NAME:-}" ]; then
 fi
 
 if [ -z "${DESIRED_TRAFFIC:-}" ]; then
-  echo "❌ DESIRED_TRAFFIC is required" >&2
+  log error "❌ DESIRED_TRAFFIC is required"
   echo "💡 Possible causes:" >&2
   echo "   - Traffic percentage not specified by the deployment strategy" >&2
   echo "   - Deployment step misconfigured" >&2
@@ -33,7 +33,7 @@ new_version="${LAMBDA_GREEN_VERSION:-${LAMBDA_NEW_VERSION:-$LAMBDA_CURRENT_VERSI
 traffic_percentage="$DESIRED_TRAFFIC"
 
 if [ -z "$new_version" ]; then
-  echo "❌ No green version found - LAMBDA_GREEN_VERSION, LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are all empty" >&2
+  log error "❌ No green version found - LAMBDA_GREEN_VERSION, LAMBDA_NEW_VERSION and LAMBDA_CURRENT_VERSION are all empty"
   echo "💡 Possible causes:" >&2
   echo "   - Deployment did not publish a new Lambda version" >&2
   echo "   - NRN metadata is missing version information for deployment $DEPLOYMENT_ID" >&2
@@ -49,7 +49,7 @@ log debug "   ✅ new_version=$new_version"
 log debug "   ✅ traffic_percentage=$traffic_percentage%"
 
 if [ "$traffic_percentage" -lt 0 ] || [ "$traffic_percentage" -gt 100 ]; then
-  echo "❌ Traffic percentage must be between 0 and 100, got $traffic_percentage" >&2
+  log error "❌ Traffic percentage must be between 0 and 100, got $traffic_percentage"
   echo "💡 Possible causes:" >&2
   echo "   - Invalid DESIRED_TRAFFIC value: $traffic_percentage" >&2
   echo "🔧 How to fix:" >&2
@@ -67,7 +67,7 @@ alias_config=$(aws lambda get-alias \
 alias_exit_code=$?
 
 if [ $alias_exit_code -ne 0 ]; then
-  echo "❌ Failed to get alias $alias_name configuration on function $LAMBDA_FUNCTION_NAME" >&2
+  log error "❌ Failed to get alias $alias_name configuration on function $LAMBDA_FUNCTION_NAME"
   echo "💡 Possible causes:" >&2
   echo "   - Alias $alias_name does not exist on function $LAMBDA_FUNCTION_NAME" >&2
   echo "   - Insufficient Lambda permissions" >&2
@@ -107,7 +107,7 @@ if [ "$current_version" = '$LATEST' ]; then
   update_exit_code=$?
 
   if [ $update_exit_code -ne 0 ]; then
-    echo "❌ Failed to switch alias from \$LATEST to version $new_version" >&2
+    log error "❌ Failed to switch alias from \$LATEST to version $new_version"
     echo "   📋 Error: $update_output" >&2
     exit 1
   fi
@@ -130,7 +130,7 @@ if [ "$traffic_percentage" -eq 100 ]; then
   update_exit_code=$?
 
   if [ $update_exit_code -ne 0 ]; then
-    echo "❌ Failed to switch 100% traffic to version $new_version on alias $alias_name" >&2
+    log error "❌ Failed to switch 100% traffic to version $new_version on alias $alias_name"
     echo "💡 Possible causes:" >&2
     echo "   - Version $new_version does not exist on function $LAMBDA_FUNCTION_NAME" >&2
     echo "   - Insufficient Lambda permissions" >&2
@@ -162,7 +162,7 @@ else
   update_exit_code=$?
 
   if [ $update_exit_code -ne 0 ]; then
-    echo "❌ Failed to configure weighted routing on alias $alias_name (${traffic_percentage}% to version $new_version)" >&2
+    log error "❌ Failed to configure weighted routing on alias $alias_name (${traffic_percentage}% to version $new_version)"
     echo "💡 Possible causes:" >&2
     echo "   - Version $new_version or $current_version does not exist" >&2
     echo "   - Invalid routing configuration" >&2
@@ -189,7 +189,7 @@ if [ -n "${WARMUP_ALIAS_NAME:-}" ]; then
   warm_exit_code=$?
 
   if [ $warm_exit_code -ne 0 ]; then
-    echo "❌ Failed to update warm alias $WARMUP_ALIAS_NAME to version $new_version on function $LAMBDA_FUNCTION_NAME" >&2
+    log error "❌ Failed to update warm alias $WARMUP_ALIAS_NAME to version $new_version on function $LAMBDA_FUNCTION_NAME"
     echo "💡 Possible causes:" >&2
     echo "   - Warm alias $WARMUP_ALIAS_NAME does not exist on function $LAMBDA_FUNCTION_NAME" >&2
     echo "   - Version $new_version does not exist" >&2

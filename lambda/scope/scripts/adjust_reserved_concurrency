@@ -2,11 +2,13 @@
 # Adjust reserved concurrency for Lambda function
 # This action sets or removes reserved concurrent executions
 
+source "$SERVICE_PATH/utils/log"
+
 echo "🔍 Adjusting reserved concurrency for Lambda function..."
 
 # Validate required environment variables
 if [ -z "$LAMBDA_FUNCTION_NAME" ] || [ "$LAMBDA_FUNCTION_NAME" = "null" ]; then
-  echo "❌ LAMBDA_FUNCTION_NAME is required but not set" >&2
+  log error "❌ LAMBDA_FUNCTION_NAME is required but not set"
   echo "💡 Possible causes:" >&2
   echo "   - Scope metadata is missing or corrupted" >&2
   echo "   - build_context step failed to resolve the function name" >&2
@@ -20,7 +22,7 @@ fi
 value=$(echo "$NP_ACTION_CONTEXT" | jq -r '.notification.parameters.value // ""')
 
 if [ -z "$value" ] || [ "$value" = "null" ]; then
-  echo "❌ 'value' parameter is required but not provided" >&2
+  log error "❌ 'value' parameter is required but not provided"
   echo "💡 Possible causes:" >&2
   echo "   - The action was invoked without specifying a value" >&2
   echo "🔧 How to fix:" >&2
@@ -31,7 +33,7 @@ fi
 
 # Validate value is a number
 if ! [[ "$value" =~ ^[0-9]+$ ]]; then
-  echo "❌ 'value' must be a non-negative integer, got: $value" >&2
+  log error "❌ 'value' must be a non-negative integer, got: $value"
   echo "💡 Possible causes:" >&2
   echo "   - A non-numeric value was provided" >&2
   echo "🔧 How to fix:" >&2
@@ -52,7 +54,7 @@ if [ "$value" -eq 0 ]; then
   aws_exit_code=$?
 
   if [ $aws_exit_code -ne 0 ]; then
-    echo "❌ Failed to remove reserved concurrency for '${LAMBDA_FUNCTION_NAME}'" >&2
+    log error "❌ Failed to remove reserved concurrency for '${LAMBDA_FUNCTION_NAME}'"
     echo "💡 Possible causes:" >&2
     echo "   - Function does not exist" >&2
     echo "   - Permission denied (missing lambda:DeleteFunctionConcurrency)" >&2
@@ -76,7 +78,7 @@ else
   aws_exit_code=$?
 
   if [ $aws_exit_code -ne 0 ]; then
-    echo "❌ Failed to set reserved concurrency for '${LAMBDA_FUNCTION_NAME}'" >&2
+    log error "❌ Failed to set reserved concurrency for '${LAMBDA_FUNCTION_NAME}'"
     echo "💡 Possible causes:" >&2
     echo "   - Function does not exist" >&2
     echo "   - Permission denied (missing lambda:PutFunctionConcurrency)" >&2

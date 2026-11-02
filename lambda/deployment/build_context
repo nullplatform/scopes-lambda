@@ -13,7 +13,7 @@ DEPLOYMENT_ID=$(echo "$CONTEXT" | jq -r '.deployment.id')
 SCOPE_NRN=$(echo "$CONTEXT" | jq -r '.scope.nrn')
 
 if [ -z "$SCOPE_ID" ] || [ "$SCOPE_ID" = "null" ]; then
-  echo "❌ Failed to extract scope ID from context" >&2
+  log error "❌ Failed to extract scope ID from context"
   echo "💡 Possible causes:" >&2
   echo "   - CONTEXT variable is empty or malformed" >&2
   echo "   - The scope object is missing from the context payload" >&2
@@ -270,7 +270,7 @@ else
       log debug "   ✅ package_type=$PACKAGE_TYPE"
       log debug "   ✅ image_uri=$IMAGE_URI"
     else
-      echo "❌ Asset URL is required for docker-image asset type" >&2
+      log error "❌ Asset URL is required for docker-image asset type"
       echo "💡 Possible causes:" >&2
       echo "   - The build did not produce a container image URL" >&2
       echo "   - The asset object is missing the url field" >&2
@@ -292,7 +292,7 @@ else
         log debug "   ✅ s3_bucket=$S3_BUCKET"
         log debug "   ✅ s3_key=$S3_KEY"
       else
-        echo "❌ Invalid asset URL format: $ASSET_URL" >&2
+        log error "❌ Invalid asset URL format: $ASSET_URL"
         echo "💡 Possible causes:" >&2
         echo "   - Asset URL does not match expected s3://bucket/key format" >&2
         echo "🔧 How to fix:" >&2

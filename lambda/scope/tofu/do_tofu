@@ -15,7 +15,7 @@ if command -v mise &> /dev/null; then
   tofu() { mise x opentofu@latest -- tofu "$@"; }
 elif ! command -v tofu &> /dev/null; then
   echo "" >&2
-  echo "❌ Neither mise nor OpenTofu (tofu) found in PATH" >&2
+  log error "❌ Neither mise nor OpenTofu (tofu) found in PATH"
   echo "" >&2
   echo "💡 Install mise (recommended): https://mise.jdx.dev" >&2
   echo "   Or install tofu directly:   https://opentofu.org/docs/intro/install/" >&2
@@ -28,13 +28,13 @@ log debug "   ✅ tofu=$tofu_version"
 
 # Verify working directory has terraform files
 if [ ! -d "$TF_WORKING_DIR" ]; then
-  echo "❌ Working directory does not exist: $TF_WORKING_DIR" >&2
+  log error "❌ Working directory does not exist: $TF_WORKING_DIR"
   exit 1
 fi
 
 tf_file_count=$(find "$TF_WORKING_DIR" -maxdepth 1 -name '*.tf' 2>/dev/null | wc -l | tr -d ' ')
 if [ "${tf_file_count:-0}" -eq 0 ]; then
-  echo "❌ No .tf files found in $TF_WORKING_DIR" >&2
+  log error "❌ No .tf files found in $TF_WORKING_DIR"
   echo "   Did you run compose_modules first?" >&2
   exit 1
 fi
@@ -44,7 +44,7 @@ log debug "📋 Found $tf_file_count .tf files"
 # Generate tfvars from TOFU_VARIABLES
 TOFU_VAR_FILE="$OUTPUT_DIR/tofu.tfvars.json"
 if ! echo "$TOFU_VARIABLES" > "$TOFU_VAR_FILE"; then
-  echo "❌ Failed to write tofu variables to $TOFU_VAR_FILE" >&2
+  log error "❌ Failed to write tofu variables to $TOFU_VAR_FILE"
   exit 1
 fi
 
@@ -57,7 +57,7 @@ fi
 log info "📝 Initializing tofu..."
 if ! tofu -chdir="$TF_WORKING_DIR" init -input=false $TOFU_INIT_VARIABLES; then
   echo "" >&2
-  echo "❌ Tofu init failed" >&2
+  log error "❌ Tofu init failed"
   echo "" >&2
   echo "💡 Possible causes:" >&2
   echo "   - The state bucket does not exist or is not readable in this region (set state.tofu_state_bucket_region if it lives elsewhere)" >&2
@@ -70,7 +70,7 @@ import_or_fail() {
   local address="$1" id="$2"
   if ! tofu -chdir="$TF_WORKING_DIR" import -var-file="$TOFU_VAR_FILE" "$address" "$id"; then
     echo "" >&2
-    echo "❌ Failed to import existing $address into Tofu state" >&2
+    log error "❌ Failed to import existing $address into Tofu state"
     exit 1
   fi
 }

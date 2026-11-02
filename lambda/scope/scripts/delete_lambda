@@ -2,6 +2,8 @@
 # Delete Lambda function during scope deletion
 # This removes the Lambda function and all versions/aliases
 
+source "$SERVICE_PATH/utils/log"
+
 echo "🔍 Deleting Lambda function..."
 
 # Get function name from NRN
@@ -63,7 +65,7 @@ delete_output=$(aws lambda delete-function \
 delete_exit_code=$?
 
 if [ $delete_exit_code -ne 0 ]; then
-  echo "❌ Failed to delete Lambda function '$function_name'" >&2
+  log error "❌ Failed to delete Lambda function '$function_name'"
   echo "💡 Possible causes:" >&2
   echo "   - Function is being invoked or updated concurrently" >&2
   echo "   - Insufficient Lambda permissions" >&2
