@@ -4,6 +4,7 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 
 ## Table of Contents
 
+- [Install in your organization](#install-in-your-organization)
 - [Architecture Overview](#architecture-overview)
 - [Scope Structure](#scope-structure)
 - [Features](#features)
@@ -15,6 +16,107 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 - [Run Locally as a Package](#run-locally-as-a-package)
 - [Testing](#testing)
 - [Quick Reference](#quick-reference)
+
+---
+
+## Install in your organization
+
+The scope is published once as the package `nullplatform-aws-lambda` (specification "nullplatform AWS Lambda"), visible to every organization. You do not copy its specs: you install the package and use it read-only.
+
+Installing it touches the same three layers as registering a scope yourself, and only the nullplatform layer changes:
+
+| Layer | What | Module |
+|---|---|---|
+| infrastructure (AWS credentials) | The permissions role, the placeholder ECR repository and, optionally, a public ALB | [`lambda/specs/requirements`](./lambda/specs/requirements) |
+| nullplatform (nullplatform API key) | The installation of the package, the scope type, the NRN settings and the scope-configuration schema | [`lambda/installation`](./lambda/installation) |
+| bindings | The agent channel, the role under selector `lambda` in your IAM provider, and the scope's settings | tofu-modules' `scope_definition_agent_association`, your providers |
+
+Reference both modules of this repository at the same release tag:
+
+```hcl
+# ── infrastructure layer ─────────────────────────────────────────────
+module "lambda_requirements" {
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=v0.11.1"
+
+  cluster_name   = "my-cluster" # names the role nullplatform_my-cluster_lambda_role
+  agent_role_arn = module.agent_iam.nullplatform_agent_role_arn
+}
+
+# The agent role must be allowed to assume it: add it to the assume_role_arns
+# of tofu-modules' infrastructure/aws/iam/agent.
+#   assume_role_arns = [..., module.lambda_requirements.permissions_role_arn]
+
+# ── nullplatform layer ───────────────────────────────────────────────
+module "lambda" {
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.11.1"
+
+  nrn = var.nrn
+}
+
+# ── bindings layer ───────────────────────────────────────────────────
+# lambda_requirements and lambda come from the other layers (remote state).
+module "lambda_channel" {
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=vX.Y.Z"
+
+  nrn                      = var.nrn
+  tags_selectors           = { cluster = "runtime" } # must match the agent's TAGS
+  scope_specification_id   = local.lambda.service_specification_id
+  scope_specification_slug = local.lambda.service_specification_slug
+  service_path             = "lambda"
+
+  # The channel template, from the same tag
+  repository_notification_channel        = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
+  repository_notification_channel_branch = "v0.11.1"
+
+  worker_orchestrator = true
+  package_slug        = local.lambda.package_slug
+}
+
+# The scope's settings, in a provider of the schema the installation created.
+# The placeholder image is the one you publish with lambda/scope/placeholder/publish
+# to the repository lambda_requirements created, tagged -arm64 and -amd64: point
+# at either one and the scope swaps the suffix to match each scope's architecture.
+resource "nullplatform_provider_config" "lambda_scope_configuration" {
+  nrn  = var.nrn
+  type = local.lambda.scope_configuration_specification_slug
+  attributes = jsonencode({
+    state      = { tofu_state_bucket = "my-tofu-state-bucket" }
+    deployment = { placeholder_image_uri = "${local.lambda_requirements.placeholder_image_repository_url}:latest-arm64" }
+  })
+}
+
+# One aws-iam-configuration per NRN and dimensions: add the entry to the list
+# your IAM provider already has.
+#   { selector = "lambda", arn = local.lambda_requirements.permissions_role_arn }
+```
+
+The scope assumes the role it finds under selector `lambda` in the IAM provider closest to its NRN. With `install_alb = true`, also publish `lambda_alb_listener_arn` to your networking provider (`load_balancer.public.listener_arn`). To upgrade, move `ref` to a newer tag in every layer. See [`lambda/installation`](./lambda/installation) for its inputs and outputs.
+
+Prerequisites: an agent whose `TAGS` match the channel's `tags_selectors` and with `public.ecr.aws/nullplatform/*` in `worker.allowedRegistries`, and an AWS cloud provider at the NRN or above it.
+
+Every release publishes the new revision from this repository ([`lambda/publish`](./lambda/publish), applied by the `publish-package` job of the release workflow).
+
+### Already registered with `specs/install`?
+
+Organizations that registered this scope with [`lambda/specs/install`](./lambda/installation.md) have their own copy: package `scopes-lambda`, specification and scope type "AWS Lambda" and a scope-configuration specification "AWS Lambda". The global package uses other names (`nullplatform-aws-lambda`), so both live side by side in one organization:
+
+- Existing scopes stay on your copy. A scope cannot move to another specification.
+- In the nullplatform layer, add the installation module with `scope_type_name` set to something developers can tell from your scope type (for example `"AWS Lambda (nullplatform)"`), and create new scopes from it. Its outputs have the names `scope_definition` outputs.
+- In the bindings layer, add a channel for the global specification. Your existing channel keeps serving your copy.
+- Keep your scope settings: pass `create_scope_configuration = false` and do not add a second scope-configuration provider. The scope reads every `scope-configurations` provider at the NRN, so the one you already configured serves both.
+- Keep your IAM role: both copies assume the role under selector `lambda`. The infrastructure layer does not change.
+- Once no scope uses your copy, remove its `specs/install` stack.
+
+### Global package or fork?
+
+**Use the global package.** It is the default, and the only way to keep receiving updates: every fix, new feature and security patch arrives as a new release, and you take it by moving `ref`. The specs, the code and how the scope is installed stay maintained here. If something is missing or wrong, open an issue or a pull request in this repository, so every organization gets it.
+
+**Fork only when you need to extend the scope substantially**: new actions, a different specification (attributes, deployment types, validations), or workflows that behave differently. A fork has real costs:
+
+- **You become the publisher.** You build and register your own image, and register your fork as your own organization's package with [`lambda/specs/install`](./lambda/installation.md).
+- **Updates stop arriving.** Upstream fixes reach you only when you merge them into your fork yourself.
+- **There is no way back for existing scopes.** Scopes created from your fork's specification cannot be moved to the global one.
+- **Names must not collide.** Give your fork its own `package_slug` and specification name (package lookups and the channel match by slug, and the specification's slug comes from its name), and its own IAM role and selector, or your fork and the global package share one worker and one role.
 
 ---
 

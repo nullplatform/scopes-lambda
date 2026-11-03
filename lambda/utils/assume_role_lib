@@ -56,10 +56,10 @@ scope_config_assume_role_arn() {
     | jq -r '[ (.results // [])[] | .attributes.assume_role.arn? // empty ] | first // ""' 2>/dev/null
 }
 
-# resolve_assume_role_arn <account_nrn> <selector>
+# resolve_assume_role_arn <nrn> <selector>
 # Full precedence chain, echoes the IAM role ARN to assume (empty = use IRSA):
 #   1. $ASSUME_ROLE_ARN env var (explicit override)
-#   2. "AWS IAM" provider (aws-iam-configuration) at <account_nrn> by <selector>
+#   2. "AWS IAM" provider (aws-iam-configuration) closest to <nrn> by <selector>
 #   3. scope-configurations provider key assume_role.arn (back-compat)
 #   4. $ASSUME_ROLE_ARN_DEFAULT env var (per-account agent default)
 resolve_assume_role_arn() {
