@@ -36,14 +36,17 @@ The entrypoints (`install`, `update`, `uninstall`, `status`) take two environmen
 variables, the ones `np package install` and the agent will set:
 
 - `NP_INSTALL_CONTEXT`: JSON with `installation` (`id`, `nrn`, `package_slug`,
-  `version`), `agent` (`role_arn`, `tags`), `parameters` and
-  `credentials.platform.api_key`.
+  `version`), `agent` (`role_arn`, `tags`) and `parameters`. Data only, never
+  a secret.
 - `NP_INSTALL_STATE`: path of the state file. The runner hands over the previous
   one and keeps the updated one; this module never needs a bucket of its own.
 
-AWS credentials are the runner's: a profile when run locally, the agent's role
-when run by the agent. `np`, `aws`, `jq`, `curl` and `tofu` are required; the
-worker image ships them.
+Credentials come from the environment, the way the worker already gets them:
+`NULLPLATFORM_API_KEY` (what `np` and the Terraform provider read; the agent's
+`NP_API_KEY` is bridged to it) and the runner's AWS credentials (a profile when
+run locally, the agent's role when run by the agent). `NULLPLATFORM_HOST`
+points at another API host. `np`, `aws`, `jq`, `curl` and `tofu` are required;
+the worker image ships them.
 
 Each entrypoint prints one JSON document on stdout, the installation's report:
 
