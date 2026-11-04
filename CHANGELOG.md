@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+* **specs:** the visibility preselected for new scopes is read from `DEFAULT_VISIBILITY` when the spec is rendered (`public`, the default, or `private`; `internal` is an alias of `private`). Case and surrounding spaces are ignored and any other value fails the render. Set `template_env_vars = { DEFAULT_VISIBILITY = "private" }` in the `scope_definition` module (tofu-modules v9.3.0+) to preselect private ([#109](https://github.com/nullplatform/scopes-lambda/pull/109))
 * **scope:** the placeholder image tag (`-arm64`/`-amd64`) follows the scope architecture ([#99](https://github.com/nullplatform/scopes-lambda/pull/99))
 
 ## [0.12.2](https://github.com/nullplatform/scopes-lambda/compare/v0.12.1...v0.12.2) (2026-11-02)
