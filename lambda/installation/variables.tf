@@ -1,7 +1,5 @@
-# ── Injected from NP_INSTALL_CONTEXT by lib/context; never written by the installer ──
-
 variable "installation" {
-  description = "The installation this run belongs to: its id, the NRN it was installed at, and the package slug and version."
+  description = "The installation this module serves: its id, the NRN it was installed at, and the package slug and version."
   type = object({
     id           = string
     nrn          = string
@@ -10,107 +8,40 @@ variable "installation" {
   })
 }
 
-variable "agent" {
-  description = "The agent that runs this package's worker: the IAM role its workers run with (trusted by every role created here) and the tags its channel selects it by."
-  type = object({
-    role_arn = string
-    tags     = map(string)
-  })
-}
-
-variable "aws_region" {
-  description = "Region of the AWS API endpoint; lib/context sets it from the first target's cloud provider."
-  type        = string
-  default     = "us-east-1"
-}
-
 variable "service_specification_id" {
-  description = "Id of the scope's service specification, the one the installed package pins. The scope type points at it and the channel routes by it. lib/context resolves it by the package slug."
+  description = "Id of the scope's service specification, the one the installed package pins. The scope type points at it and the channel routes by it."
   type        = string
 }
 
-# ── Per installation: resolved by lib/context, adopted when they already exist ──
+# ── Each one received, or found by the caller, or created here ──
 
-variable "scope_type" {
-  description = "The scope type developers pick. `id` is set when the installer gave one (`provided`) or when one already points at the specification (adopted); otherwise one is created with `name` and `description`."
-  type = object({
-    id          = optional(string)
-    provided    = optional(bool, false)
-    name        = string
-    description = string
-  })
-}
-
-variable "scope_configuration" {
-  description = "The scope-configuration schema (a provider specification). `id` is set when the installer gave one (`provided`) or when one with `slug` is already visible (adopted, the copy's for instance); otherwise it is created from specs/scope-configuration.json.tpl."
-  type = object({
-    id       = optional(string)
-    provided = optional(bool, false)
-    slug     = string
-  })
-}
-
-variable "scope_configuration_template" {
-  description = "Path, relative to this module, of the scope-configuration template the schema is created from. The scope's own specs/ file here; lib/context copies it next to the module in the working directory."
-  type        = string
-  default     = "../specs/scope-configuration.json.tpl"
-}
-
-variable "channel_id" {
-  description = "An agent channel that already routes this package at the NRN, adopted as is. Null creates one."
+variable "scope_type_id" {
+  description = "An existing scope type that already points at the specification, reused as is. Null creates one with scope_type_name and scope_type_description."
   type        = string
   default     = null
 }
 
-# ── Parameters: each one is received, or resolved here when absent ──
+variable "scope_type_name" {
+  description = "Name of the scope type developers pick, when one is created. Pick one that tells it apart from a copy's."
+  type        = string
+  default     = "nullplatform AWS Lambda"
+}
 
-variable "targets" {
-  description = <<-EOT
-    One target per cloud provider the installation NRN resolves, keyed by a name
-    the installer chooses (lib/context derives it from the dimensions when it
-    discovers them). Per target, every field but `dimensions` is a parameter
-    that lib/context resolves when absent:
-      role_arn               the role the worker assumes; discovered in the IAM
-                             provider under selector "lambda", else created
-      role_from_entry        true when role_arn came from that entry (adopted)
-      iam_provider_id        the IAM provider for the target's dimensions; created when none
-      state_bucket           the OpenTofu state bucket; discovered in an existing
-                             scope-configuration, else created
-      placeholder_image_uri  the placeholder image; discovered in an existing
-                             scope-configuration or in ECR; never built here
-      placeholder_repository_url  an existing placeholder repository without an
-                             image, adopted so none is created
-      alb_listener_arn       the public ALB listener; discovered in the networking
-                             provider; optional
-      scope_configuration_id an existing scope-configuration for the dimensions,
-                             adopted as is; null creates one with the values above
-  EOT
-  type = map(object({
-    dimensions                 = map(string)
-    role_arn                   = optional(string)
-    role_from_entry            = optional(bool, false)
-    iam_provider_id            = optional(string)
-    state_bucket               = optional(string)
-    placeholder_image_uri      = optional(string)
-    placeholder_repository_url = optional(string)
-    alb_listener_arn           = optional(string)
-    scope_configuration_id     = optional(string)
-  }))
+variable "scope_type_description" {
+  type    = string
+  default = "Serverless functions on AWS Lambda"
+}
 
-  validation {
-    condition     = length(var.targets) > 0
-    error_message = "At least one target is required: no cloud provider resolves at the installation NRN and none was given."
-  }
+variable "scope_configuration_specification_id" {
+  description = "An existing scope-configuration schema (a provider specification), reused as is: the copy's, for instance. Null creates one from the template."
+  type        = string
+  default     = null
+}
 
-  validation {
-    condition     = alltrue([for target in var.targets : target.role_arn == null || can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", target.role_arn))])
-    error_message = "role_arn must be an IAM role ARN (arn:aws:iam::<account>:role/<name>)."
-  }
-
-  validation {
-    condition     = alltrue([for target in var.targets : target.iam_provider_id == null || can(regex("^[A-Za-z0-9_-]+$", target.iam_provider_id))])
-    error_message = "iam_provider_id must be a provider id (letters, digits, '-' and '_')."
-  }
+variable "scope_configuration_template" {
+  description = "Path, relative to this module, of the scope-configuration template the schema is created from: the scope's own specs/ file."
+  type        = string
+  default     = "../specs/scope-configuration.json.tpl"
 }
 
 variable "metrics_provider" {
@@ -125,14 +56,25 @@ variable "log_provider" {
   default     = "external"
 }
 
-variable "assets_bucket_name" {
-  description = "S3 bucket holding Lambda deployment assets; the created role gets read access to it."
+variable "channel_id" {
+  description = "An agent channel that already routes this package at the NRN, reused as is. Null creates one when create_channel is on."
   type        = string
-  default     = "lambda-files-aws-services"
+  default     = null
 }
 
 variable "create_channel" {
   description = "Create the agent channel that routes the scope's actions to the package worker. Off when the organization creates channels elsewhere."
   type        = bool
   default     = true
+
+  validation {
+    condition     = !(var.create_channel && var.channel_id == null) || length(var.agent_tags) > 0
+    error_message = "Creating the channel needs agent_tags: the channel selects the agent by them."
+  }
+}
+
+variable "agent_tags" {
+  description = "Tags of the agent that runs this package's worker; the channel selects it by them."
+  type        = map(string)
+  default     = {}
 }
