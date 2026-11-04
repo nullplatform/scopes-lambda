@@ -68,6 +68,15 @@ providers_by_slug() {
 
 dimensions_query() { jq -r 'to_entries | map("\(.key):\(.value)") | join(",")' <<<"$1"; }
 
+# What this installation already owns, from the previous run's report kept in
+# the state. Discovery must not "find" it: a found resource leaves the
+# configuration, and OpenTofu would destroy what it still holds in state.
+OWNED='[]'
+if [ -s "$NP_INSTALL_STATE" ]; then
+  OWNED=$(jq -c '[.outputs.resources.value[]? | select(.ownership == "owned") | { type, id }]' "$NP_INSTALL_STATE" 2>/dev/null || echo '[]')
+fi
+owned() { jq -e --arg t "$1" --arg id "$2" 'any(.[]; .type == $t and .id == $id)' <<<"$OWNED" >/dev/null; }
+
 # ── Once per installation ───────────────────────────────────────────────────────
 SPEC_ID=$(np_get "/service_specification?nrn=$INSTALLATION_NRN&slug=$PACKAGE_SLUG&limit=50" \
   | jq -r --arg slug "$PACKAGE_SLUG" '[.results[]? | select(.slug == $slug)][0].id // empty')
@@ -78,17 +87,20 @@ SCOPE_TYPE_NAME=$(param scope_type_name); SCOPE_TYPE_NAME="${SCOPE_TYPE_NAME:-nu
 SCOPE_TYPE_DESCRIPTION=$(param scope_type_description); SCOPE_TYPE_DESCRIPTION="${SCOPE_TYPE_DESCRIPTION:-Serverless functions on AWS Lambda}"
 SCOPE_TYPE_ID=$(np_get "/scope_type?nrn=$INSTALLATION_NRN&limit=100" \
   | jq -r --arg spec "$SPEC_ID" '[(.results // .)[]? | select(.provider_id == $spec and .status == "active")][0].id // empty')
-if [ -n "$SCOPE_TYPE_ID" ]; then log "   scope type $SCOPE_TYPE_ID already points at the specification, adopting it"; else log "   scope type will be created"; fi
+if [ -n "$SCOPE_TYPE_ID" ] && owned scope_type "$SCOPE_TYPE_ID"; then SCOPE_TYPE_ID=''; log "   scope type is this installation's own"; fi
+if [ -n "$SCOPE_TYPE_ID" ]; then log "   scope type $SCOPE_TYPE_ID already points at the specification, adopting it"; else log "   scope type will be created (or kept)"; fi
 
 SCOPE_CONFIGURATION_SLUG=$(param scope_configuration_slug); SCOPE_CONFIGURATION_SLUG="${SCOPE_CONFIGURATION_SLUG:-aws-lambda}"
 SCOPE_CONFIGURATION_ID=$(np_get "/provider_specification?nrn=$INSTALLATION_NRN&slug=$SCOPE_CONFIGURATION_SLUG&limit=50" \
   | jq -r --arg slug "$SCOPE_CONFIGURATION_SLUG" '[.results[]? | select(.slug == $slug)][0].id // empty')
-if [ -n "$SCOPE_CONFIGURATION_ID" ]; then log "   scope-configuration schema $SCOPE_CONFIGURATION_SLUG found ($SCOPE_CONFIGURATION_ID), adopting it"; else log "   scope-configuration schema will be created from the template"; fi
+if [ -n "$SCOPE_CONFIGURATION_ID" ] && owned provider_specification "$SCOPE_CONFIGURATION_ID"; then SCOPE_CONFIGURATION_ID=''; log "   scope-configuration schema is this installation's own"; fi
+if [ -n "$SCOPE_CONFIGURATION_ID" ]; then log "   scope-configuration schema $SCOPE_CONFIGURATION_SLUG found ($SCOPE_CONFIGURATION_ID), adopting it"; else log "   scope-configuration schema will be created from the template (or kept)"; fi
 
 CHANNEL_ID=$(np_get "/notification/channel?nrn=$INSTALLATION_NRN&type=agent&limit=100" \
   | jq -r --arg nrn "$INSTALLATION_NRN" --arg pkg "$PACKAGE_SLUG" \
     '[.results[]? | select(.nrn == $nrn and .status == "active" and (.configuration.command.data.package // "") == $pkg)][0].id // empty')
-if [ -n "$CHANNEL_ID" ]; then log "   channel $CHANNEL_ID already routes the package here, adopting it"; else log "   channel will be created"; fi
+if [ -n "$CHANNEL_ID" ] && owned notification_channel "$CHANNEL_ID"; then CHANNEL_ID=''; log "   channel is this installation's own"; fi
+if [ -n "$CHANNEL_ID" ]; then log "   channel $CHANNEL_ID already routes the package here, adopting it"; else log "   channel will be created (or kept)"; fi
 
 # ── Targets: given, or one per cloud provider the NRN resolves ──────────────────
 TARGETS=$(ctx '.parameters.targets // empty')
@@ -116,6 +128,10 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
   iam=''
   if [ -z "$iam_provider_id" ]; then
     iam_provider_id=$(providers_by_slug aws-iam-configuration "$dims_query" | jq -r '.[0].id // empty')
+    if [ -n "$iam_provider_id" ] && owned provider_config "$iam_provider_id"; then
+      iam_provider_id=''
+      log "   target $key: IAM provider is this installation's own"
+    fi
   fi
   # The list carries no attributes: read the provider to see its entries.
   if [ -n "$iam_provider_id" ]; then
@@ -123,12 +139,18 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
     log "   target $key: IAM provider $iam_provider_id found, adopting it"
     if [ -z "$role_arn" ]; then
       role_arn=$(jq -r '[.attributes.iam_role_arns.arns[]? | select(.selector == "lambda")][0].arn // empty' <<<"$iam")
-      [ -n "$role_arn" ] && role_from_entry=true && log "   target $key: role found under selector lambda, adopting it"
+      if [ -n "$role_arn" ] && owned aws_iam_role "$role_arn"; then
+        role_arn=''
+        log "   target $key: the lambda entry is this installation's own role"
+      elif [ -n "$role_arn" ]; then
+        role_from_entry=true
+        log "   target $key: role found under selector lambda, adopting it"
+      fi
     fi
   else
-    log "   target $key: no IAM provider, one will be created"
+    log "   target $key: no IAM provider; one will be created (or kept)"
   fi
-  [ -n "$role_arn" ] || log "   target $key: role will be created"
+  [ -n "$role_arn" ] || log "   target $key: role will be created (or kept)"
 
   # State bucket and placeholder: given, or read from an existing scope-configuration.
   state_bucket=$(jq -r '.state_bucket // empty' <<<"$target")
@@ -136,6 +158,10 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
   scope_configuration_id=$(jq -r '.scope_configuration_id // empty' <<<"$target")
   if [ -z "$scope_configuration_id" ]; then
     scope_configuration_id=$(providers_by_slug "$SCOPE_CONFIGURATION_SLUG" "$dims_query" | jq -r '.[0].id // empty')
+    if [ -n "$scope_configuration_id" ] && owned scope_configuration "$scope_configuration_id"; then
+      scope_configuration_id=''
+      log "   target $key: scope-configuration is this installation's own"
+    fi
   fi
   if [ -n "$scope_configuration_id" ]; then
     # The list carries no attributes: read the configuration for its values.
@@ -153,7 +179,9 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
     repo_uri=$(aws ecr describe-repositories --repository-names aws-lambda/nullplatform-lambda-placeholder --region "$region" \
       --query 'repositories[0].repositoryUri' --output text 2>/dev/null || true)
     if [ -n "$repo_uri" ] && [ "$repo_uri" != "None" ]; then
-      placeholder_repository="$repo_uri"
+      # Our own repository stays ours; only its image, if someone published
+      # one, is taken from it.
+      if owned aws_ecr_repository "$repo_uri"; then placeholder_repository=''; else placeholder_repository="$repo_uri"; fi
       tags=$(aws ecr describe-images --repository-name aws-lambda/nullplatform-lambda-placeholder --region "$region" \
         --query 'imageDetails[].imageTags[]' --output text 2>/dev/null | tr '\t' ' ' || true)
       if [[ " $tags " == *" latest "* ]] || [[ " $tags " == *" latest-arm64 "* ]]; then
