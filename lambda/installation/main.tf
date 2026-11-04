@@ -101,11 +101,13 @@ resource "aws_iam_role_policy" "lambda_storage" {
   })
 }
 
-# Per-scope OpenTofu state. Named under the prefix the storage policy covers.
+# Per-scope OpenTofu state. Named under the prefix the storage policy covers;
+# the account and the target go in as a hash so the name stays under S3's 63
+# characters whatever the target is called (the tags carry both in clear).
 resource "aws_s3_bucket" "state" {
   for_each = local.targets_creating_bucket
 
-  bucket = "nullplatform-lambda-tfstate-${local.account_id}-${local.installation_suffix}-${each.key}"
+  bucket = "nullplatform-lambda-tfstate-${local.installation_suffix}-${substr(sha1("${local.account_id}-${each.key}"), 0, 10)}"
 
   tags = {
     ManagedBy    = "nullplatform-package-installation"

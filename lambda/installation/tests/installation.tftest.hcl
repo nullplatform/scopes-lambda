@@ -50,8 +50,8 @@ run "a_fresh_organization_gets_everything_created_and_the_image_reported_missing
   }
 
   assert {
-    condition     = aws_s3_bucket.state["production"].bucket == "nullplatform-lambda-tfstate-example-account-0f4c2d1e-production"
-    error_message = "State buckets are named under the prefix the storage policy covers, with the account, the installation and the target"
+    condition     = aws_s3_bucket.state["production"].bucket == "nullplatform-lambda-tfstate-0f4c2d1e-${substr(sha1("example-account-production"), 0, 10)}" && length(aws_s3_bucket.state["production"].bucket) <= 63
+    error_message = "State buckets are named under the prefix the storage policy covers, with the installation and a hash of account and target, within S3's 63 characters"
   }
 
   assert {
@@ -131,7 +131,7 @@ run "a_provided_role_in_an_existing_provider_gets_one_entry_and_a_scope_configur
   }
 
   assert {
-    condition     = can(regex("nullplatform-lambda-tfstate-example-account-0f4c2d1e-production", nullplatform_provider_config.scope_configuration["production"].attributes))
+    condition     = can(regex("nullplatform-lambda-tfstate-0f4c2d1e-", nullplatform_provider_config.scope_configuration["production"].attributes))
     error_message = "The scope-configuration points at the created state bucket"
   }
 }
