@@ -76,20 +76,23 @@ variable "targets" {
                              scope-configuration, else created
       placeholder_image_uri  the placeholder image; discovered in an existing
                              scope-configuration or in ECR; never built here
+      placeholder_repository_url  an existing placeholder repository without an
+                             image, adopted so none is created
       alb_listener_arn       the public ALB listener; discovered in the networking
                              provider; optional
       scope_configuration_id an existing scope-configuration for the dimensions,
                              adopted as is; null creates one with the values above
   EOT
   type = map(object({
-    dimensions             = map(string)
-    role_arn               = optional(string)
-    role_from_entry        = optional(bool, false)
-    iam_provider_id        = optional(string)
-    state_bucket           = optional(string)
-    placeholder_image_uri  = optional(string)
-    alb_listener_arn       = optional(string)
-    scope_configuration_id = optional(string)
+    dimensions                 = map(string)
+    role_arn                   = optional(string)
+    role_from_entry            = optional(bool, false)
+    iam_provider_id            = optional(string)
+    state_bucket               = optional(string)
+    placeholder_image_uri      = optional(string)
+    placeholder_repository_url = optional(string)
+    alb_listener_arn           = optional(string)
+    scope_configuration_id     = optional(string)
   }))
 
   validation {

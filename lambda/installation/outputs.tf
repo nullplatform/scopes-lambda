@@ -27,6 +27,7 @@ output "resources" {
     [for key, bucket in aws_s3_bucket.state : { type = "aws_s3_bucket", id = bucket.bucket, target = key, ownership = "owned" }],
     [for key, target in var.targets : { type = "aws_s3_bucket", id = target.state_bucket, target = key, ownership = target.scope_configuration_id != null ? "adopted" : "provided" } if target.state_bucket != null],
     [for key, repo in aws_ecr_repository.placeholder : { type = "aws_ecr_repository", id = repo.repository_url, target = key, ownership = "owned" }],
+    [for key, target in var.targets : { type = "aws_ecr_repository", id = target.placeholder_repository_url, target = key, ownership = "adopted" } if target.placeholder_repository_url != null],
     [for key, target in var.targets : { type = "placeholder_image", id = target.placeholder_image_uri, target = key, ownership = target.scope_configuration_id != null ? "adopted" : "provided" } if target.placeholder_image_uri != null],
     [for key, target in var.targets : { type = "alb_listener", id = target.alb_listener_arn, target = key, ownership = "provided" } if target.alb_listener_arn != null],
     [for key, provider in nullplatform_provider_config.iam : { type = "provider_config", id = provider.id, target = key, ownership = "owned" }],

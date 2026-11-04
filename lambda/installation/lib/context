@@ -115,12 +115,11 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
   role_from_entry=false
   iam=''
   if [ -z "$iam_provider_id" ]; then
-    iam=$(providers_by_slug aws-iam-configuration "$dims_query" | jq -c '.[0] // empty')
-    iam_provider_id=$(jq -r '.id // empty' <<<"${iam:-null}")
-  else
-    iam=$(np_get "/provider/$iam_provider_id" || true)
+    iam_provider_id=$(providers_by_slug aws-iam-configuration "$dims_query" | jq -r '.[0].id // empty')
   fi
+  # The list carries no attributes: read the provider to see its entries.
   if [ -n "$iam_provider_id" ]; then
+    iam=$(np_get "/provider/$iam_provider_id" || true)
     log "   target $key: IAM provider $iam_provider_id found, adopting it"
     if [ -z "$role_arn" ]; then
       role_arn=$(jq -r '[.attributes.iam_role_arns.arns[]? | select(.selector == "lambda")][0].arn // empty' <<<"$iam")
@@ -136,28 +135,32 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
   placeholder=$(jq -r '.placeholder_image_uri // empty' <<<"$target")
   scope_configuration_id=$(jq -r '.scope_configuration_id // empty' <<<"$target")
   if [ -z "$scope_configuration_id" ]; then
-    existing=$(providers_by_slug "$SCOPE_CONFIGURATION_SLUG" "$dims_query" | jq -c '.[0] // empty')
-    if [ -n "$existing" ]; then
-      scope_configuration_id=$(jq -r '.id' <<<"$existing")
-      log "   target $key: scope-configuration $scope_configuration_id found, adopting it"
-      [ -n "$state_bucket" ] || state_bucket=$(jq -r '.attributes.state.tofu_state_bucket // empty' <<<"$existing")
-      [ -n "$placeholder" ] || placeholder=$(jq -r '.attributes.deployment.placeholder_image_uri // empty' <<<"$existing")
-    fi
+    scope_configuration_id=$(providers_by_slug "$SCOPE_CONFIGURATION_SLUG" "$dims_query" | jq -r '.[0].id // empty')
+  fi
+  if [ -n "$scope_configuration_id" ]; then
+    # The list carries no attributes: read the configuration for its values.
+    existing=$(np_get "/provider/$scope_configuration_id" || true)
+    log "   target $key: scope-configuration $scope_configuration_id found, adopting it"
+    [ -n "$state_bucket" ] || state_bucket=$(jq -r '.attributes.state.tofu_state_bucket // empty' <<<"${existing:-null}")
+    [ -n "$placeholder" ] || placeholder=$(jq -r '.attributes.deployment.placeholder_image_uri // empty' <<<"${existing:-null}")
   fi
   [ -n "$state_bucket" ] || log "   target $key: state bucket will be created"
 
-  # Placeholder: an existing repository with images counts; the image is never built here.
+  # Placeholder: an existing repository is adopted, and its image counts when
+  # it has one; the image is never built here.
+  placeholder_repository=''
   if [ -z "$placeholder" ]; then
     repo_uri=$(aws ecr describe-repositories --repository-names aws-lambda/nullplatform-lambda-placeholder --region "$region" \
       --query 'repositories[0].repositoryUri' --output text 2>/dev/null || true)
     if [ -n "$repo_uri" ] && [ "$repo_uri" != "None" ]; then
+      placeholder_repository="$repo_uri"
       tags=$(aws ecr describe-images --repository-name aws-lambda/nullplatform-lambda-placeholder --region "$region" \
-        --query 'imageDetails[].imageTags[]' --output text 2>/dev/null || true)
+        --query 'imageDetails[].imageTags[]' --output text 2>/dev/null | tr '\t' ' ' || true)
       if [[ " $tags " == *" latest "* ]] || [[ " $tags " == *" latest-arm64 "* ]]; then
         placeholder="$repo_uri:latest"
         log "   target $key: placeholder image found in ECR, adopting it"
       else
-        log "   target $key: placeholder repository exists but has no image; reported as missing"
+        log "   target $key: placeholder repository exists but has no image; adopting the repository, image reported as missing"
       fi
     else
       log "   target $key: no placeholder repository, one will be created; the image is reported as missing"
@@ -172,11 +175,12 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
   fi
 
   RESOLVED=$(jq -c --arg k "$key" --argjson dims "$dims" --arg role "$role_arn" --argjson from_entry "$role_from_entry" \
-    --arg iam "$iam_provider_id" --arg bucket "$state_bucket" --arg placeholder "$placeholder" --arg alb "$alb" --arg sc "$scope_configuration_id" '
+    --arg iam "$iam_provider_id" --arg bucket "$state_bucket" --arg placeholder "$placeholder" --arg repo "$placeholder_repository" \
+    --arg alb "$alb" --arg sc "$scope_configuration_id" '
     def nz: if . == "" then null else . end;
     .[$k] = { dimensions: $dims, role_arn: ($role | nz), role_from_entry: $from_entry, iam_provider_id: ($iam | nz),
-              state_bucket: ($bucket | nz), placeholder_image_uri: ($placeholder | nz), alb_listener_arn: ($alb | nz),
-              scope_configuration_id: ($sc | nz) }' <<<"$RESOLVED")
+              state_bucket: ($bucket | nz), placeholder_image_uri: ($placeholder | nz), placeholder_repository_url: ($repo | nz),
+              alb_listener_arn: ($alb | nz), scope_configuration_id: ($sc | nz) }' <<<"$RESOLVED")
 done
 
 # ── tfvars and working directory ────────────────────────────────────────────────

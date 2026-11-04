@@ -19,7 +19,7 @@ locals {
 
   targets_creating_role     = { for key, target in var.targets : key => target if target.role_arn == null }
   targets_creating_bucket   = { for key, target in var.targets : key => target if target.state_bucket == null }
-  targets_creating_repo     = { for key, target in var.targets : key => target if target.placeholder_image_uri == null }
+  targets_creating_repo     = { for key, target in var.targets : key => target if target.placeholder_image_uri == null && target.placeholder_repository_url == null }
   targets_creating_provider = { for key, target in var.targets : key => target if target.iam_provider_id == null }
   # An entry is written only where the provider exists and the role did not
   # come from that very entry.
