@@ -81,6 +81,18 @@ parameter) or `adopted` (found and reused, never removed). Logs go to stderr.
   infrastructure (`specs/requirements` can create it). Without it, scopes get
   no HTTP endpoint through an ALB and the installation says so.
 
+## Known tightening point
+
+`policies/` are the four policies `specs/requirements` ships today, kept
+identical so the role created here behaves like the one organizations already
+run. `lambda-iam.json` lets the worker create and change execution roles under
+`nullplatform-*` and `np-lambda-*`, a pattern the created role's own name
+falls under, so the worker could in principle widen its own role. Scoping IAM
+writes to `np-lambda-*`, requiring a permissions boundary on `CreateRole` and
+`PutRolePolicy`, and conditioning `PassRole` on `lambda.amazonaws.com` is the
+right next step, but it changes what the scope workflows may do and belongs to
+the requirements module and the workflows together, not to this folder alone.
+
 ## Layout
 
 ```
