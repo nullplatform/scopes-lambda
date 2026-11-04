@@ -32,19 +32,21 @@ variable "service_specification_id" {
 # ── Per installation: resolved by lib/context, adopted when they already exist ──
 
 variable "scope_type" {
-  description = "The scope type developers pick. `id` is set when one already points at the specification (adopted); otherwise one is created with `name` and `description`."
+  description = "The scope type developers pick. `id` is set when the installer gave one (`provided`) or when one already points at the specification (adopted); otherwise one is created with `name` and `description`."
   type = object({
     id          = optional(string)
+    provided    = optional(bool, false)
     name        = string
     description = string
   })
 }
 
 variable "scope_configuration" {
-  description = "The scope-configuration schema (a provider specification). `id` is set when one with `slug` is already visible (adopted, the copy's for instance); otherwise it is created from specs/scope-configuration.json.tpl."
+  description = "The scope-configuration schema (a provider specification). `id` is set when the installer gave one (`provided`) or when one with `slug` is already visible (adopted, the copy's for instance); otherwise it is created from specs/scope-configuration.json.tpl."
   type = object({
-    id   = optional(string)
-    slug = string
+    id       = optional(string)
+    provided = optional(bool, false)
+    slug     = string
   })
 }
 

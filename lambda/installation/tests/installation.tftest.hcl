@@ -136,6 +136,36 @@ run "a_provided_role_in_an_existing_provider_gets_one_entry_and_a_scope_configur
   }
 }
 
+run "a_provided_scope_type_and_schema_are_registered_as_provided_and_not_created" {
+  command = plan
+
+  variables {
+    scope_type          = { id = "st-given", provided = true, name = "nullplatform AWS Lambda", description = "Serverless functions on AWS Lambda" }
+    scope_configuration = { id = "ps-given", provided = true, slug = "their-lambda-configuration" }
+    targets = {
+      production = {
+        dimensions            = { environment = "production" }
+        placeholder_image_uri = "123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(nullplatform_scope_type.this) == 0 && length(nullplatform_provider_specification.scope_configuration) == 0
+    error_message = "Given ids must not be created again"
+  }
+
+  assert {
+    condition     = contains([for r in output.resources : r.ownership if r.type == "scope_type"], "provided") && contains([for r in output.resources : r.ownership if r.type == "provider_specification"], "provided")
+    error_message = "The report must mark given ids as provided, not adopted"
+  }
+
+  assert {
+    condition     = nullplatform_provider_config.scope_configuration["production"].type == "their-lambda-configuration"
+    error_message = "The scope-configuration values are written under the given schema's slug"
+  }
+}
+
 run "the_channel_can_be_left_to_the_organization" {
   command = plan
 

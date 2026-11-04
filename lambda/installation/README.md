@@ -18,8 +18,8 @@ Each requirement is **received as a parameter**, **found and adopted**, or
 | Placeholder image | `targets.<key>.placeholder_image_uri` | an existing scope-configuration's value, or the image in ECR; **never built here**: the repository is created and the image reported in `missing` |
 | Public ALB listener (optional) | `targets.<key>.alb_listener_arn` | the networking provider's `load_balancer.public.listener_arn`; else reported in `missing` |
 | Scope-configuration values per target | `targets.<key>.scope_configuration_id` | discovered for the dimensions (adopted); else written with the values above, once the image is known |
-| Scope-configuration schema | `scope_configuration_slug` (default `aws-lambda`) | adopted when visible, the copy's for instance; else created from `specs/scope-configuration.json.tpl` |
-| Scope type | `scope_type_name`, `scope_type_description` | adopted when one already points at the specification; else created |
+| Scope-configuration schema | `scope_configuration_specification_id`; or `scope_configuration_slug` (default `aws-lambda`) to look one up | adopted when one with the slug is visible, the copy's for instance; else created from `specs/scope-configuration.json.tpl` |
+| Scope type | `scope_type_id`; or `scope_type_name`, `scope_type_description` for the one created | adopted when one already points at the specification; else created |
 | NRN settings (metrics and logs providers) | `metrics_provider`, `log_provider` | written with the defaults |
 | Agent channel | `create_channel` (default `true`) | adopted when one routes the package at the NRN; else created, selecting the agent by `agent.tags` |
 

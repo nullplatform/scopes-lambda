@@ -89,16 +89,35 @@ log "📦 Specification $SPEC_ID ($PACKAGE_SLUG)"
 
 SCOPE_TYPE_NAME=$(param scope_type_name); SCOPE_TYPE_NAME="${SCOPE_TYPE_NAME:-nullplatform AWS Lambda}"
 SCOPE_TYPE_DESCRIPTION=$(param scope_type_description); SCOPE_TYPE_DESCRIPTION="${SCOPE_TYPE_DESCRIPTION:-Serverless functions on AWS Lambda}"
-SCOPE_TYPE_ID=$(np_get "/scope_type?nrn=$INSTALLATION_NRN&limit=100" \
-  | jq -r --arg spec "$SPEC_ID" '[(.results // .)[]? | select(.provider_id == $spec and .status == "active")][0].id // empty')
-if [ -n "$SCOPE_TYPE_ID" ] && owned scope_type "$SCOPE_TYPE_ID"; then SCOPE_TYPE_ID=''; log "   scope type is this installation's own"; fi
-if [ -n "$SCOPE_TYPE_ID" ]; then log "   scope type $SCOPE_TYPE_ID already points at the specification, adopting it"; else log "   scope type will be created (or kept)"; fi
+# Scope type: given, or the one already pointing at the specification, or created.
+SCOPE_TYPE_PROVIDED=false
+SCOPE_TYPE_ID=$(param scope_type_id)
+if [ -n "$SCOPE_TYPE_ID" ]; then
+  SCOPE_TYPE_PROVIDED=true
+  log "   scope type $SCOPE_TYPE_ID provided"
+else
+  SCOPE_TYPE_ID=$(np_get "/scope_type?nrn=$INSTALLATION_NRN&limit=100" \
+    | jq -r --arg spec "$SPEC_ID" '[(.results // .)[]? | select(.provider_id == $spec and .status == "active")][0].id // empty')
+  if [ -n "$SCOPE_TYPE_ID" ] && owned scope_type "$SCOPE_TYPE_ID"; then SCOPE_TYPE_ID=''; log "   scope type is this installation's own"; fi
+  if [ -n "$SCOPE_TYPE_ID" ]; then log "   scope type $SCOPE_TYPE_ID already points at the specification, adopting it"; else log "   scope type will be created (or kept)"; fi
+fi
 
+# Scope-configuration schema: given, or the one visible with the slug, or created.
 SCOPE_CONFIGURATION_SLUG=$(param scope_configuration_slug); SCOPE_CONFIGURATION_SLUG="${SCOPE_CONFIGURATION_SLUG:-aws-lambda}"
-SCOPE_CONFIGURATION_ID=$(np_get "/provider_specification?nrn=$INSTALLATION_NRN&slug=$SCOPE_CONFIGURATION_SLUG&limit=50" \
-  | jq -r --arg slug "$SCOPE_CONFIGURATION_SLUG" '[.results[]? | select(.slug == $slug)][0].id // empty')
-if [ -n "$SCOPE_CONFIGURATION_ID" ] && owned provider_specification "$SCOPE_CONFIGURATION_ID"; then SCOPE_CONFIGURATION_ID=''; log "   scope-configuration schema is this installation's own"; fi
-if [ -n "$SCOPE_CONFIGURATION_ID" ]; then log "   scope-configuration schema $SCOPE_CONFIGURATION_SLUG found ($SCOPE_CONFIGURATION_ID), adopting it"; else log "   scope-configuration schema will be created from the template (or kept)"; fi
+SCOPE_CONFIGURATION_PROVIDED=false
+SCOPE_CONFIGURATION_ID=$(param scope_configuration_specification_id)
+if [ -n "$SCOPE_CONFIGURATION_ID" ]; then
+  SCOPE_CONFIGURATION_PROVIDED=true
+  # Its slug is what the values are written under.
+  SCOPE_CONFIGURATION_SLUG=$(np_get "/provider_specification/$SCOPE_CONFIGURATION_ID" | jq -r '.slug // empty')
+  [ -n "$SCOPE_CONFIGURATION_SLUG" ] || fail "scope_configuration_specification_id $SCOPE_CONFIGURATION_ID is not a readable provider specification"
+  log "   scope-configuration schema $SCOPE_CONFIGURATION_ID provided ($SCOPE_CONFIGURATION_SLUG)"
+else
+  SCOPE_CONFIGURATION_ID=$(np_get "/provider_specification?nrn=$INSTALLATION_NRN&slug=$SCOPE_CONFIGURATION_SLUG&limit=50" \
+    | jq -r --arg slug "$SCOPE_CONFIGURATION_SLUG" '[.results[]? | select(.slug == $slug)][0].id // empty')
+  if [ -n "$SCOPE_CONFIGURATION_ID" ] && owned provider_specification "$SCOPE_CONFIGURATION_ID"; then SCOPE_CONFIGURATION_ID=''; log "   scope-configuration schema is this installation's own"; fi
+  if [ -n "$SCOPE_CONFIGURATION_ID" ]; then log "   scope-configuration schema $SCOPE_CONFIGURATION_SLUG found ($SCOPE_CONFIGURATION_ID), adopting it"; else log "   scope-configuration schema will be created from the template (or kept)"; fi
+fi
 
 CHANNEL_ID=$(np_get "/notification/channel?nrn=$INSTALLATION_NRN&type=agent&limit=100" \
   | jq -r --arg nrn "$INSTALLATION_NRN" --arg pkg "$PACKAGE_SLUG" \
@@ -227,8 +246,8 @@ TF_STATE="$NP_INSTALL_STATE"
 TF_VARS_FILE="$TF_WORKING_DIR/installation.tfvars.json"
 umask 077
 jq -n --argjson ctx "$CONTEXT" --argjson targets "$RESOLVED" --arg region "$AWS_REGION_DEFAULT" --arg spec "$SPEC_ID" \
-  --arg st_id "$SCOPE_TYPE_ID" --arg st_name "$SCOPE_TYPE_NAME" --arg st_desc "$SCOPE_TYPE_DESCRIPTION" \
-  --arg sc_id "$SCOPE_CONFIGURATION_ID" --arg sc_slug "$SCOPE_CONFIGURATION_SLUG" --arg channel "$CHANNEL_ID" '
+  --arg st_id "$SCOPE_TYPE_ID" --arg st_name "$SCOPE_TYPE_NAME" --arg st_desc "$SCOPE_TYPE_DESCRIPTION" --argjson st_provided "$SCOPE_TYPE_PROVIDED" \
+  --arg sc_id "$SCOPE_CONFIGURATION_ID" --arg sc_slug "$SCOPE_CONFIGURATION_SLUG" --argjson sc_provided "$SCOPE_CONFIGURATION_PROVIDED" --arg channel "$CHANNEL_ID" '
   def nz: if . == "" then null else . end;
   {
     installation: { id: $ctx.installation.id, nrn: $ctx.installation.nrn,
@@ -236,8 +255,8 @@ jq -n --argjson ctx "$CONTEXT" --argjson targets "$RESOLVED" --arg region "$AWS_
     agent: { role_arn: $ctx.agent.role_arn, tags: ($ctx.agent.tags // {}) },
     aws_region: $region,
     service_specification_id: $spec,
-    scope_type: { id: ($st_id | nz), name: $st_name, description: $st_desc },
-    scope_configuration: { id: ($sc_id | nz), slug: $sc_slug },
+    scope_type: { id: ($st_id | nz), name: $st_name, description: $st_desc, provided: $st_provided },
+    scope_configuration: { id: ($sc_id | nz), slug: $sc_slug, provided: $sc_provided },
     scope_configuration_template: "specs/scope-configuration.json.tpl",
     channel_id: ($channel | nz),
     targets: $targets,
