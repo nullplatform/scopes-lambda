@@ -251,7 +251,7 @@ The `service-spec.json.tpl` defines the developer-facing capabilities:
 | **Memory** | 128 MB - 10 GB | `256 MB` |
 | **Timeout** | 3 - 900 seconds | `30` |
 | **Architecture** | ARM64 (Graviton2), x86_64 | `arm64` |
-| **Visibility** | Public (API Gateway), Private (ALB) | — |
+| **Visibility** | Public (API Gateway), Private (ALB) (default configurable, see below) | `DEFAULT_VISIBILITY` (`public`) |
 | **Package Type** | Zip, Docker Image (default configurable, see below) | first of `LAMBDA_DEPLOYMENT_TYPES` (`docker-image`) |
 | **Reserved Concurrency** | Unreserved, Custom value | `unreserved` |
 | **Provisioned Concurrency** | Unprovisioned, Custom value | `unprovisioned` |
@@ -292,6 +292,36 @@ a type from the schema would leave existing scopes of that type unable to be
 updated or deleted. The variable only changes the default and the selector, so
 existing scopes keep working. It is not a policy: a scope created through the
 API or CLI with an explicit `deployment_type` is still accepted.
+
+### Default visibility
+
+The visibility preselected for new scopes comes from the `DEFAULT_VISIBILITY`
+environment variable, read when the template is rendered with gomplate. Both
+options stay valid in every case:
+
+| Value | Result |
+|-------|--------|
+| unset / empty / `public` | `public` is the default: new scopes get an API Gateway (original behaviour) |
+| `private` / `internal` | `private` is the default: new scopes get a rule on the private ALB listener |
+
+Case and surrounding spaces are ignored. `internal` is accepted as an alias of
+`private` so the same value works for the k8s scope types, which store
+`internal`. Any other value fails the render instead of being ignored.
+
+`public` stays the default when the variable is unset because the public path
+needs nothing from the installation: the workflow creates the API Gateway per
+scope. `private` needs an ALB listener in the `vpc` provider
+(`ALB_PRIVATE_LISTENER_ARN`, see [prerequisites](lambda/prerequisites.md)).
+Installations that have it and want new scopes private unless the developer
+picks Public set the variable when registering the spec with the
+`scope_definition` tofu module, through its `template_env_vars` input:
+
+```hcl
+template_env_vars = { DEFAULT_VISIBILITY = "private" }
+```
+
+The variable only changes the default: a scope created through the API or CLI
+with an explicit `visibility` is still accepted, and existing scopes keep theirs.
 
 ### Event-driven scopes
 

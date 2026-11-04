@@ -10,7 +10,7 @@ setup() {
   #     > lambda/scope/tests/scripts/fixtures/service-spec.default.json
   DEFAULT_FIXTURE="$TEST_DIR/fixtures/service-spec.default.json"
   export NRN="organization=1:account=2"
-  unset LAMBDA_DEPLOYMENT_TYPES
+  unset LAMBDA_DEPLOYMENT_TYPES DEFAULT_VISIBILITY
 
   if ! command -v gomplate >/dev/null 2>&1; then
     skip "gomplate not installed"

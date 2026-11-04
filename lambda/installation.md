@@ -83,6 +83,19 @@ tofu-modules v9.3.0 or later (the version pinned in
 `lambda/specs/install/main.tf`). Unknown values fail the apply. See "Default
 package type" in the README.
 
+## Default visibility (optional)
+
+By default new scopes preselect `public` (API Gateway). To preselect `private`
+(a rule on the ALB listener from the `vpc` provider), render the service spec
+with `DEFAULT_VISIBILITY=private`. `internal` is accepted as an alias, so one
+value can be shared with the k8s scope types. The other option is not blocked
+and existing scopes keep their visibility.
+
+With the `scope_definition` module this is the `template_env_vars` input
+(`template_env_vars = { DEFAULT_VISIBILITY = "private" }`), which requires
+tofu-modules v9.3.0 or later. Unknown values fail the apply. See "Default
+visibility" in the README.
+
 ## Overrides
 
 If this account uses `scopes-networking` for networking configuration overrides, enable the override flag so the agent appends `--overrides-path` to its command:

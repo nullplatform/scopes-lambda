@@ -19,6 +19,15 @@
 {{- $default := index $types 0 -}}
 {{- $assetDefault := "docker-image" -}}
 {{- if eq $default "zip" }}{{ $assetDefault = "lambda" }}{{ end -}}
+{{- /* DEFAULT_VISIBILITY: default visibility of new scopes, public (API Gateway) or private (ALB); default public.
+       Trimmed and case-insensitive; empty means public and internal aliases private (the value the k8s specs use).
+       Anything else fails the render so a typo never silently picks a gateway. The oneOf keeps both values. */ -}}
+{{- $visibility := env.Getenv "DEFAULT_VISIBILITY" "public" | strings.TrimSpace | strings.ToLower -}}
+{{- if eq $visibility "" }}{{ $visibility = "public" }}{{ end -}}
+{{- if eq $visibility "internal" }}{{ $visibility = "private" }}{{ end -}}
+{{- if not (coll.Has (coll.Slice "public" "private") $visibility) -}}
+{{- test.Fail (printf "DEFAULT_VISIBILITY: unknown visibility %q (allowed: public, private, internal)" (env.Getenv "DEFAULT_VISIBILITY")) -}}
+{{- end -}}
 {
   "available_actions": [
     "create-scope",
@@ -365,7 +374,7 @@
           "type": "string",
           "title": "Visibility",
           "description": "How your function is accessed",
-          "default": "public",
+          "default": "{{ $visibility }}",
           "oneOf": [
             { "const": "public", "title": "Public" },
             { "const": "private", "title": "Private" }
