@@ -1,0 +1,17 @@
+#!/bin/bash
+# Records which providers serve this scope type's metrics and logs, the two
+# NRN settings scope_definition writes. The patch merges keys, so other
+# packages' settings on the NRN are untouched. There is no delete: an unused
+# setting is inert, and the keys are namespaced by the package slug.
+#
+# Needs NRN, SLUG, METRICS_PROVIDER, LOG_PROVIDER in the environment, and
+# NULLPLATFORM_API_KEY for np.
+set -euo pipefail
+for required in NRN SLUG METRICS_PROVIDER LOG_PROVIDER; do
+  [ -n "${!required:-}" ] || { echo "$required is required" >&2; exit 2; }
+done
+
+body=$(jq -n --arg m "global.${SLUG}_metric_provider" --arg l "global.${SLUG}_log_provider" \
+  --arg mv "$METRICS_PROVIDER" --arg lv "$LOG_PROVIDER" '{ ($m): $mv, ($l): $lv }')
+np nrn patch --nrn "$NRN" --body "$body" >/dev/null
+echo "   ✅ NRN settings for $SLUG: metrics=$METRICS_PROVIDER logs=$LOG_PROVIDER" >&2

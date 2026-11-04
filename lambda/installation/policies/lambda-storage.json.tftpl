@@ -1,0 +1,100 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECR",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:CreateRepository",
+        "ecr:DescribeRepositories",
+        "ecr:DescribeImages",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:TagResource",
+        "ecr:GetRepositoryPolicy",
+        "ecr:SetRepositoryPolicy"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecretsManager",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecrets",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:TagResource"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:nullplatform/*"
+    },
+    {
+      "Sid": "CloudWatchLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:DescribeLogGroups",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:FilterLogEvents",
+        "logs:GetLogEvents",
+        "logs:PutRetentionPolicy",
+        "logs:TagLogGroup",
+        "logs:ListTagsForResource",
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:GetMetricData"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3Tfstate",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:HeadBucket",
+        "s3:PutBucketVersioning",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${state_bucket}",
+        "arn:aws:s3:::${state_bucket}/*"
+      ]
+    },
+    {
+      "Sid": "S3Assets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${assets_bucket_name}",
+        "arn:aws:s3:::${assets_bucket_name}/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetFunctionConcurrency",
+        "lambda:GetFunctionCodeSigningConfig",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:PublishVersion",
+        "lambda:ListVersionsByFunction",
+        "lambda:GetAlias",
+        "lambda:ListAliases",
+        "lambda:CreateAlias",
+        "lambda:UpdateAlias",
+        "lambda:DeleteAlias",
+        "lambda:InvokeFunction",
+        "lambda:PutFunctionConcurrency",
+        "lambda:DeleteFunctionConcurrency",
+        "lambda:PutProvisionedConcurrencyConfig",
+        "lambda:DeleteProvisionedConcurrencyConfig",
+        "lambda:GetProvisionedConcurrencyConfig",
+        "lambda:GetAccountSettings",
+        "lambda:AddPermission",
+        "lambda:RemovePermission",
+        "lambda:GetPolicy",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:ListTags",
+        "tag:GetResources"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

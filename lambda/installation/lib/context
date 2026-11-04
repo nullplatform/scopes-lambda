@@ -1,0 +1,224 @@
+#!/bin/bash
+# Shared by the entrypoints: turns NP_INSTALL_CONTEXT into the tfvars the root
+# module takes, resolving through the API and AWS whatever the installer did
+# not give: the specification, an existing scope type, schema and channel,
+# the targets, and per target the IAM provider, the role, the state bucket,
+# the placeholder image, the ALB listener and an existing scope-configuration.
+# Sourced, not executed. Everything it prints goes to stderr; stdout is the
+# installation's report.
+set -euo pipefail
+
+log() { echo "$*" >&2; }
+fail() { log "❌ $*"; exit 1; }
+
+[ -n "${NP_INSTALL_CONTEXT:-}" ] || fail "NP_INSTALL_CONTEXT is not set"
+[ -n "${NP_INSTALL_STATE:-}" ] || fail "NP_INSTALL_STATE is not set (path of the state file the runner keeps)"
+for tool in jq curl tofu aws np; do command -v "$tool" >/dev/null || fail "$tool is required"; done
+
+NP_API_URL="${NP_API_URL:-https://api.nullplatform.com}"
+export NP_API_URL
+
+CONTEXT="$NP_INSTALL_CONTEXT"
+ctx() { jq -r "$1" <<<"$CONTEXT"; }
+param() { jq -r ".parameters.$1 // empty" <<<"$CONTEXT"; }
+
+INSTALLATION_NRN=$(ctx '.installation.nrn // empty')
+PACKAGE_SLUG=$(ctx '.installation.package_slug // empty')
+[ -n "$INSTALLATION_NRN" ] || fail "context has no installation.nrn"
+[ -n "$PACKAGE_SLUG" ] || fail "context has no installation.package_slug"
+[ -n "$(ctx '.installation.id // empty')" ] || fail "context has no installation.id"
+[ -n "$(ctx '.agent.role_arn // empty')" ] || fail "context has no agent.role_arn"
+
+NULLPLATFORM_API_KEY=$(ctx '.credentials.platform.api_key // empty')
+[ -n "$NULLPLATFORM_API_KEY" ] || fail "context has no credentials.platform.api_key"
+export NULLPLATFORM_API_KEY
+
+# ── API access ──────────────────────────────────────────────────────────────────
+NP_TOKEN=$(curl -sf -X POST "$NP_API_URL/token" -H 'content-type: application/json' \
+  -d "{\"api_key\":\"$NULLPLATFORM_API_KEY\"}" | jq -r '.access_token // empty')
+[ -n "$NP_TOKEN" ] || fail "could not exchange the API key for a token at $NP_API_URL"
+export NP_TOKEN
+
+np_get() { curl -sf "$NP_API_URL$1" -H "authorization: Bearer $NP_TOKEN"; }
+
+# Providers are listed at an exact NRN; the platform resolves them walking up
+# the hierarchy, so discovery does the same: the first level with a match wins.
+ancestors() {
+  local nrn="$1"
+  while [ -n "$nrn" ]; do
+    echo "$nrn"
+    [[ "$nrn" == *:* ]] || break
+    nrn="${nrn%:*}"
+  done
+}
+
+# providers_by_slug <specification slug> [dimensions as key:value,…] → JSON array
+providers_by_slug() {
+  local slug="$1" dimensions="${2:-}" nrn results
+  for nrn in $(ancestors "$INSTALLATION_NRN"); do
+    results=$(np_get "/provider?nrn=$nrn&specification_slug=$slug${dimensions:+&dimensions=$dimensions}&limit=100" \
+      | jq -c --arg nrn "$nrn" '[.results[]? | select(.nrn == $nrn)]')
+    if [ "$(jq 'length' <<<"$results")" -gt 0 ]; then
+      echo "$results"
+      return 0
+    fi
+  done
+  echo '[]'
+}
+
+dimensions_query() { jq -r 'to_entries | map("\(.key):\(.value)") | join(",")' <<<"$1"; }
+
+# ── Once per installation ───────────────────────────────────────────────────────
+SPEC_ID=$(np_get "/service_specification?nrn=$INSTALLATION_NRN&slug=$PACKAGE_SLUG&limit=50" \
+  | jq -r --arg slug "$PACKAGE_SLUG" '[.results[]? | select(.slug == $slug)][0].id // empty')
+[ -n "$SPEC_ID" ] || fail "no service specification with slug $PACKAGE_SLUG is visible from $INSTALLATION_NRN: is the package installed there?"
+log "📦 Specification $SPEC_ID ($PACKAGE_SLUG)"
+
+SCOPE_TYPE_NAME=$(param scope_type_name); SCOPE_TYPE_NAME="${SCOPE_TYPE_NAME:-nullplatform AWS Lambda}"
+SCOPE_TYPE_DESCRIPTION=$(param scope_type_description); SCOPE_TYPE_DESCRIPTION="${SCOPE_TYPE_DESCRIPTION:-Serverless functions on AWS Lambda}"
+SCOPE_TYPE_ID=$(np_get "/scope_type?nrn=$INSTALLATION_NRN&limit=100" \
+  | jq -r --arg spec "$SPEC_ID" '[(.results // .)[]? | select(.provider_id == $spec and .status == "active")][0].id // empty')
+if [ -n "$SCOPE_TYPE_ID" ]; then log "   scope type $SCOPE_TYPE_ID already points at the specification, adopting it"; else log "   scope type will be created"; fi
+
+SCOPE_CONFIGURATION_SLUG=$(param scope_configuration_slug); SCOPE_CONFIGURATION_SLUG="${SCOPE_CONFIGURATION_SLUG:-aws-lambda}"
+SCOPE_CONFIGURATION_ID=$(np_get "/provider_specification?nrn=$INSTALLATION_NRN&slug=$SCOPE_CONFIGURATION_SLUG&limit=50" \
+  | jq -r --arg slug "$SCOPE_CONFIGURATION_SLUG" '[.results[]? | select(.slug == $slug)][0].id // empty')
+if [ -n "$SCOPE_CONFIGURATION_ID" ]; then log "   scope-configuration schema $SCOPE_CONFIGURATION_SLUG found ($SCOPE_CONFIGURATION_ID), adopting it"; else log "   scope-configuration schema will be created from the template"; fi
+
+CHANNEL_ID=$(np_get "/notification/channel?nrn=$INSTALLATION_NRN&type=agent&limit=100" \
+  | jq -r --arg nrn "$INSTALLATION_NRN" --arg pkg "$PACKAGE_SLUG" \
+    '[.results[]? | select(.nrn == $nrn and .status == "active" and (.configuration.command.data.package // "") == $pkg)][0].id // empty')
+if [ -n "$CHANNEL_ID" ]; then log "   channel $CHANNEL_ID already routes the package here, adopting it"; else log "   channel will be created"; fi
+
+# ── Targets: given, or one per cloud provider the NRN resolves ──────────────────
+TARGETS=$(ctx '.parameters.targets // empty')
+if [ -z "$TARGETS" ] || [ "$TARGETS" = "null" ]; then
+  log "🔍 Discovering targets: aws-configuration providers from $INSTALLATION_NRN"
+  CLOUD=$(providers_by_slug aws-configuration)
+  [ "$(jq 'length' <<<"$CLOUD")" -gt 0 ] || fail "no cloud provider (aws-configuration) resolves at $INSTALLATION_NRN: configure one there or above, or pass parameters.targets"
+  TARGETS=$(jq -c '[.[] | { key: (if (.dimensions | length) == 0 then "default" else (.dimensions | to_entries | sort_by(.key) | map(.value) | join("-")) end),
+                           value: { dimensions: .dimensions, region: .attributes.account.region } }] | from_entries' <<<"$CLOUD")
+fi
+AWS_REGION_DEFAULT=$(jq -r '[.[] | .region // empty][0] // "us-east-1"' <<<"$TARGETS")
+
+# ── Per target ──────────────────────────────────────────────────────────────────
+RESOLVED='{}'
+for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
+  target=$(jq -c --arg k "$key" '.[$k]' <<<"$TARGETS")
+  dims=$(jq -c '.dimensions // {}' <<<"$target")
+  dims_query=$(dimensions_query "$dims")
+  region=$(jq -r --arg d "$AWS_REGION_DEFAULT" '.region // $d' <<<"$target")
+
+  # IAM provider, and the role under selector "lambda" if it already has one.
+  iam_provider_id=$(jq -r '.iam_provider_id // empty' <<<"$target")
+  role_arn=$(jq -r '.role_arn // empty' <<<"$target")
+  role_from_entry=false
+  iam=''
+  if [ -z "$iam_provider_id" ]; then
+    iam=$(providers_by_slug aws-iam-configuration "$dims_query" | jq -c '.[0] // empty')
+    iam_provider_id=$(jq -r '.id // empty' <<<"${iam:-null}")
+  else
+    iam=$(np_get "/provider/$iam_provider_id" || true)
+  fi
+  if [ -n "$iam_provider_id" ]; then
+    log "   target $key: IAM provider $iam_provider_id found, adopting it"
+    if [ -z "$role_arn" ]; then
+      role_arn=$(jq -r '[.attributes.iam_role_arns.arns[]? | select(.selector == "lambda")][0].arn // empty' <<<"$iam")
+      [ -n "$role_arn" ] && role_from_entry=true && log "   target $key: role found under selector lambda, adopting it"
+    fi
+  else
+    log "   target $key: no IAM provider, one will be created"
+  fi
+  [ -n "$role_arn" ] || log "   target $key: role will be created"
+
+  # State bucket and placeholder: given, or read from an existing scope-configuration.
+  state_bucket=$(jq -r '.state_bucket // empty' <<<"$target")
+  placeholder=$(jq -r '.placeholder_image_uri // empty' <<<"$target")
+  scope_configuration_id=$(jq -r '.scope_configuration_id // empty' <<<"$target")
+  if [ -z "$scope_configuration_id" ]; then
+    existing=$(providers_by_slug "$SCOPE_CONFIGURATION_SLUG" "$dims_query" | jq -c '.[0] // empty')
+    if [ -n "$existing" ]; then
+      scope_configuration_id=$(jq -r '.id' <<<"$existing")
+      log "   target $key: scope-configuration $scope_configuration_id found, adopting it"
+      [ -n "$state_bucket" ] || state_bucket=$(jq -r '.attributes.state.tofu_state_bucket // empty' <<<"$existing")
+      [ -n "$placeholder" ] || placeholder=$(jq -r '.attributes.deployment.placeholder_image_uri // empty' <<<"$existing")
+    fi
+  fi
+  [ -n "$state_bucket" ] || log "   target $key: state bucket will be created"
+
+  # Placeholder: an existing repository with images counts; the image is never built here.
+  if [ -z "$placeholder" ]; then
+    repo_uri=$(aws ecr describe-repositories --repository-names aws-lambda/nullplatform-lambda-placeholder --region "$region" \
+      --query 'repositories[0].repositoryUri' --output text 2>/dev/null || true)
+    if [ -n "$repo_uri" ] && [ "$repo_uri" != "None" ]; then
+      tags=$(aws ecr describe-images --repository-name aws-lambda/nullplatform-lambda-placeholder --region "$region" \
+        --query 'imageDetails[].imageTags[]' --output text 2>/dev/null || true)
+      if [[ " $tags " == *" latest "* ]] || [[ " $tags " == *" latest-arm64 "* ]]; then
+        placeholder="$repo_uri:latest"
+        log "   target $key: placeholder image found in ECR, adopting it"
+      else
+        log "   target $key: placeholder repository exists but has no image; reported as missing"
+      fi
+    else
+      log "   target $key: no placeholder repository, one will be created; the image is reported as missing"
+    fi
+  fi
+
+  # ALB listener: given, or published in the networking provider; optional.
+  alb=$(jq -r '.alb_listener_arn // empty' <<<"$target")
+  if [ -z "$alb" ]; then
+    alb=$(providers_by_slug aws-networking-configuration "$dims_query" | jq -r '.[0].attributes.load_balancer.public.listener_arn // empty')
+    [ -n "$alb" ] && log "   target $key: ALB listener found in the networking provider" || log "   target $key: no ALB listener (optional)"
+  fi
+
+  RESOLVED=$(jq -c --arg k "$key" --argjson dims "$dims" --arg role "$role_arn" --argjson from_entry "$role_from_entry" \
+    --arg iam "$iam_provider_id" --arg bucket "$state_bucket" --arg placeholder "$placeholder" --arg alb "$alb" --arg sc "$scope_configuration_id" '
+    def nz: if . == "" then null else . end;
+    .[$k] = { dimensions: $dims, role_arn: ($role | nz), role_from_entry: $from_entry, iam_provider_id: ($iam | nz),
+              state_bucket: ($bucket | nz), placeholder_image_uri: ($placeholder | nz), alb_listener_arn: ($alb | nz),
+              scope_configuration_id: ($sc | nz) }' <<<"$RESOLVED")
+done
+
+# ── tfvars and working directory ────────────────────────────────────────────────
+INSTALLATION_ID=$(ctx '.installation.id')
+TF_WORKING_DIR="${NP_INSTALL_WORKDIR:-${TMPDIR:-/tmp}/np-installation-$INSTALLATION_ID}"
+mkdir -p "$TF_WORKING_DIR/specs"
+MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cp "$MODULE_DIR"/*.tf "$TF_WORKING_DIR"/
+cp -R "$MODULE_DIR/policies" "$MODULE_DIR/scripts" "$TF_WORKING_DIR"/
+cp "$MODULE_DIR/../specs/scope-configuration.json.tpl" "$TF_WORKING_DIR/specs/"
+TF_STATE="$NP_INSTALL_STATE"
+TF_VARS_FILE="$TF_WORKING_DIR/installation.tfvars.json"
+umask 077
+jq -n --argjson ctx "$CONTEXT" --argjson targets "$RESOLVED" --arg region "$AWS_REGION_DEFAULT" --arg spec "$SPEC_ID" \
+  --arg st_id "$SCOPE_TYPE_ID" --arg st_name "$SCOPE_TYPE_NAME" --arg st_desc "$SCOPE_TYPE_DESCRIPTION" \
+  --arg sc_id "$SCOPE_CONFIGURATION_ID" --arg sc_slug "$SCOPE_CONFIGURATION_SLUG" --arg channel "$CHANNEL_ID" '
+  def nz: if . == "" then null else . end;
+  {
+    installation: { id: $ctx.installation.id, nrn: $ctx.installation.nrn,
+                    package_slug: $ctx.installation.package_slug, version: $ctx.installation.version },
+    agent: { role_arn: $ctx.agent.role_arn, tags: ($ctx.agent.tags // {}) },
+    aws_region: $region,
+    service_specification_id: $spec,
+    scope_type: { id: ($st_id | nz), name: $st_name, description: $st_desc },
+    scope_configuration: { id: ($sc_id | nz), slug: $sc_slug },
+    scope_configuration_template: "specs/scope-configuration.json.tpl",
+    channel_id: ($channel | nz),
+    targets: $targets,
+    metrics_provider: ($ctx.parameters.metrics_provider // "externalmetrics"),
+    log_provider: ($ctx.parameters.log_provider // "external"),
+    assets_bucket_name: ($ctx.parameters.assets_bucket_name // "lambda-files-aws-services"),
+    create_channel: ($ctx.parameters.create_channel // true)
+  }' > "$TF_VARS_FILE"
+export TF_WORKING_DIR TF_STATE TF_VARS_FILE
+
+tofu_run() {
+  tofu -chdir="$TF_WORKING_DIR" init -input=false >&2
+  tofu -chdir="$TF_WORKING_DIR" "$@"
+}
+
+# The report: tofu outputs in the contract's shape, on stdout.
+report() {
+  tofu -chdir="$TF_WORKING_DIR" output -json -state="$TF_STATE" \
+    | jq '{ outputs: (.outputs.value // {}), resources: (.resources.value // []), missing: (.missing.value // []) }'
+}
