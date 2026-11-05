@@ -23,6 +23,8 @@ variables {
   name                     = "production"
   dimensions               = { environment = "production" }
   agent_role_arn           = "arn:aws:iam::123456789012:role/nullplatform-agent-role"
+  agent_tags               = { environment = "production" }
+  service_specification_id = "spec-lambda"
   scope_configuration_slug = "aws-lambda"
 }
 
@@ -30,8 +32,8 @@ run "nothing_given_creates_everything_and_reports_the_image_missing" {
   command = plan
 
   assert {
-    condition     = length(aws_iam_role.lambda) == 1 && length(aws_s3_bucket.state) == 1 && length(aws_ecr_repository.placeholder) == 1 && length(nullplatform_provider_config.iam) == 1
-    error_message = "With nothing given, the role, the state bucket, the placeholder repository and an IAM provider are created"
+    condition     = length(aws_iam_role.lambda) == 1 && length(aws_s3_bucket.state) == 1 && length(aws_ecr_repository.placeholder) == 1 && length(nullplatform_provider_config.iam) == 1 && length(nullplatform_notification_channel.worker) == 1
+    error_message = "With nothing given, the role, the state bucket, the placeholder repository, an IAM provider and the channel are created"
   }
 
   assert {
@@ -50,6 +52,34 @@ run "nothing_given_creates_everything_and_reports_the_image_missing" {
   }
 }
 
+run "the_channel_selects_this_accounts_agent_and_only_routes_its_dimensions" {
+  command = plan
+
+  assert {
+    condition     = nullplatform_notification_channel.worker[0].configuration[0].agent[0].selector == tomap({ environment = "production" })
+    error_message = "The channel selects the agent of this account by its tags"
+  }
+
+  assert {
+    condition     = can(regex("scope\\.dimensions\\.environment", nullplatform_notification_channel.worker[0].filters)) && can(regex("\"production\"", nullplatform_notification_channel.worker[0].filters)) && can(regex("spec-lambda", nullplatform_notification_channel.worker[0].filters))
+    error_message = "With dimensions, the channel routes only scopes in them, besides the package's specification"
+  }
+}
+
+run "a_target_without_dimensions_routes_every_scope_of_the_package" {
+  command = plan
+
+  variables {
+    name       = "default"
+    dimensions = {}
+  }
+
+  assert {
+    condition     = !can(regex("dimensions", nullplatform_notification_channel.worker[0].filters))
+    error_message = "Without dimensions the channel has no dimension filter"
+  }
+}
+
 run "everything_given_creates_nothing" {
   command = plan
 
@@ -61,15 +91,16 @@ run "everything_given_creates_nothing" {
     placeholder_image_uri  = "123456789012.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
     alb_listener_arn       = "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/their-alb/abc/def"
     scope_configuration_id = "sc-existing"
+    channel_id             = "ch-existing"
   }
 
   assert {
-    condition     = length(aws_iam_role.lambda) == 0 && length(aws_s3_bucket.state) == 0 && length(aws_ecr_repository.placeholder) == 0 && length(nullplatform_provider_config.iam) == 0 && length(terraform_data.iam_role_entry) == 0 && length(nullplatform_provider_config.scope_configuration) == 0
+    condition     = length(aws_iam_role.lambda) == 0 && length(aws_s3_bucket.state) == 0 && length(aws_ecr_repository.placeholder) == 0 && length(nullplatform_provider_config.iam) == 0 && length(terraform_data.iam_role_entry) == 0 && length(nullplatform_provider_config.scope_configuration) == 0 && length(nullplatform_notification_channel.worker) == 0
     error_message = "With everything given, nothing is created; a role that came from the IAM provider's own entry is not written back either"
   }
 
   assert {
-    condition     = alltrue([for r in output.resources : r.ownership == "provided"]) && length(output.missing) == 0
+    condition     = alltrue([for r in output.resources : r.ownership == "provided"]) && length(output.missing) == 0 && output.channel_id == "ch-existing"
     error_message = "The report marks everything as provided and nothing as missing"
   }
 }
@@ -92,4 +123,28 @@ run "a_given_role_in_an_existing_provider_gets_one_entry_and_the_values_once_the
     condition     = length(aws_s3_bucket.state) == 1 && length(nullplatform_provider_config.scope_configuration) == 1 && nullplatform_provider_config.scope_configuration[0].type == "aws-lambda" && can(regex("nullplatform-lambda-tfstate-0f4c2d1e-", nullplatform_provider_config.scope_configuration[0].attributes))
     error_message = "With the image known, the state bucket is created and the scope-configuration written under the schema's slug, pointing at that bucket"
   }
+}
+
+run "the_channel_can_be_left_to_the_organization" {
+  command = plan
+
+  variables {
+    create_channel = false
+    agent_tags     = {}
+  }
+
+  assert {
+    condition     = length(nullplatform_notification_channel.worker) == 0 && output.channel_id == null
+    error_message = "With create_channel = false no channel may be created"
+  }
+}
+
+run "creating_the_channel_needs_the_agent_tags" {
+  command = plan
+
+  variables {
+    agent_tags = {}
+  }
+
+  expect_failures = [var.create_channel]
 }

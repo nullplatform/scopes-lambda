@@ -8,8 +8,8 @@ installation is exactly a change that touches the cloud account and the
 platform at once.
 
 ```
-installation/            module, once per installation: scope type, scope-configuration schema, NRN settings, agent channel
-installation/target/     module, once per AWS account: role, state bucket, placeholder repository, IAM provider entry, scope-configuration values
+installation/            module, once per installation: scope type, scope-configuration schema, NRN settings
+installation/target/     module, once per AWS account: role, state bucket, placeholder repository, IAM provider entry, scope-configuration values, agent channel
 installation/run/        a runner root for installing without a Terraform repository (np package install, or by hand)
 ```
 
@@ -32,7 +32,6 @@ module "lambda" {
   source                   = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.12.2"
   installation             = local.lambda_installation
   service_specification_id = data.nullplatform_service_specification.lambda.id
-  agent_tags               = { environment = "production" }
   # scope_configuration_specification_id = "…"   reuse the copy's schema instead of creating one
 }
 
@@ -43,6 +42,8 @@ module "lambda_dev" {
   name                     = "development"
   dimensions               = { environment = "development" }
   agent_role_arn           = module.agent_dev.role_arn
+  agent_tags               = { environment = "development" }      # this account's agent; the channel routes only development scopes to it
+  service_specification_id = data.nullplatform_service_specification.lambda.id
   scope_configuration_slug = module.lambda.scope_configuration_slug
   placeholder_image_uri    = "111111111111.dkr.ecr.us-east-1.amazonaws.com/aws-lambda/nullplatform-lambda-placeholder:latest"
 }
@@ -54,6 +55,8 @@ module "lambda_prod" {
   name                     = "production"
   dimensions               = { environment = "production" }
   agent_role_arn           = module.agent_prod.role_arn
+  agent_tags               = { environment = "production" }
+  service_specification_id = data.nullplatform_service_specification.lambda.id
   scope_configuration_slug = module.lambda.scope_configuration_slug
   role_arn                 = "arn:aws:iam::222222222222:role/their-lambda-role"   # bring your own
   state_bucket             = "their-lambda-tfstate"
@@ -69,7 +72,7 @@ Each requirement is **received as a parameter** or **provisioned here**:
 | Scope type | `installation` | `scope_type_id` | created with `scope_type_name` |
 | Scope-configuration schema | `installation` | `scope_configuration_specification_id` | created from `specs/scope-configuration.json.tpl` |
 | NRN settings (metrics and logs providers) | `installation` | `metrics_provider`, `log_provider` | written with the defaults |
-| Agent channel | `installation` | `channel_id`, `create_channel` | created, selecting the agent by `agent_tags` |
+| Agent channel, one per target because the agent is per account | `target` | `channel_id`, `create_channel` | created, selecting that account's agent by `agent_tags` and routing only the target's dimensions |
 | Role the worker assumes | `target` | `role_arn` | created, trusting `agent_role_arn` |
 | IAM provider the role is registered in | `target` | `iam_provider_id` | created with the target's dimensions; when given, only the `lambda` entry is added |
 | State bucket | `target` | `state_bucket` | created |

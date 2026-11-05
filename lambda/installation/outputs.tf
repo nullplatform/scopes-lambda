@@ -13,11 +13,6 @@ output "scope_configuration_slug" {
   value       = try(nullplatform_provider_specification.scope_configuration[0].slug, null)
 }
 
-output "channel_id" {
-  description = "The agent channel, created here or given; null when the organization creates it elsewhere."
-  value       = var.channel_id != null ? var.channel_id : try(tostring(nullplatform_notification_channel.worker[0].id), null)
-}
-
 output "resources" {
   description = "What this module touched, with who owns it: owned (created here, removed on destroy), provided (given by the caller, never removed)."
   value = concat(
@@ -26,7 +21,5 @@ output "resources" {
     [for spec in nullplatform_provider_specification.scope_configuration : { type = "provider_specification", id = spec.id, ownership = "owned" }],
     var.scope_configuration_specification_id != null ? [{ type = "provider_specification", id = var.scope_configuration_specification_id, ownership = "provided" }] : [],
     [{ type = "nrn_settings", id = "${var.installation.nrn}/global.${var.installation.package_slug}_*", ownership = "owned" }],
-    [for channel in nullplatform_notification_channel.worker : { type = "notification_channel", id = tostring(channel.id), ownership = "owned" }],
-    var.channel_id != null ? [{ type = "notification_channel", id = var.channel_id, ownership = "provided" }] : [],
   )
 }

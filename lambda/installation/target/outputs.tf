@@ -18,9 +18,16 @@ output "placeholder_repository_url" {
   value       = coalesce(var.placeholder_repository_url, try(aws_ecr_repository.placeholder[0].repository_url, null), try(split(":", var.placeholder_image_uri)[0], null))
 }
 
+output "channel_id" {
+  description = "The agent channel for this target, created here or given; null when the organization creates it elsewhere."
+  value       = var.channel_id != null ? var.channel_id : try(tostring(nullplatform_notification_channel.worker[0].id), null)
+}
+
 output "resources" {
   description = "What this module touched, with who owns it: owned (created here, removed on destroy), provided (given, never removed)."
   value = concat(
+    [for channel in nullplatform_notification_channel.worker : { type = "notification_channel", id = tostring(channel.id), target = var.name, ownership = "owned" }],
+    var.channel_id != null ? [{ type = "notification_channel", id = var.channel_id, target = var.name, ownership = "provided" }] : [],
     [for role in aws_iam_role.lambda : { type = "aws_iam_role", id = role.arn, target = var.name, ownership = "owned" }],
     var.role_arn != null ? [{ type = "aws_iam_role", id = var.role_arn, target = var.name, ownership = "provided" }] : [],
     [for bucket in aws_s3_bucket.state : { type = "aws_s3_bucket", id = bucket.bucket, target = var.name, ownership = "owned" }],

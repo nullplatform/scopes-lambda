@@ -193,3 +193,50 @@ resource "nullplatform_provider_config" "scope_configuration" {
     deployment = { placeholder_image_uri = var.placeholder_image_uri }
   })
 }
+
+# ── The agent channel: package-exec to the agent of this account ──
+# One per target, because the agent is per account: it selects that agent by
+# its tags and, when the target has dimensions, routes only the scopes in
+# them, so a production scope never reaches the development agent.
+
+locals {
+  channel_route = {
+    "$or" = [
+      { "service.specification.slug" = { "$eq" = var.installation.package_slug } },
+      { "arguments.scope_provider" = { "$eq" = var.service_specification_id } },
+    ]
+  }
+  # Encoded in each branch: the two shapes are different object types, which
+  # a conditional cannot return as one.
+  channel_filters = length(var.dimensions) == 0 ? jsonencode(local.channel_route) : jsonencode({
+    "$and" = concat([local.channel_route], [for key, value in var.dimensions : { "scope.dimensions.${key}" = { "$eq" = value } }])
+  })
+}
+
+resource "nullplatform_notification_channel" "worker" {
+  count = var.create_channel && var.channel_id == null ? 1 : 0
+
+  nrn         = var.installation.nrn
+  type        = "agent"
+  source      = ["service", "telemetry"]
+  description = "${var.installation.package_slug} worker (${local.installation_suffix}, ${var.name})" # the API caps it at 64 characters
+
+  configuration {
+    agent {
+      selector = var.agent_tags
+      command {
+        type = "package-exec"
+        data = {
+          package = var.installation.package_slug
+          cmdline = "/app/packages/${var.installation.package_slug}/entrypoint"
+          environment = jsonencode({
+            NP_ACTION_CONTEXT = "'$${NOTIFICATION_CONTEXT}'"
+            NP_PLUGIN         = var.installation.package_slug
+          })
+        }
+      }
+    }
+  }
+
+  filters = local.channel_filters
+}

@@ -2,19 +2,17 @@
 # aws-lambda scope — installation, platform plane
 #
 # What the scope needs once per installation on the platform side: the scope
-# type, the scope-configuration schema, the NRN settings and the agent channel.
-# The cloud side (role, state bucket, placeholder, IAM provider, the
-# scope-configuration values per environment) is target/, instantiated once
-# per account by the caller with the right AWS provider.
+# type, the scope-configuration schema and the NRN settings. Everything that
+# is per account or per environment (role, state bucket, placeholder, IAM
+# provider entry, scope-configuration values, and the agent channel, since
+# the agent is per account) is target/, instantiated once per account by the
+# caller with the right AWS provider.
 #
 # Ownership: what is created here is owned, and destroy removes it; what the
-# caller names (an existing scope type, schema or channel) is reused and left
-# alone.
+# caller names (an existing scope type or schema) is reused and left alone.
 ################################################################################
 
 locals {
-  installation_suffix = substr(replace(var.installation.id, "-", ""), 0, 8)
-
   # The scope's own template, read as is: only the NRN placeholder is filled.
   scope_configuration_template = jsondecode(replace(
     file("${path.module}/${var.scope_configuration_template}"),
@@ -66,37 +64,4 @@ resource "terraform_data" "nrn_settings" {
       LOG_PROVIDER     = self.triggers_replace.log_provider
     }
   }
-}
-
-resource "nullplatform_notification_channel" "worker" {
-  count = var.create_channel && var.channel_id == null ? 1 : 0
-
-  nrn         = var.installation.nrn
-  type        = "agent"
-  source      = ["service", "telemetry"]
-  description = "${var.installation.package_slug} worker (${local.installation_suffix})" # the API caps it at 64 characters
-
-  configuration {
-    agent {
-      selector = var.agent_tags
-      command {
-        type = "package-exec"
-        data = {
-          package = var.installation.package_slug
-          cmdline = "/app/packages/${var.installation.package_slug}/entrypoint"
-          environment = jsonencode({
-            NP_ACTION_CONTEXT = "'$${NOTIFICATION_CONTEXT}'"
-            NP_PLUGIN         = var.installation.package_slug
-          })
-        }
-      }
-    }
-  }
-
-  filters = jsonencode({
-    "$or" = [
-      { "service.specification.slug" = { "$eq" = var.installation.package_slug } },
-      { "arguments.scope_provider" = { "$eq" = var.service_specification_id } },
-    ]
-  })
 }

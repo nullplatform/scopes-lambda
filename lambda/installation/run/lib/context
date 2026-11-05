@@ -119,11 +119,11 @@ fi
 SCOPE_CONFIGURATION_VALUES_SLUG=''
 [ -n "$SCOPE_CONFIGURATION_ID" ] && SCOPE_CONFIGURATION_VALUES_SLUG="$SCOPE_CONFIGURATION_SLUG"
 
-CHANNEL_ID=$(np_get "/notification/channel?nrn=$INSTALLATION_NRN&type=agent&limit=100" \
-  | jq -r --arg nrn "$INSTALLATION_NRN" --arg pkg "$PACKAGE_SLUG" \
-    '[.results[]? | select(.nrn == $nrn and .status == "active" and (.configuration.command.data.package // "") == $pkg)][0].id // empty')
-if [ -n "$CHANNEL_ID" ] && owned notification_channel "$CHANNEL_ID"; then CHANNEL_ID=''; log "   channel is this installation's own"; fi
-if [ -n "$CHANNEL_ID" ]; then log "   channel $CHANNEL_ID already routes the package here, reusing it"; else log "   channel will be created (or kept)"; fi
+# Channels are per target (the agent is per account): the ones that already
+# route this package at the NRN, matched below by dimensions.
+CHANNELS=$(np_get "/notification/channel?nrn=$INSTALLATION_NRN&type=agent&limit=100" \
+  | jq -c --arg nrn "$INSTALLATION_NRN" --arg pkg "$PACKAGE_SLUG" \
+    '[.results[]? | select(.nrn == $nrn and .status == "active" and (.configuration.command.data.package // "") == $pkg) | { id, filters: (.filters | tojson) }]')
 
 # ── Targets: given, or one per cloud provider the NRN resolves ──────────────────
 TARGETS=$(ctx '.parameters.targets // empty')
@@ -214,6 +214,29 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
     fi
   fi
 
+  # Channel: given, or the one already routing this package for these
+  # dimensions (every dimension named in its filters; none when the target
+  # has none), unless it is this installation's own.
+  channel_id=$(jq -r '.channel_id // empty' <<<"$target")
+  if [ -z "$channel_id" ]; then
+    while IFS=$'\t' read -r cid cfilters; do
+      [ -n "$cid" ] || continue
+      if [ "$(jq 'length' <<<"$dims")" -eq 0 ]; then
+        [[ "$cfilters" == *dimensions.* ]] && continue
+      else
+        match=true
+        while IFS=$'\t' read -r dk dv; do
+          [[ "$cfilters" == *"scope.dimensions.$dk"*"\"$dv\""* ]] || match=false
+        done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' <<<"$dims")
+        [ "$match" = true ] || continue
+      fi
+      channel_id="$cid"; break
+    done < <(jq -r '.[] | "\(.id)\t\(.filters)"' <<<"$CHANNELS")
+    if [ -n "$channel_id" ] && owned notification_channel "$channel_id"; then channel_id=''; log "   target $key: channel is this installation's own"; fi
+    if [ -n "$channel_id" ]; then log "   target $key: channel $channel_id already routes the package for these dimensions, reusing it"; else log "   target $key: channel will be created (or kept)"; fi
+  fi
+  agent_tags=$(jq -c '.agent_tags // empty' <<<"$target")
+
   # ALB listener: given, or published in the networking provider; optional.
   alb=$(jq -r '.alb_listener_arn // empty' <<<"$target")
   if [ -z "$alb" ]; then
@@ -224,11 +247,11 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
 
   RESOLVED=$(jq -c --arg k "$key" --argjson dims "$dims" --arg role "$role_arn" --argjson from_entry "$role_from_entry" \
     --arg iam "$iam_provider_id" --arg bucket "$state_bucket" --arg placeholder "$placeholder" --arg repo "$placeholder_repository" \
-    --arg alb "$alb" --arg sc "$scope_configuration_id" '
+    --arg alb "$alb" --arg sc "$scope_configuration_id" --arg channel "$channel_id" --argjson tags "${agent_tags:-null}" '
     def nz: if . == "" then null else . end;
     .[$k] = { dimensions: $dims, role_arn: ($role | nz), role_from_entry: $from_entry, iam_provider_id: ($iam | nz),
               state_bucket: ($bucket | nz), placeholder_image_uri: ($placeholder | nz), placeholder_repository_url: ($repo | nz),
-              alb_listener_arn: ($alb | nz), scope_configuration_id: ($sc | nz) }' <<<"$RESOLVED")
+              alb_listener_arn: ($alb | nz), scope_configuration_id: ($sc | nz), channel_id: ($channel | nz), agent_tags: $tags }' <<<"$RESOLVED")
 done
 
 # ── tfvars and working directory ────────────────────────────────────────────────
@@ -240,7 +263,7 @@ TF_VARS_FILE="${TMPDIR:-/tmp}/np-installation-$INSTALLATION_ID.tfvars.json"
 umask 077
 jq -n --argjson ctx "$CONTEXT" --argjson targets "$RESOLVED" --arg region "$AWS_REGION_DEFAULT" --arg spec "$SPEC_ID" \
   --arg st_id "$SCOPE_TYPE_ID" --arg st_name "$SCOPE_TYPE_NAME" --arg st_desc "$SCOPE_TYPE_DESCRIPTION" \
-  --arg sc_id "$SCOPE_CONFIGURATION_ID" --arg sc_slug "$SCOPE_CONFIGURATION_VALUES_SLUG" --arg channel "$CHANNEL_ID" '
+  --arg sc_id "$SCOPE_CONFIGURATION_ID" --arg sc_slug "$SCOPE_CONFIGURATION_VALUES_SLUG" '
   def nz: if . == "" then null else . end;
   {
     installation: { id: $ctx.installation.id, nrn: $ctx.installation.nrn,
@@ -250,7 +273,6 @@ jq -n --argjson ctx "$CONTEXT" --argjson targets "$RESOLVED" --arg region "$AWS_
     service_specification_id: $spec,
     scope_type: { id: ($st_id | nz), name: $st_name, description: $st_desc },
     scope_configuration: { id: ($sc_id | nz), slug: ($sc_slug | nz) },
-    channel_id: ($channel | nz),
     targets: $targets,
     metrics_provider: ($ctx.parameters.metrics_provider // "externalmetrics"),
     log_provider: ($ctx.parameters.log_provider // "external"),

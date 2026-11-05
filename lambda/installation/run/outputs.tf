@@ -4,7 +4,7 @@ output "outputs" {
   value = {
     scope_type_id                     = module.installation.scope_type_id
     scope_configuration_specification = module.installation.scope_configuration_specification_id
-    channel_id                        = module.installation.channel_id
+    channel_id                        = { for name, target in module.target : name => target.channel_id }
     role_arn                          = { for name, target in module.target : name => target.role_arn }
     state_bucket                      = { for name, target in module.target : name => target.state_bucket }
     placeholder_image_uri             = { for name, target in module.target : name => target.placeholder_image_uri }

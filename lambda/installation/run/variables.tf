@@ -11,7 +11,7 @@ variable "installation" {
 }
 
 variable "agent" {
-  description = "The agent that runs this package's worker: the IAM role its workers run with and the tags its channel selects it by."
+  description = "The agent that runs this package's worker: the IAM role its workers run with and the tags its channel selects it by (a target may name another agent with its own agent_tags)."
   type = object({
     role_arn = string
     tags     = map(string)
@@ -45,15 +45,12 @@ variable "scope_configuration" {
   default = {}
 }
 
-variable "channel_id" {
-  type    = string
-  default = null
-}
-
 variable "targets" {
   description = "One target per dimension set the installation serves; the runner has one AWS provider, so one account."
   type = map(object({
     dimensions                 = map(string)
+    agent_tags                 = optional(map(string))
+    channel_id                 = optional(string)
     role_arn                   = optional(string)
     role_from_entry            = optional(bool, false)
     iam_provider_id            = optional(string)

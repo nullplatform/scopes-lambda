@@ -9,7 +9,7 @@ variable "installation" {
 }
 
 variable "service_specification_id" {
-  description = "Id of the scope's service specification, the one the installed package pins. The scope type points at it and the channel routes by it."
+  description = "Id of the scope's service specification, the one the installed package pins. The scope type points at it."
   type        = string
 }
 
@@ -54,27 +54,4 @@ variable "log_provider" {
   description = "Logs provider recorded in the NRN settings for this scope type."
   type        = string
   default     = "external"
-}
-
-variable "channel_id" {
-  description = "An agent channel that already routes this package at the NRN, reused as is. Null creates one when create_channel is on."
-  type        = string
-  default     = null
-}
-
-variable "create_channel" {
-  description = "Create the agent channel that routes the scope's actions to the package worker. Off when the organization creates channels elsewhere."
-  type        = bool
-  default     = true
-
-  validation {
-    condition     = !(var.create_channel && var.channel_id == null) || length(var.agent_tags) > 0
-    error_message = "Creating the channel needs agent_tags: the channel selects the agent by them."
-  }
-}
-
-variable "agent_tags" {
-  description = "Tags of the agent that runs this package's worker; the channel selects it by them."
-  type        = map(string)
-  default     = {}
 }

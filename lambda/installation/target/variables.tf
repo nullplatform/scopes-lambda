@@ -94,3 +94,33 @@ variable "assets_bucket_name" {
   type        = string
   default     = "lambda-files-aws-services"
 }
+
+# ── The agent channel, one per target because the agent is per account ──
+
+variable "service_specification_id" {
+  description = "Id of the scope's service specification; the channel routes its actions by it."
+  type        = string
+}
+
+variable "agent_tags" {
+  description = "Tags of the agent that runs this package's worker in this account; the channel selects it by them. Required with create_channel."
+  type        = map(string)
+  default     = {}
+}
+
+variable "channel_id" {
+  description = "An agent channel that already routes this package for these dimensions, reused as is. Null creates one when create_channel is on."
+  type        = string
+  default     = null
+}
+
+variable "create_channel" {
+  description = "Create the agent channel that routes this target's scopes to the package worker. Off when the organization creates channels elsewhere."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !(var.create_channel && var.channel_id == null) || length(var.agent_tags) > 0
+    error_message = "Creating the channel needs agent_tags: the channel selects the agent by them."
+  }
+}
