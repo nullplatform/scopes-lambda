@@ -11,7 +11,7 @@ variable "installation" {
 }
 
 variable "agent" {
-  description = "The agent that runs this package's worker: the IAM role its workers run with and the tags its channel selects it by (a target may name another agent with its own agent_tags)."
+  description = "The agent that runs this package's worker: the IAM role its workers run with and the tags its channel selects it by (an environment may name another agent with its own agent_tags)."
   type = object({
     role_arn = string
     tags     = map(string)
@@ -45,25 +45,33 @@ variable "scope_configuration" {
   default = {}
 }
 
-variable "targets" {
-  description = "One target per dimension set the installation serves; the runner has one AWS provider, so one account."
-  type = map(object({
-    dimensions                 = map(string)
-    agent_tags                 = optional(map(string))
-    channel_id                 = optional(string)
+variable "account" {
+  description = "The one AWS account the runner installs in: its name within the installation and what it already has (each null is created)."
+  type = object({
+    name                       = optional(string, "default")
     role_arn                   = optional(string)
-    role_from_entry            = optional(bool, false)
-    iam_provider_id            = optional(string)
     state_bucket               = optional(string)
     placeholder_image_uri      = optional(string)
     placeholder_repository_url = optional(string)
     alb_listener_arn           = optional(string)
-    scope_configuration_id     = optional(string)
+  })
+  default = {}
+}
+
+variable "environments" {
+  description = "One environment per dimension set the account serves, with what each already has on the platform (each null is created)."
+  type = map(object({
+    dimensions             = map(string)
+    agent_tags             = optional(map(string))
+    channel_id             = optional(string)
+    role_from_entry        = optional(bool, false)
+    iam_provider_id        = optional(string)
+    scope_configuration_id = optional(string)
   }))
 
   validation {
-    condition     = length(var.targets) > 0
-    error_message = "At least one target is required: no cloud provider resolves at the installation NRN and none was given."
+    condition     = length(var.environments) > 0
+    error_message = "At least one environment is required: no cloud provider resolves at the installation NRN and none was given."
   }
 }
 

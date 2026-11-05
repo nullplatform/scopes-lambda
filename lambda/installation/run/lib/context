@@ -1,12 +1,13 @@
 #!/bin/bash
 # Shared by the runner's entrypoints: turns NP_INSTALL_CONTEXT into the tfvars
 # the runner root takes, resolving through the API and AWS whatever the
-# installer did not give: the specification, an existing scope type, schema
-# and channel, the targets, and per target the IAM provider, the role, the
-# state bucket, the placeholder image, the ALB listener and an existing
-# scope-configuration. An organization with its own Terraform fills the
-# module variables from its own outputs and never runs this. Sourced, not
-# executed. Everything it prints goes to stderr; stdout is the report.
+# installer did not give: the specification, an existing scope type and
+# schema; for the account its role, state bucket, placeholder image and ALB
+# listener; and per environment the IAM provider, an existing
+# scope-configuration and channel. An organization with its own Terraform
+# fills the module variables from its own outputs and never runs this.
+# Sourced, not executed. Everything it prints goes to stderr; stdout is the
+# report.
 set -euo pipefail
 
 log() { echo "$*" >&2; }
@@ -119,105 +120,97 @@ fi
 SCOPE_CONFIGURATION_VALUES_SLUG=''
 [ -n "$SCOPE_CONFIGURATION_ID" ] && SCOPE_CONFIGURATION_VALUES_SLUG="$SCOPE_CONFIGURATION_SLUG"
 
-# Channels are per target (the agent is per account): the ones that already
-# route this package at the NRN, matched below by dimensions.
+# Channels are per environment: the ones that already route this package at
+# the NRN, matched below by dimensions.
 CHANNELS=$(np_get "/notification/channel?nrn=$INSTALLATION_NRN&type=agent&limit=100" \
   | jq -c --arg nrn "$INSTALLATION_NRN" --arg pkg "$PACKAGE_SLUG" \
     '[.results[]? | select(.nrn == $nrn and .status == "active" and (.configuration.command.data.package // "") == $pkg) | { id, filters: (.filters | tojson) }]')
 
-# ── Targets: given, or one per cloud provider the NRN resolves ──────────────────
-TARGETS=$(ctx '.parameters.targets // empty')
-if [ -z "$TARGETS" ] || [ "$TARGETS" = "null" ]; then
-  log "🔍 Discovering targets: aws-configuration providers from $INSTALLATION_NRN"
+# ── Environments: given, or one per cloud provider the NRN resolves ────────────
+ENVIRONMENTS=$(ctx '.parameters.environments // empty')
+if [ -z "$ENVIRONMENTS" ] || [ "$ENVIRONMENTS" = "null" ]; then
+  log "🔍 Discovering environments: aws-configuration providers from $INSTALLATION_NRN"
   CLOUD=$(providers_by_slug aws-configuration)
-  [ "$(jq 'length' <<<"$CLOUD")" -gt 0 ] || fail "no cloud provider (aws-configuration) resolves at $INSTALLATION_NRN: configure one there or above, or pass parameters.targets"
-  TARGETS=$(jq -c '[.[] | { key: (if (.dimensions | length) == 0 then "default" else (.dimensions | to_entries | sort_by(.key) | map(.value) | join("-")) end),
-                           value: { dimensions: .dimensions, region: .attributes.account.region } }] | from_entries' <<<"$CLOUD")
+  [ "$(jq 'length' <<<"$CLOUD")" -gt 0 ] || fail "no cloud provider (aws-configuration) resolves at $INSTALLATION_NRN: configure one there or above, or pass parameters.environments"
+  ENVIRONMENTS=$(jq -c '[.[] | { key: (if (.dimensions | length) == 0 then "default" else (.dimensions | to_entries | sort_by(.key) | map(.value) | join("-")) end),
+                                value: { dimensions: .dimensions, region: .attributes.account.region } }] | from_entries' <<<"$CLOUD")
 fi
-AWS_REGION_DEFAULT=$(jq -r '[.[] | .region // empty][0] // "us-east-1"' <<<"$TARGETS")
+AWS_REGION=$(jq -r '[.[] | .region // empty][0] // "us-east-1"' <<<"$ENVIRONMENTS")
 
-# ── Per target ──────────────────────────────────────────────────────────────────
+# ── The account: given, or what the environments' providers already name ───────
+# The runner's AWS provider is one account, so its role, state bucket and
+# placeholder are resolved once. An environment whose IAM provider or
+# scope-configuration already names one of them fills it in for the account,
+# and so for every other environment.
+ACCOUNT_NAME=$(param account.name); ACCOUNT_NAME="${ACCOUNT_NAME:-default}"
+ROLE_ARN=$(param account.role_arn)
+STATE_BUCKET=$(param account.state_bucket)
+PLACEHOLDER=$(param account.placeholder_image_uri)
+PLACEHOLDER_REPOSITORY=$(param account.placeholder_repository_url)
+ALB=$(param account.alb_listener_arn)
+[ -n "$ROLE_ARN" ] && log "   account $ACCOUNT_NAME: role provided"
+[ -n "$STATE_BUCKET" ] && log "   account $ACCOUNT_NAME: state bucket provided"
+[ -n "$PLACEHOLDER" ] && log "   account $ACCOUNT_NAME: placeholder image provided"
+
+# ── Per environment: what the runtime reads for its dimensions ──────────────────
 RESOLVED='{}'
-for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
-  target=$(jq -c --arg k "$key" '.[$k]' <<<"$TARGETS")
-  dims=$(jq -c '.dimensions // {}' <<<"$target")
+for key in $(jq -r 'keys[]' <<<"$ENVIRONMENTS"); do
+  environment=$(jq -c --arg k "$key" '.[$k]' <<<"$ENVIRONMENTS")
+  dims=$(jq -c '.dimensions // {}' <<<"$environment")
   dims_query=$(dimensions_query "$dims")
-  region=$(jq -r --arg d "$AWS_REGION_DEFAULT" '.region // $d' <<<"$target")
 
-  # IAM provider, and the role under selector "lambda" if it already has one.
-  iam_provider_id=$(jq -r '.iam_provider_id // empty' <<<"$target")
-  role_arn=$(jq -r '.role_arn // empty' <<<"$target")
-  role_from_entry=false
+  # IAM provider, and the role it already lists under selector "lambda".
+  iam_provider_id=$(jq -r '.iam_provider_id // empty' <<<"$environment")
+  entry_role=''
   if [ -z "$iam_provider_id" ]; then
     iam_provider_id=$(providers_by_slug aws-iam-configuration "$dims_query" | jq -r '.[0].id // empty')
     if [ -n "$iam_provider_id" ] && owned provider_config "$iam_provider_id"; then
       iam_provider_id=''
-      log "   target $key: IAM provider is this installation's own"
+      log "   environment $key: IAM provider is this installation's own"
     fi
   fi
-  # The list carries no attributes: read the provider to see its entries.
   if [ -n "$iam_provider_id" ]; then
+    # The list carries no attributes: read the provider to see its entries.
     iam=$(np_get "/provider/$iam_provider_id" || true)
-    log "   target $key: IAM provider $iam_provider_id found, reusing it"
-    if [ -z "$role_arn" ]; then
-      role_arn=$(jq -r '[.attributes.iam_role_arns.arns[]? | select(.selector == "lambda")][0].arn // empty' <<<"${iam:-null}")
-      if [ -n "$role_arn" ] && owned aws_iam_role "$role_arn"; then
-        role_arn=''
-        log "   target $key: the lambda entry is this installation's own role"
-      elif [ -n "$role_arn" ]; then
-        role_from_entry=true
-        log "   target $key: role found under selector lambda, reusing it"
-      fi
+    log "   environment $key: IAM provider $iam_provider_id found, reusing it"
+    entry_role=$(jq -r '[.attributes.iam_role_arns.arns[]? | select(.selector == "lambda")][0].arn // empty' <<<"${iam:-null}")
+    if [ -n "$entry_role" ] && owned aws_iam_role "$entry_role"; then
+      entry_role=''
+      log "   environment $key: the lambda entry is this installation's own role"
+    fi
+    # An existing entry is never overwritten: the environment keeps the role it
+    # lists, and the account takes it when it has none of its own yet.
+    if [ -n "$entry_role" ] && [ -z "$ROLE_ARN" ]; then
+      ROLE_ARN="$entry_role"
+      log "   account $ACCOUNT_NAME: role found under selector lambda of environment $key, reusing it"
+    elif [ -n "$entry_role" ] && [ "$entry_role" != "$ROLE_ARN" ]; then
+      log "   environment $key: its lambda entry names another role ($entry_role); left as it is"
     fi
   else
-    log "   target $key: no IAM provider; one will be created (or kept)"
+    log "   environment $key: no IAM provider; one will be created (or kept)"
   fi
-  [ -n "$role_arn" ] || log "   target $key: role will be created (or kept)"
 
-  # State bucket and placeholder: given, or read from an existing scope-configuration.
-  state_bucket=$(jq -r '.state_bucket // empty' <<<"$target")
-  placeholder=$(jq -r '.placeholder_image_uri // empty' <<<"$target")
-  scope_configuration_id=$(jq -r '.scope_configuration_id // empty' <<<"$target")
+  # Scope-configuration: given, or found for the dimensions; its bucket and
+  # placeholder stand in for the account's when those were not given.
+  scope_configuration_id=$(jq -r '.scope_configuration_id // empty' <<<"$environment")
   if [ -z "$scope_configuration_id" ] && [ -n "$SCOPE_CONFIGURATION_VALUES_SLUG" ]; then
     scope_configuration_id=$(providers_by_slug "$SCOPE_CONFIGURATION_VALUES_SLUG" "$dims_query" | jq -r '.[0].id // empty')
     if [ -n "$scope_configuration_id" ] && owned scope_configuration "$scope_configuration_id"; then
       scope_configuration_id=''
-      log "   target $key: scope-configuration is this installation's own"
+      log "   environment $key: scope-configuration is this installation's own"
     fi
   fi
   if [ -n "$scope_configuration_id" ]; then
     existing=$(np_get "/provider/$scope_configuration_id" || true)
-    log "   target $key: scope-configuration $scope_configuration_id found, reusing it"
-    [ -n "$state_bucket" ] || state_bucket=$(jq -r '.attributes.state.tofu_state_bucket // empty' <<<"${existing:-null}")
-    [ -n "$placeholder" ] || placeholder=$(jq -r '.attributes.deployment.placeholder_image_uri // empty' <<<"${existing:-null}")
-  fi
-  [ -n "$state_bucket" ] || log "   target $key: state bucket will be created (or kept)"
-
-  # Placeholder: an existing repository is reused, and its image counts when
-  # it has one; the image is never built here.
-  placeholder_repository=''
-  if [ -z "$placeholder" ]; then
-    repo_uri=$(aws ecr describe-repositories --repository-names aws-lambda/nullplatform-lambda-placeholder --region "$region" \
-      --query 'repositories[0].repositoryUri' --output text 2>/dev/null || true)
-    if [ -n "$repo_uri" ] && [ "$repo_uri" != "None" ]; then
-      if owned aws_ecr_repository "$repo_uri"; then placeholder_repository=''; else placeholder_repository="$repo_uri"; fi
-      tags=$(aws ecr describe-images --repository-name aws-lambda/nullplatform-lambda-placeholder --region "$region" \
-        --query 'imageDetails[].imageTags[]' --output text 2>/dev/null | tr '\t' ' ' || true)
-      if [[ " $tags " == *" latest "* ]] || [[ " $tags " == *" latest-arm64 "* ]]; then
-        placeholder="$repo_uri:latest"
-        log "   target $key: placeholder image found in ECR, reusing it"
-      else
-        log "   target $key: placeholder repository exists but has no image; image reported as missing"
-      fi
-    else
-      log "   target $key: no placeholder repository, one will be created; the image is reported as missing"
-    fi
+    log "   environment $key: scope-configuration $scope_configuration_id found, reusing it"
+    [ -n "$STATE_BUCKET" ] || STATE_BUCKET=$(jq -r '.attributes.state.tofu_state_bucket // empty' <<<"${existing:-null}")
+    [ -n "$PLACEHOLDER" ] || PLACEHOLDER=$(jq -r '.attributes.deployment.placeholder_image_uri // empty' <<<"${existing:-null}")
   fi
 
   # Channel: given, or the one already routing this package for these
-  # dimensions (every dimension named in its filters; none when the target
-  # has none), unless it is this installation's own.
-  channel_id=$(jq -r '.channel_id // empty' <<<"$target")
+  # dimensions (every dimension named in its filters; none when the
+  # environment has none), unless it is this installation's own.
+  channel_id=$(jq -r '.channel_id // empty' <<<"$environment")
   if [ -z "$channel_id" ]; then
     while IFS=$'\t' read -r cid cfilters; do
       [ -n "$cid" ] || continue
@@ -232,27 +225,48 @@ for key in $(jq -r 'keys[]' <<<"$TARGETS"); do
       fi
       channel_id="$cid"; break
     done < <(jq -r '.[] | "\(.id)\t\(.filters)"' <<<"$CHANNELS")
-    if [ -n "$channel_id" ] && owned notification_channel "$channel_id"; then channel_id=''; log "   target $key: channel is this installation's own"; fi
-    if [ -n "$channel_id" ]; then log "   target $key: channel $channel_id already routes the package for these dimensions, reusing it"; else log "   target $key: channel will be created (or kept)"; fi
+    if [ -n "$channel_id" ] && owned notification_channel "$channel_id"; then channel_id=''; log "   environment $key: channel is this installation's own"; fi
+    if [ -n "$channel_id" ]; then log "   environment $key: channel $channel_id already routes the package for these dimensions, reusing it"; else log "   environment $key: channel will be created (or kept)"; fi
   fi
-  agent_tags=$(jq -c '.agent_tags // empty' <<<"$target")
+  agent_tags=$(jq -c '.agent_tags // empty' <<<"$environment")
 
-  # ALB listener: given, or published in the networking provider; optional.
-  alb=$(jq -r '.alb_listener_arn // empty' <<<"$target")
-  if [ -z "$alb" ]; then
-    alb=$(providers_by_slug aws-networking-configuration "$dims_query" | jq -r '.[0].id // empty')
-    [ -n "$alb" ] && alb=$(np_get "/provider/$alb" | jq -r '.attributes.load_balancer.public.listener_arn // empty')
-    [ -n "$alb" ] && log "   target $key: ALB listener found in the networking provider" || log "   target $key: no ALB listener (optional)"
+  # ALB listener: the account's; published in a networking provider the
+  # environment's dimensions resolve, when the installer did not give it.
+  if [ -z "$ALB" ]; then
+    ALB=$(providers_by_slug aws-networking-configuration "$dims_query" | jq -r '.[0].id // empty')
+    [ -n "$ALB" ] && ALB=$(np_get "/provider/$ALB" | jq -r '.attributes.load_balancer.public.listener_arn // empty')
+    [ -n "$ALB" ] && log "   account $ACCOUNT_NAME: ALB listener found in environment $key's networking provider"
   fi
 
-  RESOLVED=$(jq -c --arg k "$key" --argjson dims "$dims" --arg role "$role_arn" --argjson from_entry "$role_from_entry" \
-    --arg iam "$iam_provider_id" --arg bucket "$state_bucket" --arg placeholder "$placeholder" --arg repo "$placeholder_repository" \
-    --arg alb "$alb" --arg sc "$scope_configuration_id" --arg channel "$channel_id" --argjson tags "${agent_tags:-null}" '
+  RESOLVED=$(jq -c --arg k "$key" --argjson dims "$dims" --arg entry "$entry_role" --arg iam "$iam_provider_id" \
+    --arg sc "$scope_configuration_id" --arg channel "$channel_id" --argjson tags "${agent_tags:-null}" '
     def nz: if . == "" then null else . end;
-    .[$k] = { dimensions: $dims, role_arn: ($role | nz), role_from_entry: $from_entry, iam_provider_id: ($iam | nz),
-              state_bucket: ($bucket | nz), placeholder_image_uri: ($placeholder | nz), placeholder_repository_url: ($repo | nz),
-              alb_listener_arn: ($alb | nz), scope_configuration_id: ($sc | nz), channel_id: ($channel | nz), agent_tags: $tags }' <<<"$RESOLVED")
+    .[$k] = { dimensions: $dims, role_from_entry: ($entry != ""), iam_provider_id: ($iam | nz),
+              scope_configuration_id: ($sc | nz), channel_id: ($channel | nz), agent_tags: $tags }' <<<"$RESOLVED")
 done
+[ -n "$ROLE_ARN" ] || log "   account $ACCOUNT_NAME: role will be created (or kept)"
+[ -n "$STATE_BUCKET" ] || log "   account $ACCOUNT_NAME: state bucket will be created (or kept)"
+[ -n "$ALB" ] || log "   account $ACCOUNT_NAME: no ALB listener (optional)"
+
+# Placeholder: an existing repository in the account is reused, and its image
+# counts when it has one; the image is never built here.
+if [ -z "$PLACEHOLDER" ] && [ -z "$PLACEHOLDER_REPOSITORY" ]; then
+  repo_uri=$(aws ecr describe-repositories --repository-names aws-lambda/nullplatform-lambda-placeholder --region "$AWS_REGION" \
+    --query 'repositories[0].repositoryUri' --output text 2>/dev/null || true)
+  if [ -n "$repo_uri" ] && [ "$repo_uri" != "None" ]; then
+    owned aws_ecr_repository "$repo_uri" || PLACEHOLDER_REPOSITORY="$repo_uri"
+    tags=$(aws ecr describe-images --repository-name aws-lambda/nullplatform-lambda-placeholder --region "$AWS_REGION" \
+      --query 'imageDetails[].imageTags[]' --output text 2>/dev/null | tr '\t' ' ' || true)
+    if [[ " $tags " == *" latest "* ]] || [[ " $tags " == *" latest-arm64 "* ]]; then
+      PLACEHOLDER="$repo_uri:latest"
+      log "   account $ACCOUNT_NAME: placeholder image found in ECR, reusing it"
+    else
+      log "   account $ACCOUNT_NAME: placeholder repository exists but has no image; image reported as missing"
+    fi
+  else
+    log "   account $ACCOUNT_NAME: no placeholder repository, one will be created; the image is reported as missing"
+  fi
+fi
 
 # ── tfvars and working directory ────────────────────────────────────────────────
 # The runner root is used in place: its module sources are relative paths.
@@ -261,9 +275,11 @@ TF_STATE="$NP_INSTALL_STATE"
 INSTALLATION_ID=$(ctx '.installation.id')
 TF_VARS_FILE="${TMPDIR:-/tmp}/np-installation-$INSTALLATION_ID.tfvars.json"
 umask 077
-jq -n --argjson ctx "$CONTEXT" --argjson targets "$RESOLVED" --arg region "$AWS_REGION_DEFAULT" --arg spec "$SPEC_ID" \
+jq -n --argjson ctx "$CONTEXT" --argjson environments "$RESOLVED" --arg region "$AWS_REGION" --arg spec "$SPEC_ID" \
   --arg st_id "$SCOPE_TYPE_ID" --arg st_name "$SCOPE_TYPE_NAME" --arg st_desc "$SCOPE_TYPE_DESCRIPTION" \
-  --arg sc_id "$SCOPE_CONFIGURATION_ID" --arg sc_slug "$SCOPE_CONFIGURATION_VALUES_SLUG" '
+  --arg sc_id "$SCOPE_CONFIGURATION_ID" --arg sc_slug "$SCOPE_CONFIGURATION_VALUES_SLUG" \
+  --arg account "$ACCOUNT_NAME" --arg role "$ROLE_ARN" --arg bucket "$STATE_BUCKET" --arg placeholder "$PLACEHOLDER" \
+  --arg repo "$PLACEHOLDER_REPOSITORY" --arg alb "$ALB" '
   def nz: if . == "" then null else . end;
   {
     installation: { id: $ctx.installation.id, nrn: $ctx.installation.nrn,
@@ -273,7 +289,9 @@ jq -n --argjson ctx "$CONTEXT" --argjson targets "$RESOLVED" --arg region "$AWS_
     service_specification_id: $spec,
     scope_type: { id: ($st_id | nz), name: $st_name, description: $st_desc },
     scope_configuration: { id: ($sc_id | nz), slug: ($sc_slug | nz) },
-    targets: $targets,
+    account: { name: $account, role_arn: ($role | nz), state_bucket: ($bucket | nz), placeholder_image_uri: ($placeholder | nz),
+               placeholder_repository_url: ($repo | nz), alb_listener_arn: ($alb | nz) },
+    environments: $environments,
     metrics_provider: ($ctx.parameters.metrics_provider // "externalmetrics"),
     log_provider: ($ctx.parameters.log_provider // "external"),
     assets_bucket_name: ($ctx.parameters.assets_bucket_name // "lambda-files-aws-services"),
