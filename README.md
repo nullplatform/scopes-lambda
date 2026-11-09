@@ -23,6 +23,8 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 
 The scope is published once as the package `np-aws-lambda` (specification "AWS Lambda"), visible to every organization. You do not copy its specs: you install the package and use it read-only.
 
+If you need to change the specification, the actions or the workflows themselves, see [the global package, or your own fork](#two-ways-to-run-this-scope-the-global-package-or-your-own-fork) below before installing anything.
+
 Installing it touches the same three layers as registering a scope yourself, and only the nullplatform layer changes:
 
 | Layer | What | Module |
@@ -107,16 +109,36 @@ Organizations that registered this scope with [`lambda/specs/install`](./lambda/
 - Keep your IAM role: both copies assume the role under selector `lambda`. The infrastructure layer does not change.
 - Once no scope uses your copy, remove its `specs/install` stack.
 
-### Global package or fork?
+### Two ways to run this scope: the global package, or your own fork
 
-**Use the global package.** It is the default, and the only way to keep receiving updates: every fix, new feature and security patch arrives as a new release, and you take it by moving `ref`. The specs, the code and how the scope is installed stay maintained here. If something is missing or wrong, open an issue or a pull request in this repository, so every organization gets it.
+| | **Global package** (default) | **Your own fork** |
+|---|---|---|
+| Specs and code | Maintained by nullplatform in this repository | Maintained by you, in your fork |
+| What you install | The package `np-aws-lambda`, read-only | A package you publish in your organization, or a registered copy |
+| Updates | A new release: move the version | Only when you merge upstream into your fork |
+| When | Always, unless you need changes to the specification, the actions or the workflows | Substantial changes: new actions, another specification (attributes, deployment types, validations), workflows that behave differently |
 
-**Fork only when you need to extend the scope substantially**: new actions, a different specification (attributes, deployment types, validations), or workflows that behave differently. A fork has real costs:
+**Use the global package.** It is the only way to keep receiving fixes, features and security patches: each one arrives as a release of this repository and you take it by moving the installed version. The section above is that path; its two forms are equivalent:
 
-- **You become the publisher.** You build and register your own image, and register your fork as your own organization's package with [`lambda/specs/install`](./lambda/installation.md).
+- From a catalog of `scope_definition` entries (tofu-modules): the same entry with an `install_package = { slug = "np-aws-lambda", version = "X.Y.Z" }` block becomes a `scope_package_installation`. The scope type, the NRN settings and the scope-configuration schema are still created by you, from this repository's templates at the matching tag; the specification and its actions are the package's.
+- From this repository directly: [`lambda/installation`](./lambda/installation) at a release tag, which wraps that module with the slug and version of the tag.
+
+If something is missing or wrong, open an issue or a pull request here, so every organization gets it.
+
+**Fork only to change what the scope is.** A fork means you become the publisher of a different scope: you build its worker image, publish its package in your organization and maintain its specs, code and installation. Step by step:
+
+1. **Fork the repository and give the scope its own names.** In [`lambda/publish/main.tf`](./lambda/publish/main.tf): `package_slug` (for example `acme-aws-lambda`), `service_spec_name` ("Acme Lambda") and `service_spec_slug` (`acme-aws-lambda`). The slug must differ from `np-aws-lambda`, and from `aws-lambda` if you also run a copy: package lookups and agent channels match by slug, so two scopes with one slug share a worker.
+2. **Publish into your organization, not every organization.** In the same file, `visible_to` goes from `["organization=*"]` to `[var.publisher_nrn]`: only the platform organization may publish globally, and your package is yours. Point `image_registry` / `image_repository` ([`lambda/publish/variables.tf`](./lambda/publish/variables.tf)) at your registry.
+3. **Set the release workflow's secrets and variables in your fork**: `ARTIFACT_NP_API_KEY` (a key of your organization, allowed to write artifacts, specifications and packages), `AWS_ROLE_ARN_ECR_PUSH`, `AWS_ROLE_ARN_PACKAGE_STATE` and `PACKAGE_TFSTATE_BUCKET`. From then on, each release of your fork builds the image, registers it and publishes a revision of your package ([`release.yml`](./.github/workflows/release.yml)).
+4. **Install your package the same way as the global one**, with your slug in `install_package`, your own scope type name and your own agent channel. The role and its selector can stay `lambda` as long as the permissions in [`lambda/specs/requirements`](./lambda/specs/requirements) still fit what your fork does; if they do not, give your fork its own role and selector too.
+
+Without packages, the classic way still works: register your fork as a copy with `scope_definition` pointing at your fork's repository and tag ([`lambda/specs/install`](./lambda/installation.md)).
+
+What a fork costs, before you take it:
+
 - **Updates stop arriving.** Upstream fixes reach you only when you merge them into your fork yourself.
-- **There is no way back for existing scopes.** Scopes created from your fork's specification cannot be moved to the global one.
-- **Names must not collide.** Give your fork its own `package_slug` and specification name (package lookups and the channel match by slug, and the specification's slug comes from its name), and its own IAM role and selector, or your fork and the global package share one worker and one role.
+- **There is no way back for existing scopes.** A scope cannot move to another specification: scopes created from your fork's specification stay on it.
+- **You own the operations.** Images, releases, state of the publisher stack and the compatibility of your specs with the agent are yours to keep.
 
 ---
 
