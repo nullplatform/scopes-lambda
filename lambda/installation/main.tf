@@ -29,12 +29,12 @@
 ################################################################################
 
 locals {
-  package_slug = "nullplatform-aws-lambda"
+  package_slug = "np-aws-lambda"
   version      = trimprefix(local.release, "v")
 }
 
 module "package" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.9.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.12.0"
 
   nrn             = var.nrn
   package_slug    = local.package_slug

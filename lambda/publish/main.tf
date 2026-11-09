@@ -17,12 +17,13 @@
 ################################################################################
 
 locals {
-  # The nullplatform- prefix keeps the global package and its specification
-  # apart from what organizations registered from this repository with
-  # specs/install: their own package scopes-lambda and specification
-  # "AWS Lambda" (slug aws-lambda). Package lookups and agent channels match by
-  # slug, so the two must differ for both to live in one organization.
-  package_slug = "nullplatform-aws-lambda"
+  # The np- prefix keeps the global package and its specification apart from
+  # what organizations registered from this repository with specs/install:
+  # their own package scopes-lambda and specification "AWS Lambda" (slug
+  # aws-lambda). Package lookups and agent channels match by slug, so the two
+  # must differ for both to live in one organization. The prefix lives in the
+  # slug only: the specification keeps the plain name people read.
+  package_slug = "np-aws-lambda"
   version      = trimprefix(local.release, "v")
   service_path = "lambda"
 }
@@ -38,7 +39,7 @@ resource "terraform_data" "release_guard" {
 }
 
 module "scope_definition" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.7.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition?ref=v9.12.0"
 
   nrn = var.publisher_nrn
 
@@ -47,9 +48,11 @@ module "scope_definition" {
   local_specs_path = abspath("${path.module}/..")
   service_path     = local.service_path
 
-  # Slugifies to the package slug, the specification slug the installation's
-  # channel filter and NRN settings use.
-  service_spec_name        = "nullplatform AWS Lambda"
+  # The name is what people read; the slug carries the namespace and is what
+  # the installation's channel filter and NRN settings use. The package the
+  # module publishes takes the specification's slug.
+  service_spec_name        = "AWS Lambda"
+  service_spec_slug        = local.package_slug
   service_spec_description = "AWS Lambda functions managed by nullplatform"
 
   action_spec_names = [

@@ -21,7 +21,7 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 
 ## Install in your organization
 
-The scope is published once as the package `nullplatform-aws-lambda` (specification "nullplatform AWS Lambda"), visible to every organization. You do not copy its specs: you install the package and use it read-only.
+The scope is published once as the package `np-aws-lambda` (specification "AWS Lambda"), visible to every organization. You do not copy its specs: you install the package and use it read-only.
 
 Installing it touches the same three layers as registering a scope yourself, and only the nullplatform layer changes:
 
@@ -98,7 +98,7 @@ Every release publishes the new revision from this repository ([`lambda/publish`
 
 ### Already registered with `specs/install`?
 
-Organizations that registered this scope with [`lambda/specs/install`](./lambda/installation.md) have their own copy: package `scopes-lambda`, specification and scope type "AWS Lambda" and a scope-configuration specification "AWS Lambda". The global package uses other names (`nullplatform-aws-lambda`), so both live side by side in one organization:
+Organizations that registered this scope with [`lambda/specs/install`](./lambda/installation.md) have their own copy: package `scopes-lambda`, specification and scope type "AWS Lambda" and a scope-configuration specification "AWS Lambda". The global package uses other names (`np-aws-lambda`), so both live side by side in one organization:
 
 - Existing scopes stay on your copy. A scope cannot move to another specification.
 - In the nullplatform layer, add the installation module with `scope_type_name` set to something developers can tell from your scope type (for example `"AWS Lambda (nullplatform)"`), and create new scopes from it. Its outputs have the names `scope_definition` outputs.

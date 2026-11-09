@@ -1,6 +1,6 @@
 # scopes-lambda installation
 
-OpenTofu module that installs the `nullplatform-aws-lambda` package (specification "nullplatform AWS Lambda") in your organization, at the version of the tag you reference. The package is published once for every organization and brings the scope specification and its action specifications, read-only. This module creates what each organization owns on top of it, from the templates of that tag:
+OpenTofu module that installs the `np-aws-lambda` package (specification "AWS Lambda") in your organization, at the version of the tag you reference. The package is published once for every organization and brings the scope specification and its action specifications, read-only. This module creates what each organization owns on top of it, from the templates of that tag:
 
 1. The installation of the package at `nrn`.
 2. The scope type, pointing at the package's specification.
@@ -54,7 +54,6 @@ module "lambda" {
 | `package_id` | Id of the installed package |
 | `installed_version` | Version new scopes are born with (also `package_default_version`) |
 | `installation_id` | Id of the package installation |
-| `missing_optional_requirements` | Optional providers the package can use that you have not configured |
 
 ## What stays the publisher's
 
