@@ -11,6 +11,10 @@ The revision's version is `local.release` in [`versions.tf`](./versions.tf), whi
 
 Only what the package pins is created in the publisher organization: the service specification, its action specifications and the package. The scope type, NRN settings and scope-configuration schema are created by each organization that installs the package, with tofu-modules' `scope_package_installation`, so the stack turns them off in `scope_definition` (`create_scope_type`, `configure_nrn_settings` and `create_scope_configuration` set to `false`).
 
+## Which revision becomes the default
+
+Not every publish moves the package default, the revision an organization that installs without pinning a version is born with. A stable release promotes itself; a prerelease (any version with a `-`, such as `0.12.0-rc.1`) is published without moving the default, so it can be installed by version to try it. `promote_default` (`-var promote_default=false`, or `true`) forces either way.
+
 ## Repository configuration
 
 | Kind | Name | Purpose |

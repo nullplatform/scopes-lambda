@@ -26,6 +26,12 @@ locals {
   package_slug = "np-aws-lambda"
   version      = trimprefix(local.release, "v")
   service_path = "lambda"
+
+  # Whether this revision becomes the package default — what an organization
+  # that installs without pinning a version is born with. A stable release
+  # promotes; a prerelease (any semver with a `-`, such as 0.12.0-rc.1) is
+  # published without moving the default. promote_default forces either.
+  promote_default = var.promote_default != null ? var.promote_default : length(regexall("-", local.version)) == 0
 }
 
 # Publishing other templates under this version would break its immutability.
@@ -81,11 +87,8 @@ module "scope_definition" {
   package = {
     slug       = local.package_slug
     version    = local.version
+    default    = local.promote_default
     visible_to = ["organization=*"]
-    # No requires_providers: the API does not accept the declaration yet, and
-    # organizations that create their providers in a layer applied after the
-    # install could never satisfy a required one. The scope checks its providers
-    # at runtime, as it always did.
     artifacts = [{
       name   = "worker-image"
       lookup = true # registered by the release workflow before this runs
