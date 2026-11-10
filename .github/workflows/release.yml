@@ -17,10 +17,12 @@ name: release
 # Package publishing applies lambda/publish at the release tag with the pushed
 # digest: the scope as a package visible to every organization. It reuses
 # ARTIFACT_NP_API_KEY (the publisher organization key, also allowed to write
-# specs, scope types and packages) and needs secret AWS_ROLE_ARN_PACKAGE_STATE
-# (OIDC role for the tofu state bucket) and variables PACKAGE_TFSTATE_BUCKET +
-# PACKAGE_TFSTATE_REGION + NP_ARTIFACT_NRN; it is skipped until
-# PACKAGE_TFSTATE_BUCKET is set.
+# specs, scope types and packages) and needs the secrets
+# AWS_ROLE_ARN_PACKAGE_STATE (OIDC role for the tofu state bucket),
+# PACKAGE_TFSTATE_BUCKET and PACKAGE_TFSTATE_REGION, plus the NP_ARTIFACT_NRN
+# variable; the shared workflow skips it until PACKAGE_TFSTATE_BUCKET is set.
+# Bucket and region are secrets, not variables: this repository is public and
+# so are its run logs, and GitHub masks only secrets.
 on:
   push:
     branches:
@@ -46,7 +48,7 @@ jobs:
       release-type: terraform-module
       update_readme_versions: true
       existing_tag: ${{ inputs.existing_tag || '' }}
-      package_stack_dir: ${{ vars.PACKAGE_TFSTATE_BUCKET != '' && 'lambda/publish' || '' }}
+      package_stack_dir: lambda/publish
       # scope_definition renders the templates with gomplate.
       package_tools: gomplate
     secrets:
@@ -54,3 +56,5 @@ jobs:
       artifact_np_api_key: ${{ secrets.ARTIFACT_NP_API_KEY }}
       package_np_api_key: ${{ secrets.ARTIFACT_NP_API_KEY }}
       package_state_role_arn: ${{ secrets.AWS_ROLE_ARN_PACKAGE_STATE }}
+      package_state_bucket: ${{ secrets.PACKAGE_TFSTATE_BUCKET }}
+      package_state_region: ${{ secrets.PACKAGE_TFSTATE_REGION }}
