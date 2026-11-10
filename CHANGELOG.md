@@ -4,6 +4,13 @@
 
 * **scope:** the placeholder image tag (`-arm64`/`-amd64`) follows the scope architecture ([#99](https://github.com/nullplatform/scopes-lambda/pull/99))
 
+## [0.13.1](https://github.com/nullplatform/scopes-lambda/compare/v0.13.0...v0.13.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **assume-role:** resolve the IAM provider from the scope's NRN ([c1860c3](https://github.com/nullplatform/scopes-lambda/commit/c1860c3a6e3f84407da64f9f91237f85981da31f))
+
 ## [0.13.0](https://github.com/nullplatform/scopes-lambda/compare/v0.12.2...v0.13.0) (2026-11-10)
 
 

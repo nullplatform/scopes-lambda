@@ -26,7 +26,7 @@ terraform {
 # terraform-module) rewrites it in the release PR; keep it the only vX.Y.Z in
 # this file.
 locals {
-  release = "v0.13.0"
+  release = "v0.13.1"
 }
 
 # Credentials come from NULLPLATFORM_API_KEY: a key of the publisher
