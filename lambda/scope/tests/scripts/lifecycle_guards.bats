@@ -323,3 +323,42 @@ run_assume_role_step() {
   assert_line "   - The resolved ARN is wrong (check the IAM provider selector=lambda)"
   assert_output_not_contains "CALLER_ALIVE"
 }
+
+# np answers only for the scope's full NRN, like a provider registered at the
+# application where the package is installed: `np provider list` walks up from
+# the NRN it gets, so cutting it to the account would miss this provider.
+stub_np_iam_provider_at_scope_nrn() {
+  np() {
+    case "$*" in
+      *"provider list --nrn organization=1:account=2:namespace=3:application=4:scope=5 --categories identity-access-control"*)
+        echo '{"results":[{"id":"iam-provider"}]}' ;;
+      *"provider read --id iam-provider"*)
+        echo '{"attributes":{"iam_role_arns":{"arns":[{"selector":"lambda","arn":"arn:aws:iam::123456789012:role/np-lambda"}]}}}' ;;
+      *) echo '{"results":[]}' ;;
+    esac
+  }
+  export -f np
+}
+
+@test "assume_role_step: resolves the IAM provider from the scope's full NRN" {
+  stub_np_iam_provider_at_scope_nrn
+  mock_aws '{"Credentials":{"AccessKeyId":"AKIA","SecretAccessKey":"secret","SessionToken":"token"}}'
+
+  run run_assume_role_step
+
+  assert_success
+  assert_line "   🔑 Assuming role: arn:aws:iam::123456789012:role/np-lambda"
+  assert_line "   ✅ Role assumed successfully"
+  assert_output_not_contains "No IAM role for selector"
+}
+
+@test "assume_role_step: warns when no IAM role resolves" {
+  np() { echo '{"results":[]}'; }
+  export -f np
+
+  run run_assume_role_step
+
+  assert_success
+  assert_output_contains "No IAM role for selector=lambda at organization=1:account=2:namespace=3:application=4:scope=5 or above it; using the agent's credentials"
+  assert_output_not_contains "Assuming role"
+}
