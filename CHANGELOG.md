@@ -4,6 +4,15 @@
 
 * **scope:** the placeholder image tag (`-arm64`/`-amd64`) follows the scope architecture ([#99](https://github.com/nullplatform/scopes-lambda/pull/99))
 
+## [0.13.0](https://github.com/nullplatform/scopes-lambda/compare/v0.12.2...v0.13.0) (2026-11-10)
+
+
+### Features
+
+* **package:** publish as "AWS Lambda" with the np-aws-lambda slug ([c24d02f](https://github.com/nullplatform/scopes-lambda/commit/c24d02fe5e7543478e1fcaf48f7286177dd449a1))
+* **package:** publish the scope as a global package ([11429fa](https://github.com/nullplatform/scopes-lambda/commit/11429facee8c3f021b5871b768c8803318bc975b))
+* **publish:** a prerelease does not move the package default ([ea956dd](https://github.com/nullplatform/scopes-lambda/commit/ea956ddba95c68a7b1c3d7ad227139c1030ad351))
+
 ## [0.12.2](https://github.com/nullplatform/scopes-lambda/compare/v0.12.1...v0.12.2) (2026-11-02)
 
 
