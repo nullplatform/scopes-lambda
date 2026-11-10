@@ -38,7 +38,7 @@ Reference both modules of this repository at the same release tag:
 ```hcl
 # ── infrastructure layer ─────────────────────────────────────────────
 module "lambda_requirements" {
-  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=v0.13.0"
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=v0.13.1"
 
   cluster_name   = "my-cluster" # names the role nullplatform_my-cluster_lambda_role
   agent_role_arn = module.agent_iam.nullplatform_agent_role_arn
