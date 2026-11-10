@@ -30,7 +30,7 @@ Installing it touches the same three layers as registering a scope yourself, and
 | Layer | What | Module |
 |---|---|---|
 | infrastructure (AWS credentials) | The permissions role, the placeholder ECR repository and, optionally, a public ALB | [`lambda/specs/requirements`](./lambda/specs/requirements) |
-| nullplatform (nullplatform API key) | The installation of the package, the scope type, the NRN settings and the scope-configuration schema | [`lambda/installation`](./lambda/installation) |
+| nullplatform (nullplatform API key) | The installation of the package, the scope type, the NRN settings and the scope-configuration schema | tofu-modules' `scope_package_installation` |
 | bindings | The agent channel, the role under selector `lambda` in your IAM provider, and the scope's settings | tofu-modules' `scope_definition_agent_association`, your providers |
 
 Reference both modules of this repository at the same release tag:
@@ -49,10 +49,23 @@ module "lambda_requirements" {
 #   assume_role_arns = [..., module.lambda_requirements.permissions_role_arn]
 
 # ── nullplatform layer ───────────────────────────────────────────────
+# The same module a catalog entry with `install_package` becomes.
 module "lambda" {
-  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/installation?ref=v0.11.1"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.12.0"
 
-  nrn = var.nrn
+  nrn             = var.nrn
+  np_api_key      = var.np_api_key # for the NRN settings patch (np nrn patch)
+  package_slug    = "np-aws-lambda"
+  package_version = "0.11.1" # the release you install; upgrading = moving it
+
+  # Yours, created from this repository's templates at the same release:
+  service_spec_name                = "AWS Lambda" # the scope type developers pick
+  service_spec_description         = "Serverless functions on AWS Lambda"
+  service_path                     = "lambda"
+  repository_scope_template        = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
+  repository_scope_template_branch = "v0.11.1"
+  create_scope_configuration       = true
+  create_agent_channel             = false # the channel lives in your bindings layer, below
 }
 
 # ── bindings layer ───────────────────────────────────────────────────
@@ -92,7 +105,7 @@ resource "nullplatform_provider_config" "lambda_scope_configuration" {
 #   { selector = "lambda", arn = local.lambda_requirements.permissions_role_arn }
 ```
 
-The scope assumes the role it finds under selector `lambda` in the IAM provider closest to its NRN. With `install_alb = true`, also publish `lambda_alb_listener_arn` to your networking provider (`load_balancer.public.listener_arn`). To upgrade, move `ref` to a newer tag in every layer. See [`lambda/installation`](./lambda/installation) for its inputs and outputs.
+The scope assumes the role it finds under selector `lambda` in the IAM provider closest to its NRN. With `install_alb = true`, also publish `lambda_alb_listener_arn` to your networking provider (`load_balancer.public.listener_arn`). To upgrade, move the release in every layer: `ref` of the requirements module, `package_version` and `repository_scope_template_branch` of the installation. See tofu-modules' [`scope_package_installation`](https://github.com/nullplatform/tofu-modules/tree/main/nullplatform/scope_package_installation) for its inputs and outputs.
 
 Prerequisites: an agent whose `TAGS` match the channel's `tags_selectors` and with `public.ecr.aws/nullplatform/*` in `worker.allowedRegistries`, and an AWS cloud provider at the NRN or above it.
 
@@ -103,7 +116,7 @@ Every release publishes the new revision from this repository ([`lambda/publish`
 Organizations that registered this scope with [`lambda/specs/install`](./lambda/installation.md) have their own copy: package `scopes-lambda`, specification and scope type "AWS Lambda" and a scope-configuration specification "AWS Lambda". The global package uses other names (`np-aws-lambda`), so both live side by side in one organization:
 
 - Existing scopes stay on your copy. A scope cannot move to another specification.
-- In the nullplatform layer, add the installation module with `scope_type_name` set to something developers can tell from your scope type (for example `"AWS Lambda (nullplatform)"`), and create new scopes from it. Its outputs have the names `scope_definition` outputs.
+- In the nullplatform layer, add the installation (the module above, or a catalog entry with `install_package`) with `service_spec_name` set to something developers can tell from your scope type (for example `"AWS Lambda (nullplatform)"`), and create new scopes from it. Its outputs have the names `scope_definition` outputs.
 - In the bindings layer, add a channel for the global specification. Your existing channel keeps serving your copy.
 - Keep your scope settings: pass `create_scope_configuration = false` and do not add a second scope-configuration provider. The scope reads every `scope-configurations` provider at the NRN, so the one you already configured serves both.
 - Keep your IAM role: both copies assume the role under selector `lambda`. The infrastructure layer does not change.
@@ -118,10 +131,10 @@ Organizations that registered this scope with [`lambda/specs/install`](./lambda/
 | Updates | A new release: move the version | Only when you merge upstream into your fork |
 | When | Always, unless you need changes to the specification, the actions or the workflows | Substantial changes: new actions, another specification (attributes, deployment types, validations), workflows that behave differently |
 
-**Use the global package.** It is the only way to keep receiving fixes, features and security patches: each one arrives as a release of this repository and you take it by moving the installed version. The section above is that path; its two forms are equivalent:
+**Use the global package.** It is the only way to keep receiving fixes, features and security patches: each one arrives as a release of this repository and you take it by moving the installed version. The section above is that path; its two forms are the same module:
 
 - From a catalog of `scope_definition` entries (tofu-modules): the same entry with an `install_package = { slug = "np-aws-lambda", version = "X.Y.Z" }` block becomes a `scope_package_installation`. The scope type, the NRN settings and the scope-configuration schema are still created by you, from this repository's templates at the matching tag; the specification and its actions are the package's.
-- From this repository directly: [`lambda/installation`](./lambda/installation) at a release tag, which wraps that module with the slug and version of the tag.
+- From a root of your own: the module call in the section above, with the same inputs.
 
 If something is missing or wrong, open an issue or a pull request here, so every organization gets it.
 

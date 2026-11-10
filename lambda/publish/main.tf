@@ -9,8 +9,8 @@
 #
 # Only what the package pins is created in the publisher organization. The
 # scope type, NRN settings and scope-configuration schema belong to each
-# organization that installs the package, which creates them with
-# ../installation; the publisher organization would only get unused copies.
+# organization that installs the package, which creates them with tofu-modules'
+# scope_package_installation; the publisher organization would only get unused copies.
 #
 # Run only by the release workflow, through actions-nullplatform's
 # publish-package (see release.yml).
@@ -72,7 +72,7 @@ module "scope_definition" {
     "update-scope",
   ]
 
-  # Each installing organization creates these (../installation), and without
+  # Each installing organization creates these (scope_package_installation), and without
   # the NRN patch the apply needs no `np`.
   create_scope_type          = false
   configure_nrn_settings     = false
