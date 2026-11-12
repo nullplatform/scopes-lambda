@@ -38,7 +38,7 @@ Reference both modules of this repository at the same release tag:
 ```hcl
 # ── infrastructure layer ─────────────────────────────────────────────
 module "lambda_requirements" {
-  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=v0.11.1"
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=v0.13.1"
 
   cluster_name   = "my-cluster" # names the role nullplatform_my-cluster_lambda_role
   agent_role_arn = module.agent_iam.nullplatform_agent_role_arn
@@ -56,14 +56,14 @@ module "lambda" {
   nrn             = var.nrn
   np_api_key      = var.np_api_key # for the NRN settings patch (np nrn patch)
   package_slug    = "np-aws-lambda"
-  package_version = "0.11.1" # the release you install; upgrading = moving it
+  package_version = "0.13.1" # the release you install; upgrading = moving it
 
   # Yours, created from this repository's templates at the same release:
   service_spec_name                = "AWS Lambda" # the scope type developers pick
   service_spec_description         = "Serverless functions on AWS Lambda"
   service_path                     = "lambda"
   repository_scope_template        = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
-  repository_scope_template_branch = "v0.11.1"
+  repository_scope_template_branch = "v0.13.1"
   create_scope_configuration       = true
   create_agent_channel             = false # the channel lives in your bindings layer, below
 }
@@ -81,7 +81,7 @@ module "lambda_channel" {
 
   # The channel template, from the same tag
   repository_notification_channel        = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
-  repository_notification_channel_branch = "v0.11.1"
+  repository_notification_channel_branch = "v0.13.1"
 
   worker_orchestrator = true
   package_slug        = local.lambda.package_slug
