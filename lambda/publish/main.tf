@@ -24,22 +24,28 @@ locals {
   # must differ for both to live in one organization. The prefix lives in the
   # slug only: the specification keeps the plain name people read.
   package_slug = "np-aws-lambda"
-  version      = trimprefix(local.release, "v")
   service_path = "lambda"
+  # The release tag the workflow passes, as the artifact registration takes it.
+  # The guard below refuses to publish without one.
+  version = var.release_tag == null ? null : trimprefix(var.release_tag, "v")
 
   # Whether this revision becomes the package default — what an organization
   # that installs without pinning a version is born with. A stable release
   # promotes; a prerelease (any semver with a `-`, such as 0.12.0-rc.1) is
   # published without moving the default. promote_default forces either.
-  promote_default = var.promote_default != null ? var.promote_default : length(regexall("-", local.version)) == 0
+  promote_default = (
+    var.promote_default != null ? var.promote_default :
+    local.version == null ? false :
+    length(regexall("-", local.version)) == 0
+  )
 }
 
-# Publishing other templates under this version would break its immutability.
+# A revision without a tag would have no version.
 resource "terraform_data" "release_guard" {
   lifecycle {
     precondition {
-      condition     = var.release_tag == null || var.release_tag == local.release
-      error_message = "versions.tf releases ${local.release} but the release tag is ${coalesce(var.release_tag, "unset")}."
+      condition     = var.release_tag != null
+      error_message = "release_tag is required: it is the package revision's version."
     }
   }
 }

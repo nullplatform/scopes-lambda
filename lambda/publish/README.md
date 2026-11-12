@@ -7,7 +7,7 @@ Each apply publishes one immutable revision that pins:
 - the scope specification and every action specification, rendered from the templates of the release tag (read from the checkout the workflow applies the stack in);
 - the worker image the same release pushed, by digest.
 
-The revision's version is `local.release` in [`versions.tf`](./versions.tf), which release-please rewrites in every release PR. The apply refuses to publish when it does not match the release tag (`release_tag`, set by the workflow). Re-applying the same release is a no-op.
+The revision's version is the release tag (`release_tag`, set by the workflow), without the `v`: the same version the worker image is registered with. The apply refuses to publish without it. Re-applying the same release is a no-op.
 
 Only what the package pins is created in the publisher organization: the service specification, its action specifications and the package. The scope type, NRN settings and scope-configuration schema are created by each organization that installs the package, with tofu-modules' `scope_package_installation`, so the stack turns them off in `scope_definition` (`create_scope_type`, `configure_nrn_settings` and `create_scope_configuration` set to `false`).
 
