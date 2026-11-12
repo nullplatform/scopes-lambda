@@ -47,6 +47,7 @@ jobs:
     uses: nullplatform/actions-nullplatform/.github/workflows/release-publish-oci.yml@v1
     with:
       image_name: scopes/lambda
+      submodules: true # vendor/catalog-tracing-sh — the tracing SDK baked into the image
       # Same behavior as the previous release.yml caller (shared defaults).
       release-type: terraform-module
       update_readme_versions: true
