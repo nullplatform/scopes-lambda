@@ -33,12 +33,12 @@ Installing it touches the same three layers as registering a scope yourself, and
 | nullplatform (nullplatform API key) | The installation of the package, the scope type, the NRN settings and the scope-configuration schema | tofu-modules' `scope_package_installation` |
 | bindings | The agent channel, the role under selector `lambda` in your IAM provider, and the scope's settings | tofu-modules' `scope_definition_agent_association`, your providers |
 
-Reference both modules of this repository at the same release tag:
+Pick ONE release of this repository (the latest is on its [releases page](https://github.com/nullplatform/scopes-lambda/releases)) and use its version in both places below: the IAM role is the one the worker of that same release expects.
 
 ```hcl
 # ── infrastructure layer ─────────────────────────────────────────────
 module "lambda_requirements" {
-  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=v0.13.1"
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=vX.Y.Z"
 
   cluster_name   = "my-cluster" # names the role nullplatform_my-cluster_lambda_role
   agent_role_arn = module.agent_iam.nullplatform_agent_role_arn
@@ -51,19 +51,19 @@ module "lambda_requirements" {
 # ── nullplatform layer ───────────────────────────────────────────────
 # The same module a catalog entry with `install_package` becomes.
 module "lambda" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.12.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.16.0"
 
   nrn             = var.nrn
   np_api_key      = var.np_api_key # for the NRN settings patch (np nrn patch)
   package_slug    = "np-aws-lambda"
-  package_version = "0.13.1" # the release you install; upgrading = moving it
+  package_version = "X.Y.Z" # the same release, without the v
 
   # Yours, created from this repository's templates at the same release:
   service_spec_name                = "AWS Lambda" # the scope type developers pick
   service_spec_description         = "Serverless functions on AWS Lambda"
   service_path                     = "lambda"
   repository_scope_template        = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
-  repository_scope_template_branch = "v0.13.1"
+  repository_scope_template_branch = "vX.Y.Z" # the same release
   create_scope_configuration       = true
   create_agent_channel             = false # the channel lives in your bindings layer, below
 }
@@ -71,7 +71,7 @@ module "lambda" {
 # ── bindings layer ───────────────────────────────────────────────────
 # lambda_requirements and lambda come from the other layers (remote state).
 module "lambda_channel" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=vX.Y.Z"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=v9.16.0"
 
   nrn                      = var.nrn
   tags_selectors           = { cluster = "runtime" } # must match the agent's TAGS
