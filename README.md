@@ -33,12 +33,12 @@ Installing it touches the same three layers as registering a scope yourself, and
 | nullplatform (nullplatform API key) | The installation of the package, the scope type, the NRN settings and the scope-configuration schema | tofu-modules' `scope_package_installation` |
 | bindings | The agent channel, the role under selector `lambda` in your IAM provider, and the scope's settings | tofu-modules' `scope_definition_agent_association`, your providers |
 
-Reference both modules of this repository at the same release tag:
+Pick ONE release of this repository (the latest is on its [releases page](https://github.com/nullplatform/scopes-lambda/releases)) and use its version in both places below: the IAM role is the one the worker of that same release expects.
 
 ```hcl
 # ── infrastructure layer ─────────────────────────────────────────────
 module "lambda_requirements" {
-  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=v0.13.1"
+  source = "git::https://github.com/nullplatform/scopes-lambda.git//lambda/specs/requirements?ref=vX.Y.Z"
 
   cluster_name   = "my-cluster" # names the role nullplatform_my-cluster_lambda_role
   agent_role_arn = module.agent_iam.nullplatform_agent_role_arn
@@ -51,19 +51,19 @@ module "lambda_requirements" {
 # ── nullplatform layer ───────────────────────────────────────────────
 # The same module a catalog entry with `install_package` becomes.
 module "lambda" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.12.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.16.0"
 
   nrn             = var.nrn
   np_api_key      = var.np_api_key # for the NRN settings patch (np nrn patch)
   package_slug    = "np-aws-lambda"
-  package_version = "0.13.1" # the release you install; upgrading = moving it
+  package_version = "X.Y.Z" # the same release, without the v
 
   # Yours, created from this repository's templates at the same release:
   service_spec_name                = "AWS Lambda" # the scope type developers pick
   service_spec_description         = "Serverless functions on AWS Lambda"
   service_path                     = "lambda"
   repository_scope_template        = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
-  repository_scope_template_branch = "v0.13.1"
+  repository_scope_template_branch = "vX.Y.Z" # the same release
   create_scope_configuration       = true
   create_agent_channel             = false # the channel lives in your bindings layer, below
 }
@@ -71,7 +71,7 @@ module "lambda" {
 # ── bindings layer ───────────────────────────────────────────────────
 # lambda_requirements and lambda come from the other layers (remote state).
 module "lambda_channel" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=vX.Y.Z"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_definition_agent_association?ref=v9.16.0"
 
   nrn                      = var.nrn
   tags_selectors           = { cluster = "runtime" } # must match the agent's TAGS
@@ -109,7 +109,7 @@ The scope assumes the role it finds under selector `lambda` in the IAM provider 
 
 Prerequisites: an agent whose `TAGS` match the channel's `tags_selectors` and with `public.ecr.aws/nullplatform/*` in `worker.allowedRegistries`, and an AWS cloud provider at the NRN or above it.
 
-Every release publishes the new revision from this repository ([`lambda/publish`](./lambda/publish), applied by the `publish-package` job of the release workflow).
+Every release publishes the new revision from this repository ([`lambda/publish`](./lambda/publish), a stack on tofu-modules' `scope_package_publish`, applied by the `publish-package` job of the release workflow).
 
 ### Already registered with `specs/install`?
 
@@ -140,12 +140,12 @@ If something is missing or wrong, open an issue or a pull request here, so every
 
 **Fork only to change what the scope is.** A fork means you become the publisher of a different scope: you build its worker image, publish its package in your organization and maintain its specs, code and installation. Step by step:
 
-1. **Fork the repository and give the scope its own names.** In [`lambda/publish/main.tf`](./lambda/publish/main.tf): `package_slug` (for example `acme-aws-lambda`), `service_spec_name` ("Acme Lambda") and `service_spec_slug` (`acme-aws-lambda`). The slug must differ from `np-aws-lambda`, and from `aws-lambda` if you also run a copy: package lookups and agent channels match by slug, so two scopes with one slug share a worker.
-2. **Publish into your organization, not every organization.** In the same file, `visible_to` goes from `["organization=*"]` to `[var.publisher_nrn]`: only the platform organization may publish globally, and your package is yours. Point `image_registry` / `image_repository` ([`lambda/publish/variables.tf`](./lambda/publish/variables.tf)) at your registry.
+1. **Fork the repository and give the scope its own names.** In [`lambda/publish/main.tf`](./lambda/publish/main.tf): `package_slug` (for example `acme-aws-lambda`) and `service_spec_name` ("Acme Lambda"); the specification takes the package slug. The slug must differ from `np-aws-lambda`, and from `aws-lambda` if you also run a copy: package lookups and agent channels match by slug, so two scopes with one slug share a worker.
+2. **Publish into your organization, not every organization.** In the same file, add `visible_to = [var.publisher_nrn]` to the module call: the module publishes to every organization by default, which only the platform organization may, and your package is yours. Point `image_repository` (and `image_registry`, when it is not ECR Public) at your registry.
 3. **Set the release workflow's secrets in your fork**: `ARTIFACT_NP_API_KEY` (a key of your organization, allowed to write artifacts, specifications and packages), `AWS_ROLE_ARN_ECR_PUSH`, `PACKAGE_STATE_AWS_ACCOUNT_ID` (with a role named `github-actions-<repository>-package-state` that may write the state bucket) or `AWS_ROLE_ARN_PACKAGE_STATE` (a role named otherwise), `PACKAGE_TFSTATE_BUCKET` and `PACKAGE_TFSTATE_REGION`, plus the `NP_ARTIFACT_NRN` variable. From then on, each release of your fork builds the image, registers it and publishes a revision of your package ([`release.yml`](./.github/workflows/release.yml)).
 4. **Install your package the same way as the global one**, with your slug in `install_package`, your own scope type name and your own agent channel. The role and its selector can stay `lambda` as long as the permissions in [`lambda/specs/requirements`](./lambda/specs/requirements) still fit what your fork does; if they do not, give your fork its own role and selector too.
 
-**Your specs on our image: the shortcut, and why it is risky.** The worker image this repository publishes is a global artifact, so a package of your own may pin it (`lookup = true` with our registry, repository and the digest of one of our releases, as [`lambda/publish/main.tf`](./lambda/publish/main.tf) does) and change only the specs. It saves you the build, and it is the main trade-off to understand before taking it: the code in that image reads the specification it was released with — the attributes the form collects, the actions and their parameters, the values the scope-configuration schema provides — so every change to your specs is a divergence the image does not know about, and the next release of ours assumes specs you no longer have. A scope behaves as one thing because its specs and its code are released together; that coupling is the reason the global package carries both, and splitting them puts the breakage on your side, at runtime, with nothing in the platform to warn you. Take the shortcut only for changes the image cannot see, such as descriptions, defaults within the same shape, or visibility; anything the workflows read belongs with a forked image.
+**Your specs on our image: the shortcut, and why it is risky.** The worker image this repository publishes is a global artifact, so a package of your own may pin it (an artifact looked up by registry, repository and the digest of one of our releases, as the module behind [`lambda/publish`](./lambda/publish) does) and change only the specs. It saves you the build, and it is the main trade-off to understand before taking it: the code in that image reads the specification it was released with — the attributes the form collects, the actions and their parameters, the values the scope-configuration schema provides — so every change to your specs is a divergence the image does not know about, and the next release of ours assumes specs you no longer have. A scope behaves as one thing because its specs and its code are released together; that coupling is the reason the global package carries both, and splitting them puts the breakage on your side, at runtime, with nothing in the platform to warn you. Take the shortcut only for changes the image cannot see, such as descriptions, defaults within the same shape, or visibility; anything the workflows read belongs with a forked image.
 
 Without packages, the classic way still works: register your fork as a copy with `scope_definition` pointing at your fork's repository and tag ([`lambda/specs/install`](./lambda/installation.md)).
 
