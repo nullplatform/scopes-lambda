@@ -23,7 +23,7 @@ This scope provides infrastructure-as-code for deploying and managing serverless
 
 The scope is published once as the package `np-aws-lambda` (specification "AWS Lambda"), visible to every organization. You do not copy its specs: you install the package and use it read-only.
 
-If you need to change the specification, the actions or the workflows themselves, see [the global package, or your own fork](#two-ways-to-run-this-scope-the-global-package-or-your-own-fork) below before installing anything.
+How installing a package works, how it coexists with a copy you registered, how to upgrade, and when to fork instead are in the [package installation guide](https://docs.nullplatform.com/docs/packages/install); this section has what is specific to this scope.
 
 Installing it touches the same three layers as registering a scope yourself, and only the nullplatform layer changes:
 
@@ -110,52 +110,6 @@ The scope assumes the role it finds under selector `lambda` in the IAM provider 
 Prerequisites: an agent whose `TAGS` match the channel's `tags_selectors` and with `public.ecr.aws/nullplatform/*` in `worker.allowedRegistries`, and an AWS cloud provider at the NRN or above it.
 
 Every release publishes the new revision from this repository ([`lambda/publish`](./lambda/publish), a stack on tofu-modules' `scope_package_publish`, applied by the `publish-package` job of the release workflow).
-
-### Already registered with `specs/install`?
-
-Organizations that registered this scope with [`lambda/specs/install`](./lambda/installation.md) have their own copy: package `scopes-lambda`, specification and scope type "AWS Lambda" and a scope-configuration specification "AWS Lambda". The global package uses other names (`np-aws-lambda`), so both live side by side in one organization:
-
-- Existing scopes stay on your copy. A scope cannot move to another specification.
-- In the nullplatform layer, add the installation (the module above, or a catalog entry with `install_package`) with `service_spec_name` set to something developers can tell from your scope type (for example `"AWS Lambda (nullplatform)"`), and create new scopes from it. Its outputs have the names `scope_definition` outputs.
-- In the bindings layer, add a channel for the global specification. Your existing channel keeps serving your copy.
-- Keep your scope settings: pass `create_scope_configuration = false` and do not add a second scope-configuration provider. The scope reads every `scope-configurations` provider at the NRN, so the one you already configured serves both.
-- Keep your IAM role: both copies assume the role under selector `lambda`. The infrastructure layer does not change.
-- Once no scope uses your copy, remove its `specs/install` stack.
-
-### Two ways to run this scope: the global package, or your own fork
-
-| | **Global package** (default) | **Your own fork** |
-|---|---|---|
-| Specs and code | Maintained by nullplatform in this repository | Maintained by you, in your fork |
-| What you install | The package `np-aws-lambda`, read-only | A package you publish in your organization, or a registered copy |
-| Updates | A new release: move the version | Only when you merge upstream into your fork |
-| When | Always, unless you need changes to the specification, the actions or the workflows | Substantial changes: new actions, another specification (attributes, deployment types, validations), workflows that behave differently |
-
-**Use the global package.** It is the only way to keep receiving fixes, features and security patches: each one arrives as a release of this repository and you take it by moving the installed version. The section above is that path; its two forms are the same module:
-
-- From a catalog of `scope_definition` entries (tofu-modules): the same entry with an `install_package = { slug = "np-aws-lambda", version = "X.Y.Z" }` block becomes a `scope_package_installation`. The scope type, the NRN settings and the scope-configuration schema are still created by you, from this repository's templates at the matching tag; the specification and its actions are the package's.
-- From a root of your own: the module call in the section above, with the same inputs.
-
-If something is missing or wrong, open an issue or a pull request here, so every organization gets it.
-
-**Fork only to change what the scope is.** A fork means you become the publisher of a different scope: you build its worker image, publish its package in your organization and maintain its specs, code and installation. Step by step:
-
-1. **Fork the repository and give the scope its own names.** In [`lambda/publish/main.tf`](./lambda/publish/main.tf): `package_slug` (for example `acme-aws-lambda`) and `service_spec_name` ("Acme Lambda"); the specification takes the package slug. The slug must differ from `np-aws-lambda`, and from `aws-lambda` if you also run a copy: package lookups and agent channels match by slug, so two scopes with one slug share a worker.
-2. **Publish into your organization, not every organization.** In the same file, add `visible_to = [var.publisher_nrn]` to the module call: the module publishes to every organization by default, which only the platform organization may, and your package is yours. Point `image_repository` (and `image_registry`, when it is not ECR Public) at your registry.
-3. **Set the release workflow's secrets in your fork**: `ARTIFACT_NP_API_KEY` (a key of your organization, allowed to write artifacts, specifications and packages), `AWS_ROLE_ARN_ECR_PUSH`, `PACKAGE_STATE_AWS_ACCOUNT_ID` (with a role named `github-actions-<repository>-package-state` that may write the state bucket) or `AWS_ROLE_ARN_PACKAGE_STATE` (a role named otherwise), `PACKAGE_TFSTATE_BUCKET` and `PACKAGE_TFSTATE_REGION`, plus the `NP_ARTIFACT_NRN` variable. From then on, each release of your fork builds the image, registers it and publishes a revision of your package ([`release.yml`](./.github/workflows/release.yml)).
-4. **Install your package the same way as the global one**, with your slug in `install_package`, your own scope type name and your own agent channel. The role and its selector can stay `lambda` as long as the permissions in [`lambda/specs/requirements`](./lambda/specs/requirements) still fit what your fork does; if they do not, give your fork its own role and selector too.
-
-**Your specs on our image: the shortcut, and why it is risky.** The worker image this repository publishes is a global artifact, so a package of your own may pin it (an artifact looked up by registry, repository and the digest of one of our releases, as the module behind [`lambda/publish`](./lambda/publish) does) and change only the specs. It saves you the build, and it is the main trade-off to understand before taking it: the code in that image reads the specification it was released with — the attributes the form collects, the actions and their parameters, the values the scope-configuration schema provides — so every change to your specs is a divergence the image does not know about, and the next release of ours assumes specs you no longer have. A scope behaves as one thing because its specs and its code are released together; that coupling is the reason the global package carries both, and splitting them puts the breakage on your side, at runtime, with nothing in the platform to warn you. Take the shortcut only for changes the image cannot see, such as descriptions, defaults within the same shape, or visibility; anything the workflows read belongs with a forked image.
-
-Without packages, the classic way still works: register your fork as a copy with `scope_definition` pointing at your fork's repository and tag ([`lambda/specs/install`](./lambda/installation.md)).
-
-What a fork costs, before you take it:
-
-- **Updates stop arriving.** Upstream fixes reach you only when you merge them into your fork yourself.
-- **There is no way back for existing scopes.** A scope cannot move to another specification: scopes created from your fork's specification stay on it.
-- **You own the operations.** Images, releases, state of the publisher stack and the compatibility of your specs with the agent are yours to keep.
-
----
 
 ## Architecture Overview
 
