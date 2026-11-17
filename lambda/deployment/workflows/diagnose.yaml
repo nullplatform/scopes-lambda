@@ -7,7 +7,6 @@ trace:
   title: Diagnose the deployment
 steps:
   - name: load_functions
-    trace: false
     type: script
     file: "$SERVICE_PATH/diagnose/utils/diagnose_utils"
     trace: false
