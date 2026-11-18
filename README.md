@@ -80,7 +80,7 @@ module "lambda_channel" {
 
   # The channel template, from the same tag
   repository_notification_channel        = "https://raw.githubusercontent.com/nullplatform/scopes-lambda/refs/tags"
-  repository_notification_channel_branch = "v0.13.1"
+  repository_notification_channel_branch = "vX.Y.Z" # the same release
 
   worker_orchestrator = true
   package_slug        = local.lambda.package_slug
