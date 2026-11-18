@@ -49,7 +49,6 @@ module "lambda_requirements" {
 #   assume_role_arns = [..., module.lambda_requirements.permissions_role_arn]
 
 # ── nullplatform layer ───────────────────────────────────────────────
-# The same module a catalog entry with `install_package` becomes.
 module "lambda" {
   source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/scope_package_installation?ref=v9.16.0"
 
