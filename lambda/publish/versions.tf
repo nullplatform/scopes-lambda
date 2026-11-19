@@ -7,17 +7,8 @@ terraform {
 
   required_providers {
     nullplatform = {
-      source = "nullplatform/nullplatform"
-      # 0.0.113 takes `slug` on nullplatform_service_specification.
+      source  = "nullplatform/nullplatform"
       version = ">= 0.0.113"
-    }
-    external = {
-      source  = "hashicorp/external"
-      version = "~> 2.3"
-    }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.2"
     }
   }
 }

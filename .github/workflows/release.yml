@@ -50,7 +50,6 @@ jobs:
       submodules: true # vendor/catalog-tracing-sh — the tracing SDK baked into the image
       # Same behavior as the previous release.yml caller (shared defaults).
       release-type: terraform-module
-      update_readme_versions: true
       existing_tag: ${{ inputs.existing_tag || '' }}
       package_stack_dir: lambda/publish
       # scope_definition renders the templates with gomplate.
