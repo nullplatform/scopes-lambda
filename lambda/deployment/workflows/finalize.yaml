@@ -9,6 +9,8 @@ trace:
       entity: deployment
       operation: finalize
       scope.provider: "@context:scope.provider"
+  groups:
+    - {key: finalize, title: Finalize}
 steps:
   - name: load_logging
     type: script
@@ -57,10 +59,12 @@ steps:
   - name: finalize_traffic
     trace:
       title: Send all traffic to the new version
+      group: finalize
     type: script
     file: "$SERVICE_PATH/deployment/scripts/update_alias_full"
   - name: cleanup_old_version
     trace:
       title: Remove the previous version
+      group: finalize
     type: script
     file: "$SERVICE_PATH/deployment/scripts/cleanup_old_version"
