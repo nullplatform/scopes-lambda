@@ -9,6 +9,8 @@ trace:
       entity: deployment
       operation: rollback
       scope.provider: "@context:scope.provider"
+  groups:
+    - {key: finalize, title: Finalize}
 steps:
   - name: load_logging
     type: script
@@ -57,10 +59,12 @@ steps:
   - name: restore_alias
     trace:
       title: Restore traffic to the previous version
+      group: finalize
     type: script
     file: "$SERVICE_PATH/deployment/scripts/rollback_alias"
   - name: cleanup_new_version
     trace:
       title: Remove the new version
+      group: finalize
     type: script
     file: "$SERVICE_PATH/deployment/scripts/cleanup_new_version"

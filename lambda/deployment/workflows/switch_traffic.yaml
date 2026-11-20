@@ -9,6 +9,8 @@ trace:
       entity: deployment
       operation: switch-traffic
       scope.provider: "@context:scope.provider"
+  groups:
+    - {key: switching-traffic, title: Switching traffic}
 steps:
   - name: load_logging
     type: script
@@ -59,5 +61,6 @@ steps:
   - name: switch_traffic
     trace:
       title: Shift traffic between versions
+      group: switching-traffic
     type: script
     file: "$SERVICE_PATH/deployment/scripts/update_alias_weights"
